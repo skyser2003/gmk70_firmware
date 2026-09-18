@@ -48,85 +48,59 @@ void wireless_send_keyboard(report_keyboard_t *report) {
     }
 
     if (report != NULL) {
-        memcpy(wls_report_kb, (uint8_t *)report, sizeof(wls_report_kb));
+        wls_report_kb[0] = report->mods;
+        memcpy(&wls_report_kb[2], report->keys, KEYBOARD_REPORT_KEYS);
     }
     md_send_kb(wls_report_kb);
 }
 
 void wireless_send_nkro(report_nkro_t *report) {
-    static report_keyboard_t temp_report_keyboard                 = {0};
-    uint8_t                  wls_report_nkro[MD_SND_CMD_NKRO_LEN] = {0};
+    static report_keyboard_t keyboard_report                      = {0};
+    uint8_t                  overflow_report[MD_SND_CMD_NKRO_LEN] = {0};
 
     if (*md_getp_state() != MD_STATE_CONNECTED) {
         wireless_devs_change(wls_devs, wls_devs, false);
         return;
     }
 
-    if (report != NULL) {
-        report_nkro_t temp_report_nkro = *report;
-        uint8_t       key_count        = 0;
-
-        temp_report_keyboard.mods = temp_report_nkro.mods;
-        for (uint8_t i = 0; i < NKRO_REPORT_BITS; i++) {
-            key_count += __builtin_popcount(temp_report_nkro.bits[i]);
-        }
-
-        // find key up and del it.
-        for (uint8_t i = 0; i < KEYBOARD_REPORT_KEYS && temp_report_keyboard.keys[i]; i++) {
-            uint8_t usageid = 0x00;
-            uint8_t n;
-
-            for (uint8_t c = 0; c < key_count; c++) {
-                for (n = 0; n < NKRO_REPORT_BITS && !temp_report_nkro.bits[n]; n++) {
-                }
-                usageid = (n << 3) | biton(temp_report_nkro.bits[n]);
-                del_key_bit(&temp_report_nkro, usageid);
-                if (usageid == temp_report_keyboard.keys[i]) {
-                    break;
-                }
-            }
-
-            if (usageid != temp_report_keyboard.keys[i]) {
-                temp_report_keyboard.keys[i] = 0x00;
-            }
-        }
-
-        /*
-         * Use NKRO for sending when more than 6 keys are pressed
-         * to solve the issue of the lack of a protocol flag in wireless mode.
-         */
-
-        temp_report_nkro = *report;
-
-        for (uint8_t i = 0; i < key_count; i++) {
-            uint8_t usageid;
-            uint8_t idx, n = 0;
-
-            for (n = 0; n < NKRO_REPORT_BITS && !temp_report_nkro.bits[n]; n++) {
-            }
-            usageid = (n << 3) | biton(temp_report_nkro.bits[n]);
-            del_key_bit(&temp_report_nkro, usageid);
-
-            for (idx = 0; idx < KEYBOARD_REPORT_KEYS; idx++) {
-                if (temp_report_keyboard.keys[idx] == usageid) {
-                    break;
-                }
-                if (temp_report_keyboard.keys[idx] == 0x00) {
-                    temp_report_keyboard.keys[idx] = usageid;
-                    break;
-                }
-            }
-
-            if (idx == KEYBOARD_REPORT_KEYS && (usageid < (MD_SND_CMD_NKRO_LEN * 8))) {
-                wls_report_nkro[usageid / 8] |= 0x01 << (usageid % 8);
-            }
-        }
+    if (report == NULL) {
+        memset(&keyboard_report, 0, sizeof(keyboard_report));
     } else {
-        memset(&temp_report_keyboard, 0, sizeof(temp_report_keyboard));
+        keyboard_report.mods = report->mods;
+        // Keep held keys in their existing slots; holes must not end the scan.
+        for (uint8_t slot = 0; slot < KEYBOARD_REPORT_KEYS; slot++) {
+            uint8_t key = keyboard_report.keys[slot];
+            if (key / 8 >= NKRO_REPORT_BITS || !(report->bits[key / 8] & (1u << (key % 8)))) {
+                keyboard_report.keys[slot] = 0;
+            }
+        }
+        for (uint16_t key = 1; key < NKRO_REPORT_BITS * 8; key++) {
+            if (!(report->bits[key / 8] & (1u << (key % 8)))) {
+                continue;
+            }
+            uint8_t empty_slot = KEYBOARD_REPORT_KEYS;
+            bool    present    = false;
+            for (uint8_t slot = 0; slot < KEYBOARD_REPORT_KEYS; slot++) {
+                if (keyboard_report.keys[slot] == key) {
+                    present = true;
+                    break;
+                }
+                if (!keyboard_report.keys[slot] && empty_slot == KEYBOARD_REPORT_KEYS) {
+                    empty_slot = slot;
+                }
+            }
+            if (present) {
+                continue;
+            }
+            if (empty_slot < KEYBOARD_REPORT_KEYS) {
+                keyboard_report.keys[empty_slot] = (uint8_t)key;
+            } else if (key < sizeof(overflow_report) * 8) {
+                overflow_report[key / 8] |= 1u << (key % 8);
+            }
+        }
     }
-
-    wireless_driver.send_keyboard(&temp_report_keyboard);
-    md_send_nkro(wls_report_nkro);
+    wireless_driver.send_keyboard(&keyboard_report);
+    md_send_nkro(overflow_report);
 }
 
 void wireless_send_mouse(report_mouse_t *report) {
@@ -157,26 +131,23 @@ void wireless_send_mouse(report_mouse_t *report) {
 }
 
 void wireless_send_extra(report_extra_t *report) {
-    uint16_t usage = 0;
-
     if (*md_getp_state() != MD_STATE_CONNECTED) {
         wireless_devs_change(wls_devs, wls_devs, false);
         return;
     }
 
     if (report != NULL) {
-        usage = report->usage;
-
-        switch (usage) {
-            case 0x81:
-            case 0x82:
-            case 0x83: { // system usage
-                usage = 0x01 << (usage - 0x81);
+        uint16_t usage = report->usage;
+        switch (report->report_id) {
+            case REPORT_ID_SYSTEM: {
+                usage = (usage >= 0x81 && usage <= 0x83) ? (0x01 << (usage - 0x81)) : 0;
                 md_send_system((uint8_t *)&usage);
             } break;
-            default: {
+            case REPORT_ID_CONSUMER: {
                 md_send_consumer((uint8_t *)&usage);
             } break;
+            default:
+                break;
         }
     }
 }
@@ -188,15 +159,10 @@ void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) __a
 void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) {}
 
 void wireless_devs_change(uint8_t old_devs, uint8_t new_devs, bool reset) {
-    bool changed = (old_devs == DEVS_USB) ? (new_devs != DEVS_USB) : (new_devs == DEVS_USB);
-
-    if (changed) {
-        if (new_devs == DEVS_USB)
-            set_transport(TRANSPORT_USB);
-        else if (*md_getp_state() == MD_STATE_CONNECTED) {
-            // set_transport((new_devs != DEVS_USB) ? TRANSPORT_WLS : TRANSPORT_USB);
-            set_transport(TRANSPORT_WLS);
-        }
+    // Select the host driver before the asynchronous radio connection completes.
+    // Otherwise the first connection leaves reports routed to USB indefinitely.
+    if (is_keyboard_master()) {
+        set_transport(new_devs == DEVS_USB ? TRANSPORT_USB : TRANSPORT_WLS);
     }
 
     if ((wls_devs != new_devs) || reset) {

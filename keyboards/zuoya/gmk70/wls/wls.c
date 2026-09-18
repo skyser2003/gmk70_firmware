@@ -118,6 +118,10 @@ bool hs_rgb_blink_hook() {
 }
 
 void lpwr_exti_init_hook(void) {
+    // Wake the sleeping half when its peer resumes split communication.
+    setPinInputHigh(SERIAL_USART_RX_PIN);
+    waitInputPinDelay();
+    palEnableLineEvent(SERIAL_USART_RX_PIN, PAL_EVENT_MODE_FALLING_EDGE);
 #ifdef HS_BT_DEF_PIN
     if (is_keyboard_master()) {
         setPinInputHigh(HS_BT_DEF_PIN);
@@ -160,6 +164,9 @@ void lpwr_exti_init_hook(void) {
 
 void palcallback_cb(uint8_t line) {
     switch (line) {
+        case PAL_PAD(SERIAL_USART_RX_PIN): {
+            lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_ONEKEY);
+        } break;
         case PAL_PAD(HS_BAT_CABLE_PIN): {
             lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_CABLE);
         } break;
@@ -181,6 +188,9 @@ void palcallback_cb(uint8_t line) {
 
 void lpwr_stop_hook_pre(void) {
     gpio_write_pin_low(LED_POWER_EN_PIN);
+    // Suspend split pins only after the sleep RPC and LED RPC have completed.
+    palSetLineMode(SERIAL_USART_RX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
+    palSetLineMode(SERIAL_USART_TX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
     gpio_write_pin_low(A9);
     // gpio_write_pin_low(HS_LED_BOOSTING_PIN);
 

@@ -1,30 +1,9 @@
 # ZUOYA GMK70
 
-* Keyboard Maintainer: [yangzheng20003](https://github.com/yangzheng20003)
-* Hardware Supported: ZUOYA GMK70
-* Hardware Availability: ZUOYA GMK70
+Target: `zuoya/gmk70`, WB32FQ95, WB32 DFU. Build both halves from the same target; the B9 hardware pin determines the role. Physical compatibility and all wireless/sleep behavior need testing on the actual keyboard revision.
 
-Make example for this keyboard (after setting up your build environment):
+In the parent `gmk70_firmware` project, use `make build` for VIA or `make build-default` for the fixed keymap. The parent README documents the pinned toolchain, source provenance, regression tests, and pending hardware validation.
 
-    make leo/zuoya_gmk70:default
-        
-Flashing example for this keyboard:
+When the board and shared `keyboards/linker/wireless` sources have been installed in the pinned QMK checkout, the standard QMK target is `make zuoya/gmk70:via` or `make zuoya/gmk70:default`.
 
-    make leo/zuoya_gmk70:default
-
-To reset the board into bootloader mode, do one of the following:
-
-* Hold the Reset switch mounted on the bottom side of the PCB while connecting the USB cable
-* Hold the Escape key while connecting the USB cable (also erases persistent settings)
-* Fn+R_Shift+Esc will reset the board to bootloader mode if you have flashed the default QMK keymap
-
-See the [build environment setup](https://docs.qmk.fm/#/getting_started_build_tools) and the [make instructions](https://docs.qmk.fm/#/getting_started_make_guide) for more information. Brand new to QMK? Start with our [Complete Newbs Guide](https://docs.qmk.fm/#/newbs).
-
-## Bootloader
-
-Enter the bootloader in 3 ways:
-
-* **Bootmagic reset**: Hold down the key at (0,0) in the matrix (usually the top left key or Escape) and plug in the keyboard
-* **Physical reset button**: Briefly press the button on the back of the PCB - some may have pads you must short instead
-* **Keycode in layout**: Press the key mapped to `QK_BOOT` if it is available
-
+The provided `via.json` matches this fork's custom keycode order. Bootmagic uses matrix position `[0,0]` (encoder press); the compiled keymap also binds Fn+encoder press to `QK_BOOT`. This project has not been flashed or tested on hardware during the build work.

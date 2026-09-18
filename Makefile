@@ -1,16 +1,21 @@
 build:
-	sh ./scripts/build.sh
+	bash ./scripts/build.sh
 
 build-default:
-	km=default sh ./scripts/build.sh
+	km=default bash ./scripts/build.sh
 
 build-mine:
-	km=mine sh ./scripts/build.sh
+	km=mine bash ./scripts/build.sh
 
 clean:
-	sh ./scripts/clean.sh
+	bash ./scripts/clean.sh
 
-rebuild: clean build
+rebuild: clean
+	$(MAKE) build
 
 format:
 	find keyboards -name "*.[ch]" | xargs clang-format -i
+
+test:
+	bash ./scripts/test.sh
+.PHONY: build build-default build-mine clean rebuild format test

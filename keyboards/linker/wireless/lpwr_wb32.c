@@ -9,8 +9,12 @@
 #    include "uart.h"
 #endif
 
-static ioline_t row_pins[MATRIX_ROWS] = MATRIX_ROW_PINS;
+// MATRIX_ROWS includes both halves; infer the physical row count from the pins.
+static ioline_t row_pins[]            = MATRIX_ROW_PINS;
 static ioline_t col_pins[MATRIX_COLS] = MATRIX_COL_PINS;
+#ifdef MATRIX_COL_PINS_RIGHT
+static const ioline_t right_col_pins[MATRIX_COLS] = MATRIX_COL_PINS_RIGHT;
+#endif
 
 #if PAL_USE_CALLBACKS != TRUE
 #    error PAL_USE_CALLBACKS must be set to TRUE!
@@ -66,6 +70,11 @@ void lpwr_exti_init_hook(void) {}
 
 void lpwr_exti_init(void) {
     pal_events_init();
+#ifdef MATRIX_COL_PINS_RIGHT
+    if (!is_keyboard_left()) {
+        memcpy(col_pins, right_col_pins, sizeof(col_pins));
+    }
+#endif
 
 #if DIODE_DIRECTION == ROW2COL
     for (uint8_t i = 0; i < ARRAY_SIZE(col_pins); i++) {
@@ -156,8 +165,8 @@ void wb32_stop_mode(void) {
     EXTI->PR = 0x7FFFF;
     for (uint8_t i = 0; i < 8; i++) {
         for (uint8_t j = 0; j < 32; j++) {
-            if (NVIC->ISPR[i] & (0x01UL < j)) {
-                NVIC->ICPR[i] = (0x01UL < j);
+            if (NVIC->ISPR[i] & (0x01UL << j)) {
+                NVIC->ICPR[i] = (0x01UL << j);
             }
         }
     }

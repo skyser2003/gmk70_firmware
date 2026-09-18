@@ -73,6 +73,11 @@ uint8_t         pov;
 static bool     im_bat_req_charging_flag = false;
 uint8_t         buff[]                   = {14, 8, 2, 1, 1, 1, 1, 1, 1, 1, 0};
 
+bool is_keyboard_master(void) {
+    setPinInput(SPLIT_HAND_PIN);
+    return readPin(SPLIT_HAND_PIN);
+}
+
 void usart_init(void) {
     uprintf("UART INIT START\n");
     // palSetLineMode(SERIAL_USART_TX_PIN, PAL_MODE_ALTERNATE(SERIAL_USART_TX_PAL_MODE) | PAL_OUTPUT_TYPE_OPENDRAIN);
@@ -99,6 +104,7 @@ uint32_t eeconfig_confinfo_read(void) {
 }
 
 void eeconfig_confinfo_default(void) {
+    confinfo.raw              = 0;
     confinfo.flag             = true;
     confinfo.record_channel   = 0;
     confinfo.record_last_mode = 0xff;
@@ -135,7 +141,7 @@ void master_sync_mms_slave(uint8_t last_mode, uint8_t now_mode, uint8_t reset) {
 
 void eeconfig_confinfo_init(void) {
     confinfo.raw = eeconfig_confinfo_read();
-    if (!confinfo.raw) {
+    if (!confinfo.flag || confinfo.raw == UINT32_MAX || confinfo.devs > DEVS_2G4 || confinfo.last_btdevs < DEVS_BT1 || confinfo.last_btdevs > DEVS_BT3 || confinfo.record_channel >= RGBREC_CHANNEL_NUM) {
         eeconfig_confinfo_default();
     }
 }
@@ -240,6 +246,9 @@ void suspend_wakeup_init_kb(void) {
 
 void suspend_wakeup_init_user(void) {
     usart_init();
+    if (!is_keyboard_master()) {
+        return;
+    }
     master_to_slave_t m2s = {0};
     slave_to_master_t s2m = {0};
     m2s.cmd               = 0xCC;
@@ -253,6 +262,9 @@ void suspend_wakeup_init_user(void) {
 }
 
 void suspend_power_down_user(void) {
+    if (!is_keyboard_master()) {
+        return;
+    }
     master_to_slave_t m2s = {0};
     slave_to_master_t s2m = {0};
     m2s.cmd               = 0xBB;
@@ -266,7 +278,8 @@ void suspend_power_down_user(void) {
 }
 
 bool lpwr_is_allow_timeout_hook(void) {
-    if (wireless_get_current_devs() == DEVS_USB && is_keyboard_master()) {
+    // Neither half may stop its split UART while operating over USB.
+    if (wireless_get_current_devs() == DEVS_USB) {
         return false;
     }
 
@@ -288,11 +301,6 @@ bool lpwr_is_allow_presleep_hook(void) {
         } else {
             dprint("Slave sync failed!\n");
         }
-
-        if (confinfo.devs != DEVS_USB) {
-            palSetLineMode(SERIAL_USART_RX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
-            palSetLineMode(SERIAL_USART_TX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
-        }
     }
 
     if ((wireless_get_current_devs() == DEVS_USB) && (!charging_state)) {
@@ -306,6 +314,10 @@ bool lpwr_is_allow_presleep_hook(void) {
 }
 
 void wireless_post_task(void) {
+    // The selector is on the master; the other half receives mode over split RPC.
+    if (!is_keyboard_master()) {
+        return;
+    }
     // auto switching devs
     if (post_init_timer && timer_elapsed32(post_init_timer) >= 100) {
         md_send_devctrl(MD_SND_CMD_DEVCTRL_FW_VERSION);   // get the module fw version.
@@ -464,82 +476,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     }
 
     return true;
-}
-
-void im_rgblight_increase(void) {
-    HSV            rgb;
-    uint8_t        moude;
-    static uint8_t mode = 0;
-
-    moude = rgblight_get_mode();
-    if (moude == 1) {
-        rgb = rgblight_get_hsv();
-        if (rgb.h == 0 && rgb.s != 0)
-            mode = 3;
-        else
-            mode = 9;
-        switch (rgb.h) {
-            case 40: {
-                mode = 4;
-            } break;
-            case 80: {
-                mode = 5;
-            } break;
-            case 120: {
-                mode = 6;
-            } break;
-            case 160: {
-                mode = 7;
-            } break;
-            case 200: {
-                mode = 8;
-            } break;
-            default:
-                break;
-        }
-    }
-
-    mode++;
-    if (mode == 11) mode = 0;
-    if (mode == 10) {
-        rgb = rgblight_get_hsv();
-        rgblight_sethsv(0, 255, rgb.v);
-        rgblight_disable();
-    } else {
-        rgblight_enable();
-        rgblight_mode(buff[mode]);
-    }
-
-    rgb = rgblight_get_hsv();
-    switch (mode) {
-        case 3: {
-            rgblight_sethsv(0, 255, rgb.v);
-        } break;
-        case 4: {
-            rgblight_sethsv(40, 255, rgb.v);
-        } break;
-        case 5: {
-            rgblight_sethsv(80, 255, rgb.v);
-        } break;
-        case 6: {
-            rgblight_sethsv(120, 255, rgb.v);
-        } break;
-        case 7: {
-            rgblight_sethsv(160, 255, rgb.v);
-        } break;
-        case 8: {
-            rgblight_sethsv(200, 255, rgb.v);
-        } break;
-        case 9: {
-            rgblight_sethsv(0, 0, rgb.v);
-        } break;
-        case 0: {
-            rgblight_set_speed(255);
-        } break;
-        default: {
-            rgblight_set_speed(200);
-        } break;
-    }
 }
 
 uint32_t hs_ct_time;
@@ -1010,7 +946,7 @@ bool     process_record_kb(uint16_t keycode, keyrecord_t *record) {
                 return false;
             }
             if (record->event.pressed) {
-                im_rgblight_increase();
+                rgb_matrix_step();
             }
 
             return false;
@@ -1541,7 +1477,9 @@ void hs_reset_settings(void) {
 }
 
 void lpwr_wakeup_hook(void) {
-    hs_mode_scan(false, confinfo.devs, confinfo.last_btdevs);
+    if (is_keyboard_master()) {
+        hs_mode_scan(false, confinfo.devs, confinfo.last_btdevs);
+    }
 
     if (rgb_matrix_get_val() != 0) {
         gpio_write_pin_high(LED_POWER_EN_PIN);
@@ -1553,19 +1491,19 @@ void lpwr_wakeup_hook(void) {
 }
 
 void user_sync_mms_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t out_buflen, void *out_data) {
+    if (in_buflen != sizeof(master_to_slave_t) || out_buflen != sizeof(slave_to_master_t)) {
+        return;
+    }
     const master_to_slave_t *m2s = (const master_to_slave_t *)in_data;
     slave_to_master_t       *s2m = (slave_to_master_t *)out_data;
 
     switch (m2s->cmd) {
         case 0x55: // sync multimode
             wireless_devs_change(m2s->body[0], m2s->body[1], false);
+            pov       = m2s->body[2];
             s2m->resp = 0x00;
             break;
         case 0xAA:
-            if (confinfo.devs != DEVS_USB) {
-                palSetLineMode(SERIAL_USART_RX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
-                palSetLineMode(SERIAL_USART_TX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
-            }
             s2m->resp   = 0x00;
             lower_sleep = m2s->body[0];
             lpwr_set_timeout_manual(true);

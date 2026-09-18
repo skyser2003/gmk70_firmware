@@ -58,8 +58,3 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
 };
 #endif
 // clang-format on
-
-bool is_keyboard_master(void) {
-    setPinInput(SPLIT_HAND_PIN);
-    return readPin(SPLIT_HAND_PIN);
-}
