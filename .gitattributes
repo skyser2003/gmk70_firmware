@@ -4,3 +4,4 @@
 *.h text eol=lf
 *.mk text eol=lf
 Makefile text eol=lf
+definitions/via/ZUOYA_GMK70.json -text

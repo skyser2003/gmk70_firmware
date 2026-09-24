@@ -1,56 +1,64 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
-project_root="$(pwd -P)"
-if [[ -f .env ]]; then
-    set -a
-    source .env
-    set +a
-elif [[ -f .envrc ]]; then
-    source .envrc
-fi
-keymap="${km:-via}"
-case "$keymap" in
-    via|default|mine) ;;
-    *) printf 'Unsupported keymap: %s\n' "$keymap" >&2; exit 1 ;;
+source "$(dirname "$0")/project.sh"
+platform="${1:-qmk}"
+keymap="${2:-${km:-via}}"
+case "$platform" in
+    qmk) ;;
+    vial) printf 'Vial is not implemented yet; see firmware/qmk-vial/README.md\n' >&2; exit 2 ;;
+    zmk) printf 'ZMK is not implemented yet; see firmware/zmk/README.md\n' >&2; exit 2 ;;
+    *) printf 'Unknown platform: %s\n' "$platform" >&2; exit 2 ;;
 esac
-build_image='ghcr.io/qmk/qmk_cli@sha256:2dc05fc9f32efebd6b05c2b8676ee548358bc7e151e9dbf4dac6b6eed4513b07'
-jobs="${JOBS:-8}"
-git submodule update --init --recursive
-mkdir -p qmk_firmware/keyboards/zuoya/gmk70 qmk_firmware/keyboards/linker/wireless "artifacts/$keymap"
-rsync -a --delete keyboards/zuoya/gmk70/ qmk_firmware/keyboards/zuoya/gmk70/
-rsync -a --delete keyboards/linker/wireless/ qmk_firmware/keyboards/linker/wireless/
-
-# QMK's normal inner target avoids scanning every keyboard on a Windows mount.
-# SKIP_VERSION removes wall-clock/Git probes; provenance is recorded below.
-docker run --rm --mount "type=bind,src=$project_root,dst=/workspace" \
-    --workdir /workspace/qmk_firmware "$build_image" \
-    make -r -R -f builddefs/build_keyboard.mk -j"$jobs" \
-    KEYBOARD=zuoya/gmk70 KEYMAP="$keymap" SKIP_VERSION=yes SILENT=false \
-    2>&1 | tee "artifacts/$keymap/build.log"
-
+case "$keymap" in
+    via|default) ;;
+    *) printf 'Unsupported QMK keymap: %s\n' "$keymap" >&2; exit 2 ;;
+esac
+for tool in arm-none-eabi-gcc qmk flock; do
+    if ! command -v "$tool" >/dev/null; then
+        printf 'Missing %s; run make setup first\n' "$tool" >&2
+        exit 2
+    fi
+done
+[[ ! -L .work && ! -L .work/locks ]] || { printf 'Redirected workspace directory\n' >&2; exit 2; }
+mkdir -p .work/locks
+exec 9>".work/locks/qmk-$keymap.lock"
+flock 9
+build_root="$(python3 tools/build-support/project_build.py compose "$keymap")"
+output="artifacts/qmk/$keymap"
+mkdir -p "$output"
+export QMK_HOME="$build_root"
+export QMK_USERSPACE=""
+make -C "$build_root" -r -R -f builddefs/build_keyboard.mk -j"${JOBS:-8}" \
+    KEYBOARD=zuoya/gmk70 KEYMAP="$keymap" SKIP_VERSION=yes SKIP_GIT=yes SILENT=false \
+    2>&1 | tee "$output/build.log"
 target="zuoya_gmk70_$keymap"
 for extension in bin hex elf map; do
-    cp "qmk_firmware/.build/$target.$extension" "artifacts/$keymap/"
+    cp "$build_root/.build/$target.$extension" "$output/"
 done
-cp "qmk_firmware/.build/obj_$target/cflags.txt" "artifacts/$keymap/"
-cp "qmk_firmware/.build/obj_$target/ldflags.txt" "artifacts/$keymap/"
+arm-none-eabi-objcopy -I ihex -O binary "$output/$target.hex" "$output/from-hex.bin"
+cmp "$output/$target.bin" "$output/from-hex.bin"
+rm "$output/from-hex.bin"
+cp "$build_root/.build/obj_$target/cflags.txt" "$output/"
+cp "$build_root/.build/obj_$target/ldflags.txt" "$output/"
+cp definitions/via/ZUOYA_GMK70.json dependencies/sources.lock.json "$output/"
+cp "$build_root/gmk70-source-origins.json" "$output/"
 {
-    printf 'Keyboard: zuoya/gmk70\nKeymap: %s\nImage: %s\n' "$keymap" "$build_image"
-    printf 'Source commit: '
-    git rev-parse HEAD
-    printf 'QMK and dependency commits:\n'
-    git submodule status --recursive
-    printf 'Local changes (part of this build):\n'
-    git status --short --ignore-submodules=all
+    printf 'Platform: qmk\nKeyboard: zuoya/gmk70\nKeymap: %s\n' "$keymap"
+    printf 'Custom keycode ABI: stock-v13 (see docs/STOCK-COMPATIBILITY.md)\n'
+    printf 'Pinned sources:\n'
+    cat dependencies/sources.lock.json
+    arm-none-eabi-gcc --version
+    arm-none-eabi-size -A "$output/$target.elf"
+    qmk --version
+    printf 'Complete working sources: source.tar.gz\n'
     printf 'Build option: SKIP_VERSION=yes (use this manifest for version information)\n'
-} > "artifacts/$keymap/build-info.txt"
-git diff --binary -- . ':!qmk_firmware' > "artifacts/$keymap/source-changes.patch"
-find keyboards scripts tests -type f -print0 | sort -z | xargs -0 sha256sum > "artifacts/$keymap/source-sha256.txt"
-tar -czf "artifacts/$keymap/source-overlay.tar.gz" keyboards scripts tests docs \
-    Makefile README.md .gitmodules .gitattributes .clang-format .gitignore
+} > "$output/build-info.txt"
+python3 tools/build-support/project_build.py export "$output/source.tar.gz"
+# Remove obsolete manifests from builds made before the upstream migration.
+rm -f "$output/UPSTREAM-SOURCES.tsv" "$output/source-sha256.txt"
 (
-    cd "artifacts/$keymap"
-    sha256sum "$target.bin" "$target.hex" "$target.elf" "$target.map" > SHA256SUMS
+    cd "$output"
+    sha256sum "$target.bin" "$target.hex" "$target.elf" "$target.map" ZUOYA_GMK70.json \
+        sources.lock.json gmk70-source-origins.json build-info.txt cflags.txt ldflags.txt source.tar.gz > SHA256SUMS
 )
-printf '\nBuilt artifacts in %s/artifacts/%s\n' "$project_root" "$keymap"
+printf '\nBuilt artifacts in %s/%s\n' "$project_root" "$output"

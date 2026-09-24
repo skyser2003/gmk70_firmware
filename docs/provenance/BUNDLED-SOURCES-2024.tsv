@@ -1,0 +1,11 @@
+path	repository	revision
+.	https://github.com/qmk/qmk_firmware	3d4da6de29c8635c9cd232ce456d8fec8d31921b
+lib/chibios	https://github.com/qmk/ChibiOS	be44b3305f9a9fe5f2f49a4e7b978db322dc463e
+lib/chibios-contrib	https://github.com/qmk/ChibiOS-Contrib	77cb0a4f7589f89e724f5e6ecb1d76d514dd1212
+lib/chibios-contrib/ext/mcux-sdk	https://github.com/NXPmicro/mcux-sdk	102c27d7cc2aaac87c133702e7829a105e0cb433
+lib/googletest	https://github.com/qmk/googletest	e2239ee6043f73722e7aa812a459f54a28552929
+lib/lufa	https://github.com/qmk/lufa	549b97320d515bfca2f95c145a67bd13be968faa
+lib/lvgl	https://github.com/qmk/lvgl	e19410f8f8a256609da72cff549598e0df6fa4cf
+lib/pico-sdk	https://github.com/qmk/pico-sdk	a3398d8d3a772f37fef44a74743a1de69770e9c2
+lib/printf	https://github.com/qmk/printf	c2e3b4e10d281e7f0f694d3ecbd9f320977288cc
+lib/vusb	https://github.com/qmk/v-usb	819dbc1e5d5926b17e27e00ca6d3d2988adae04e

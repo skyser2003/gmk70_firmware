@@ -1,8 +1,8 @@
 # Hardware validation
 
-The binaries are build candidates. Compilation, host tests, and ELF inspection do not validate the physical radio, matrix wiring, charging signals, or low-power timing. No device was flashed during development.
+The binaries are build candidates. Compilation, host tests, and ELF inspection do not validate the physical radio, matrix wiring, charging signals, or low-power timing. Build and test commands do not flash a device.
 
-Record PCB revision, stock keyboard version, receiver version, host OS, and the candidate SHA-256 before a device test. Preserve the known-good original image. The external radio and receiver retain their existing firmware; this build only targets the WB32 keyboard MCU. A GMK70/Split70 family resemblance is not proof that firmware is interchangeable across revisions.
+Record PCB revision, stock keyboard version, receiver version, host OS, and the candidate SHA-256 before a device test. Preserve the known-good original image. The external radio and receiver retain their existing firmware; this build only targets the WB32 keyboard MCU. Similarity to other keyboards is not proof that firmware is interchangeable across revisions.
 
 ## Acceptance tests
 
@@ -23,7 +23,7 @@ Record PCB revision, stock keyboard version, receiver version, host OS, and the 
 | Wireless idle | 1 minute idle, then wake separately from each half; no lost/stuck keys | Pending |
 | Long idle | Radio's 30-minute sleep and host suspend/resume | Pending |
 | Battery/charging | Plausible level, low-battery indication, charging transitions | Pending |
-| Recovery | Existing WB32 DFU recovery remains accessible | Pending |
+| Recovery | Existing WB32 DFU recovery remains accessible | Vendor pad procedure confirmed by user on 2026-09-24; runtime bootloader entry in the latest build pending |
 
 The original port reports a right-half idle problem. This fork fixes specific source defects in that path, including USB slave timeout, split pin shutdown before RPC completion, missing split-RX wake event, wrong sleep column pins on the right, an extra five zero-initialized row pins, and a pending-interrupt bitmask typo. Wake behavior on both halves still requires physical testing; it is not established by these changes.
 

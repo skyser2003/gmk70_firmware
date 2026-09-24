@@ -14,13 +14,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout (with submodules)
+      - name: Checkout project
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
 
-      # タグ名を決定（push時はそのタグ、手動時は日付）
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Initialize pinned dependencies and tools
+        run: make setup
+
+      - name: Check Python tooling
+        run: make check-tools
+
+      # Use the pushed tag, or a timestamp for a manual release.
       - name: Determine tag name
         id: tag
         run: |

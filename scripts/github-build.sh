@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+source "$(dirname "$0")/project.sh"
 bash scripts/test.sh
 mkdir -p dist
 for keymap in default via; do
-    km="$keymap" bash scripts/build.sh
-    mkdir -p "dist/$keymap"
-    cp artifacts/"$keymap"/* "dist/$keymap/"
+    bash scripts/build.sh qmk "$keymap"
+    mkdir -p "dist/qmk/$keymap"
+    cp artifacts/qmk/"$keymap"/* "dist/qmk/$keymap/"
 done
