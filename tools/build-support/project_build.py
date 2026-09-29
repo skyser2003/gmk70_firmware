@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 ROOT = Path(__file__).resolve().parents[2]
-VARIANTS = ("default", "via")
+VARIANTS = ("default", "via", "via_diagnostic")
 IGNORED = {".git", ".venv", ".build", "__pycache__", ".ruff_cache", ".mypy_cache"}
 
 
@@ -63,7 +63,7 @@ def unused_modules(root: Path) -> set[Path]:
 
 def dependency_hashes(root: Path) -> dict[str, str]:
     return {
-        str(path.relative_to(root / "dependencies")): hashlib.sha256(
+        path.relative_to(root / "dependencies").as_posix(): hashlib.sha256(
             path.read_bytes()
         ).hexdigest()
         for path in source_files(root / "dependencies/qmk", unused_modules(root))
@@ -171,7 +171,9 @@ def compose(root: Path, variant: str) -> Path:
                 )
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, output)
-            origins[str(output.relative_to(destination))] = str(path.relative_to(root))
+            origins[output.relative_to(destination).as_posix()] = path.relative_to(
+                root
+            ).as_posix()
     (destination / "gmk70-source-origins.json").write_text(
         json.dumps(origins, indent=2) + "\n"
     )
@@ -206,7 +208,7 @@ def export_sources(root: Path, output: Path) -> None:
                 source_files(path, unused_modules(root)) if path.is_dir() else [path]
             )
             for file in files:
-                relative = str(file.relative_to(root))
+                relative = file.relative_to(root).as_posix()
                 if relative != "dependencies/source-files.json":
                     archive.add(file, arcname=relative, recursive=False)
         entry = tarfile.TarInfo("dependencies/source-files.json")

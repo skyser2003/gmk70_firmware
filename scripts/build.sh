@@ -10,7 +10,7 @@ case "$platform" in
     *) printf 'Unknown platform: %s\n' "$platform" >&2; exit 2 ;;
 esac
 case "$keymap" in
-    via|default) ;;
+    via|default|via_diagnostic) ;;
     *) printf 'Unsupported QMK keymap: %s\n' "$keymap" >&2; exit 2 ;;
 esac
 for tool in arm-none-eabi-gcc qmk flock; do
@@ -23,7 +23,8 @@ done
 mkdir -p .work/locks
 exec 9>".work/locks/qmk-$keymap.lock"
 flock 9
-build_root="$(python3 tools/build-support/project_build.py compose "$keymap")"
+source_python="${GMK70_SOURCE_PYTHON:-python3}"
+build_root="$("$source_python" tools/build-support/project_build.py compose "$keymap")"
 output="artifacts/qmk/$keymap"
 mkdir -p "$output"
 export QMK_HOME="$build_root"
@@ -53,7 +54,7 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
     printf 'Complete working sources: source.tar.gz\n'
     printf 'Build option: SKIP_VERSION=yes (use this manifest for version information)\n'
 } > "$output/build-info.txt"
-python3 tools/build-support/project_build.py export "$output/source.tar.gz"
+"$source_python" tools/build-support/project_build.py export "$output/source.tar.gz"
 # Remove obsolete manifests from builds made before the upstream migration.
 rm -f "$output/UPSTREAM-SOURCES.tsv" "$output/source-sha256.txt"
 (

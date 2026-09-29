@@ -29,13 +29,18 @@ make test
 make check-tools       # locked Python environments, Ruff, strict mypy, tests
 make build-default     # base QMK, fixed keymap, no VIA
 make build             # QMK with VIA (also make build-qmk-via)
+make build-diagnostic  # separate VIA battery-state instrumentation; no flashing
 ```
 
 `make setup` initializes QMK and only the four libraries required by this target: ChibiOS, ChibiOS-Contrib, LUFA and printf. It installs checksum-verified ARM GNU Toolchain 14.2.Rel1 and uv 0.8.22 under `.work/toolchains/`, and synchronizes the committed Python lockfiles. Compilation uses these prepared dependencies without downloading sources. Setup may need network access; subsequent builds do not. A complete `source.tar.gz` also works without Git metadata: it includes dependency sources and their integrity manifest, but still needs the compiler and Python packages provisioned.
 
 Scripts load the root `.env`, or `.envrc` if `.env` is absent, through `scripts/project.sh`. They set QMK's source and configuration paths locally. Default parallelism is `JOBS=8`. `make build-vial` and `make build-zmk` fail clearly until implemented. No build, setup, test, or migration command accesses the keyboard.
 
+`GMK70_SOURCE_PYTHON` optionally selects a Python-compatible launcher for source preparation and export (default: `python3`). A WSL launcher using native Windows Python must translate the returned build directory into a WSL path. Source manifests and archive member names use portable forward slashes on either host; dependency verification remains mandatory.
+
 Outputs are `artifacts/qmk/default/zuoya_gmk70_default.{bin,hex,elf,map}` and the corresponding `artifacts/qmk/via/zuoya_gmk70_via.*` files. Each build exports the unchanged VIA JSON, checksums, compiler/linker flags, build log, dependency pins, source origins and a complete source archive. `SKIP_VERSION=yes` avoids embedded build timestamps; consult `build-info.txt` for provenance.
+
+The optional `via_diagnostic` variant writes to its own artifact directory and exposes read-only battery event/state, final LED-buffer and encoded SPI getters. All three QMK variants include the [battery indicator repairs](docs/BATTERY-FIXES.md), explicit factory RGB wire order, and synchronous LED transmission. Hardware testing confirmed the complete battery bar on both halves and the red charging indication on the left MO(1) key. The temporary lighting test has been removed; [the output investigation](docs/CHARGING-OUTPUT-2026-09-28.md) preserves its results. See [battery diagnostics](docs/BATTERY-DIAGNOSTICS.md) for the host reader and protocol.
 
 `make clean` removes generated QMK trees while preserving maintained sources, dependency checkouts, installed tools and published artifacts. Each variant is built from a fresh composition, so edits and build flags cannot leak between variants. Dependencies with local modifications or incorrect revisions are rejected. `make format` formats project-owned sources and tooling.
 

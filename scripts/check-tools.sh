@@ -9,3 +9,10 @@ uv run --offline --frozen --project tools/keymap-migration ruff check tools/keym
 uv run --offline --frozen --project tools/keymap-migration ruff format --check tools/keymap-migration
 uv run --offline --frozen --project tools/keymap-migration mypy --strict tools/keymap-migration
 uv run --offline --frozen --project tools/keymap-migration python -m unittest discover -s tools/keymap-migration/tests -v
+uv run --offline --frozen --project tools/battery-diagnostics ruff check tools/battery-diagnostics
+uv run --offline --frozen --project tools/battery-diagnostics ruff format --check tools/battery-diagnostics
+uv run --offline --frozen --project tools/battery-diagnostics mypy --strict tools/battery-diagnostics
+(
+    cd tools/battery-diagnostics
+    uv run --offline --frozen python -m unittest discover -s tests -v
+)

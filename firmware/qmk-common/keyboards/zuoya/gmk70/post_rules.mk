@@ -1,6 +1,8 @@
 RGB_MATRIX_CUSTOM_USER = yes
 SRC += split_role.c
 SRC += stock_keycodes.c
+SRC += battery_indicator.c battery_indicator_qmk.c
+LDFLAGS += -Wl,--wrap=ws2812_flush
 ifeq ($(strip $(VIA_ENABLE)), yes)
     SRC += stock_via.c
 endif

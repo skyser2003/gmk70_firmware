@@ -89,8 +89,12 @@
 #define RGB_MATRIX_KEYPRESSES
 
 /* WS2812 */
+// Factory V13 sends R, G, B. QMK's default GRB swaps the visible red/green.
+#define WS2812_BYTE_ORDER WS2812_BYTE_ORDER_RGB
 #define WS2812_SPI_DRIVER SPIDM2
 #define WS2812_SPI_DIVISOR 32
+// Hardware-tested: wait for each LED transfer to finish before continuing.
+#define WS2812_SPI_SYNC
 
 /* rgb_record */
 #define ENABLE_RGB_MATRIX_RGBR_PLAY

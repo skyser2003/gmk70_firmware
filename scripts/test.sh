@@ -6,6 +6,7 @@ common_flags=(
     -std=gnu11 -O1 -g -Wall -Wextra -Werror -Wno-unused-parameter
     -fsanitize=address,undefined -fno-omit-frame-pointer
     -Itests/qmk/stubs -Itests/qmk -Ifirmware/qmk-common/drivers/wireless
+    -Ifirmware/qmk-common/keyboards/zuoya/gmk70
     -Idependencies/qmk/quantum -Idependencies/qmk/quantum/keymap_extras -Idependencies/qmk/quantum/sequencer -Idependencies/qmk/tmk_core/protocol
 )
 cc "${common_flags[@]}" -Ifirmware/qmk-common/keyboards/zuoya/gmk70/wls \
@@ -34,5 +35,26 @@ artifacts/tests/qmk/stock-keycodes
 cc "${common_flags[@]}" tests/qmk/stock_via_test.c \
     firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/stock-via
 artifacts/tests/qmk/stock-via
+cc "${common_flags[@]}" -DGMK70_BATTERY_DIAGNOSTICS \
+    tests/qmk/battery_diagnostics_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_diagnostics.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_output_probe.c \
+    firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/battery-diagnostics
+artifacts/tests/qmk/battery-diagnostics
+cc "${common_flags[@]}" -Itests/qmk/battery_stubs -D'QMK_KEYBOARD_H="battery_qmk.h"' -DGMK70_BATTERY_DIAGNOSTICS \
+    tests/qmk/battery_indicator_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_indicator.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_indicator_qmk.c -o artifacts/tests/qmk/battery-indicator
+artifacts/tests/qmk/battery-indicator
+cc -Itests/qmk/output_stubs -Idependencies/qmk/drivers/led "${common_flags[@]}" \
+    -include stdint.h -include firmware/qmk-common/keyboards/zuoya/gmk70/config.h \
+    -DWB32FQ95xx -DWS2812_DI_PIN=15 -DRGB_MATRIX_WS2812 -DRGB_MATRIX_LED_COUNT=77 \
+    tests/qmk/battery_output_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_indicator.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_output_probe.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_output_probe_spi.c \
+    dependencies/qmk/platforms/chibios/drivers/ws2812_spi.c \
+    -Wl,--wrap=spiSend -o artifacts/tests/qmk/battery-output
+artifacts/tests/qmk/battery-output
 python3 -m unittest discover -s tools/keymap-migration/tests -v
 python3 -m unittest discover -s tests/repository -v

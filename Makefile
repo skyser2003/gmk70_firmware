@@ -1,6 +1,8 @@
 build: build-qmk-via
 build-qmk-via:
 	bash ./scripts/build.sh qmk via
+build-diagnostic:
+	bash ./scripts/build.sh qmk via_diagnostic
 build-default: build-qmk-default
 build-qmk-default:
 	bash ./scripts/build.sh qmk default
@@ -16,7 +18,7 @@ format:
 	bash ./scripts/format.sh
 test:
 	bash ./scripts/test.sh
-.PHONY: build build-qmk-via build-default build-qmk-default build-vial build-zmk clean rebuild format test
+.PHONY: build build-qmk-via build-diagnostic build-default build-qmk-default build-vial build-zmk clean rebuild format test
 
 setup:
 	bash ./scripts/setup.sh

@@ -63,6 +63,7 @@ class WorkspaceTests(unittest.TestCase):
         self.write("firmware/qmk-common/keyboards/zuoya/gmk70/gmk70.c", "board")
         self.write("firmware/qmk-common/drivers/wireless/wireless.c", "radio")
         self.write("firmware/qmk-via/keymaps/via/keymap.c", "keymap")
+        self.write("firmware/qmk-via/keymaps/via_diagnostic/keymap.c", "diagnostic")
 
     def write(self, name: str, content: str) -> Path:
         path = self.root / name
@@ -99,6 +100,23 @@ class WorkspaceTests(unittest.TestCase):
             self.assertRaisesRegex(ValueError, "overwrite"),
         ):
             BUILD.compose(self.root, "default")
+
+    def test_diagnostic_build_is_isolated_and_cleanable(self) -> None:
+        with patch.object(BUILD, "verify"):
+            diagnostic = BUILD.compose(self.root, "via_diagnostic")
+        self.assertEqual(
+            (
+                diagnostic / "keyboards/zuoya/gmk70/keymaps/via_diagnostic/keymap.c"
+            ).read_text(),
+            "diagnostic",
+        )
+        self.write("artifacts/qmk/via/normal.bin", "existing firmware")
+        BUILD.clean(self.root)
+        self.assertFalse(diagnostic.exists())
+        self.assertEqual(
+            (self.root / "artifacts/qmk/via/normal.bin").read_text(),
+            "existing firmware",
+        )
 
     def test_unselected_nested_libraries_are_not_built_or_exported(self) -> None:
         self.write(
