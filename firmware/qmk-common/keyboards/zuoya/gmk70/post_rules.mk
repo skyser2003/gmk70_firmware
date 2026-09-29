@@ -1,4 +1,5 @@
 RGB_MATRIX_CUSTOM_USER = yes
+DEBOUNCE_TYPE = sym_defer_pk
 SRC += split_role.c
 SRC += stock_keycodes.c
 SRC += battery_indicator.c battery_indicator_qmk.c
