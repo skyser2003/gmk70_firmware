@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "$0")/project.sh"
-uv run --offline --frozen --project tools/build-support ruff check tools/build-support/project_build.py tests/repository
-uv run --offline --frozen --project tools/build-support ruff format --check tools/build-support/project_build.py tests/repository
-uv run --offline --frozen --project tools/build-support mypy --strict tools/build-support/project_build.py tests/repository
+uv run --offline --frozen --project tools/build-support ruff check tools/build-support/*.py tests/repository
+uv run --offline --frozen --project tools/build-support ruff format --check tools/build-support/*.py tests/repository
+uv run --offline --frozen --project tools/build-support mypy --strict tools/build-support/*.py tests/repository
 uv run --offline --frozen --project tools/build-support python -m unittest discover -s tests/repository -v
 uv run --offline --frozen --project tools/keymap-migration ruff check tools/keymap-migration
 uv run --offline --frozen --project tools/keymap-migration ruff format --check tools/keymap-migration
@@ -14,5 +14,12 @@ uv run --offline --frozen --project tools/battery-diagnostics ruff format --chec
 uv run --offline --frozen --project tools/battery-diagnostics mypy --strict tools/battery-diagnostics
 (
     cd tools/battery-diagnostics
+    uv run --offline --frozen python -m unittest discover -s tests -v
+)
+(
+    cd tools/firmware-update
+    uv run --offline --frozen ruff check .
+    uv run --offline --frozen ruff format --check .
+    uv run --offline --frozen mypy --strict .
     uv run --offline --frozen python -m unittest discover -s tests -v
 )

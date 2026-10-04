@@ -4,6 +4,7 @@
 #include "quantum.h"
 #include "wireless.h"
 #include "usb_main.h"
+#include "split_diagnostics.h"
 
 #ifndef LPWR_TIMEOUT
 #    define LPWR_TIMEOUT 300000 // 5min
@@ -44,6 +45,7 @@ lpwr_state_t lpwr_get_state(void) {
 }
 
 void lpwr_set_state(lpwr_state_t state) {
+    if (lpwr_state != state) split_diagnostics_event(SPLIT_DIAG_STATE, lpwr_state, state, manual_timeout);
     lpwr_state = state;
 }
 
@@ -89,6 +91,7 @@ void mcu_stop_mode(void) __attribute__((weak));
 void mcu_stop_mode(void) {}
 
 void lpwr_enter_stop(void) {
+    split_diagnostics_event(SPLIT_DIAG_STOP_ENTER, lpwr_state, manual_timeout, lpwr_wakeupcd);
     chSysLock();
     lpwr_exti_init();
     chSysUnlock();
@@ -98,9 +101,11 @@ void lpwr_enter_stop(void) {
     lpwr_clock_enable();
     matrix_init_pins();
     chSysEnable();
+    split_diagnostics_event(SPLIT_DIAG_STOP_EXIT, lpwr_state, manual_timeout, lpwr_wakeupcd);
 }
 
 void lpwr_set_timeout_manual(bool enable) {
+    if (manual_timeout != enable) split_diagnostics_event(SPLIT_DIAG_MANUAL, enable, lpwr_state, 0);
     manual_timeout = enable;
 }
 
@@ -110,6 +115,7 @@ bool lpwr_get_timeout_manual(void) {
 
 // 2.4g mode, host state
 void md_receive_host_cb(bool resume) {
+    split_diagnostics_event(SPLIT_DIAG_HOST, resume, lpwr_state, manual_timeout);
     if (resume) {
         if (lpwr_get_state() != LPWR_NORMAL) {
             lpwr_update_timestamp();
@@ -142,6 +148,10 @@ bool lpwr_is_allow_timeout(void) {
     }
 
     if (manual_timeout || (timeout && (last_input_activity_elapsed() >= timeout))) {
+#ifdef GMK70_SPLIT_DIAGNOSTICS
+        const uint32_t idle_seconds = last_input_activity_elapsed() / 1000;
+        split_diagnostics_event(SPLIT_DIAG_TIMEOUT, manual_timeout, idle_seconds > UINT8_MAX ? UINT8_MAX : idle_seconds, wireless_get_current_devs());
+#endif
         manual_timeout = false;
         return true;
     }
@@ -241,6 +251,9 @@ void lpwr_stop_cb(void) {
     lpwr_enter_stop();
 
     switch (lpwr_get_sleep_wakeupcd()) {
+        // Stock V13/V15 keep STOP when no accepted wake source was recorded.
+        // A return from WFI alone must not restore RGB or reselect the radio.
+        case LPWR_WAKEUP_NONE:
         case LPWR_WAKEUP_UART: {
             lpwr_set_state(LPWR_STOP);
         } break;

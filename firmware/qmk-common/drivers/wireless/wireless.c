@@ -4,6 +4,7 @@
 
 #include "quantum.h"
 #include "wireless.h"
+#include "split_diagnostics.h"
 
 #ifndef WLS_INQUIRY_BAT_TIME
 #    define WLS_INQUIRY_BAT_TIME 3000
@@ -159,6 +160,7 @@ void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) __a
 void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) {}
 
 void wireless_devs_change(uint8_t old_devs, uint8_t new_devs, bool reset) {
+    if (old_devs != new_devs || reset) split_diagnostics_event(SPLIT_DIAG_DEVICE, old_devs, new_devs, reset);
     // Select the host driver before the asynchronous radio connection completes.
     // Otherwise the first connection leaves reports routed to USB indefinitely.
     if (is_keyboard_master()) {

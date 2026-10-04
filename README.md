@@ -21,6 +21,11 @@ Only the GMK70 integration is maintained here. Dependencies retain their source 
 
 ## Build
 
+An opt-in [left-USB split updater](docs/SPLIT-UPDATER.md) is available through
+`make build-updater`. It requires a one-time direct USB installation on each
+256 KB half and remains experimental pending hardware validation. Normal
+`make build` packages retain the existing memory layout and behavior.
+
 Use Linux x86_64 or WSL2 with Git, make, curl, tar, xz, a native C compiler with address/undefined-behavior sanitizers, and Python 3.12 or newer. For example, on Ubuntu the system prerequisites are `git make curl xz-utils build-essential python3`. Docker and a system-wide ARM compiler are not required.
 
 ```sh
@@ -28,8 +33,9 @@ make setup             # explicitly fetch pinned sources and local build tools
 make test
 make check-tools       # locked Python environments, Ruff, strict mypy, tests
 make build-default     # base QMK, fixed keymap, no VIA
-make build             # QMK with VIA (also make build-qmk-via)
-make build-diagnostic  # separate VIA battery-state instrumentation; no flashing
+make build             # both VIA release and debug packages; no flashing
+make build-release     # ordinary VIA firmware, no remote bootloader command
+make build-debug       # VIA with split/sleep logging and USB bootloader command
 ```
 
 `make setup` initializes QMK and only the four libraries required by this target: ChibiOS, ChibiOS-Contrib, LUFA and printf. It installs checksum-verified ARM GNU Toolchain 14.2.Rel1 and uv 0.8.22 under `.work/toolchains/`, and synchronizes the committed Python lockfiles. Compilation uses these prepared dependencies without downloading sources. Setup may need network access; subsequent builds do not. A complete `source.tar.gz` also works without Git metadata: it includes dependency sources and their integrity manifest, but still needs the compiler and Python packages provisioned.
@@ -38,9 +44,15 @@ Scripts load the root `.env`, or `.envrc` if `.env` is absent, through `scripts/
 
 `GMK70_SOURCE_PYTHON` optionally selects a Python-compatible launcher for source preparation and export (default: `python3`). A WSL launcher using native Windows Python must translate the returned build directory into a WSL path. Source manifests and archive member names use portable forward slashes on either host; dependency verification remains mandatory.
 
-Outputs are `artifacts/qmk/default/zuoya_gmk70_default.{bin,hex,elf,map}` and the corresponding `artifacts/qmk/via/zuoya_gmk70_via.*` files. Each build exports the unchanged VIA JSON, checksums, compiler/linker flags, build log, dependency pins, source origins and a complete source archive. `SKIP_VERSION=yes` avoids embedded build timestamps; consult `build-info.txt` for provenance.
+The two distributions are `artifacts/qmk/release/zuoya_gmk70_release.{bin,hex,elf,map}` and `artifacts/qmk/debug/zuoya_gmk70_debug.{bin,hex,elf,map}`. Each build exports the unchanged VIA JSON, checksums, compiler/linker flags, build log, dependency pins, source origins and a complete source archive. `SKIP_VERSION=yes` avoids embedded build timestamps; consult `build-info.txt` for provenance. The optional `make build-default` target remains a fixed-keymap development baseline. Old targets `make build-qmk-via` and `make build-diagnostic` alias release and debug respectively; old artifact folders are historical, not updated by these aliases.
 
-The optional `via_diagnostic` variant writes to its own artifact directory and exposes read-only battery event/state, final LED-buffer and encoded SPI getters. All three QMK variants include the [battery indicator repairs](docs/BATTERY-FIXES.md), explicit factory RGB wire order, and synchronous LED transmission. Hardware testing confirmed the complete battery bar on both halves and the red charging indication on the left MO(1) key. The temporary lighting test has been removed; [the output investigation](docs/CHARGING-OUTPUT-2026-09-28.md) preserves its results. See [battery diagnostics](docs/BATTERY-DIAGNOSTICS.md) for the host reader and protocol.
+Custom(27)/Custom(7) now use the stock V13/V15 event protocol: A4/A5 on battery press/release and F0/F1 on charging press/release. Both halves draw the battery bar from the master's percentage, carried by the existing two-second mode/status exchange. There is one send attempt per key event, with no additional retry, expiry, periodic refresh, or held-state extension. The LED output remains the asynchronous baseline that the user confirmed works locally. Global `sym_defer_g` debounce at 5 ms, stock keycodes, and flashing/wireless repairs remain. See [the stock behavior and historical repair notes](docs/BATTERY-FIXES.md).
+
+The October 1 global sleep experiment was removed. On October 3, a device capture established repeated false wakes with cause NONE; the current build restores only stock's filter that keeps STOP for that cause. Other `release`/`default` behavior outside the battery keys and debounce follows the integrated pre-battery baseline `c5c24d42`, including its existing VIA and board/radio compatibility work. Both halves have since been updated and read back successfully. The user confirmed idle lighting stayed off and a right-half key woke both halves; broader wireless stability remains under validation. See [scope and validation limits](docs/BATTERY-FIXES.md).
+
+The `debug` variant retains the split/sleep RAM logger and adds direct-USB VIA command `0x0B` to enter the bootloader. The explicit command acknowledges, waits 100 ms, and calls QMK's reset-to-bootloader function without invalidating EEPROM. It adds no periodic task and cannot be invoked through the radio. Release and the optional fixed-keymap baseline contain neither feature. See [debug/release behavior and command format](docs/DEBUG-RELEASE.md).
+
+Debug peer status uses unused bytes in the existing two-second mode reply, with no extra transactions. It no longer exposes battery/LED-buffer probes or measures SPI duration. [Diagnostic instructions](docs/BATTERY-DIAGNOSTICS.md) describe protocol 2 and the reader's compatibility with archived protocol 1 builds. The diagnostic reader remains getter-only and does not invoke the bootloader command.
 
 `make clean` removes generated QMK trees while preserving maintained sources, dependency checkouts, installed tools and published artifacts. Each variant is built from a fresh composition, so edits and build flags cannot leak between variants. Dependencies with local modifications or incorrect revisions are rejected. `make format` formats project-owned sources and tooling.
 

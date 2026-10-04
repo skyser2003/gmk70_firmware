@@ -62,8 +62,8 @@ class WorkspaceTests(unittest.TestCase):
         )
         self.write("firmware/qmk-common/keyboards/zuoya/gmk70/gmk70.c", "board")
         self.write("firmware/qmk-common/drivers/wireless/wireless.c", "radio")
-        self.write("firmware/qmk-via/keymaps/via/keymap.c", "keymap")
-        self.write("firmware/qmk-via/keymaps/via_diagnostic/keymap.c", "diagnostic")
+        self.write("firmware/qmk-via/keymaps/release/keymap.c", "keymap")
+        self.write("firmware/qmk-via/keymaps/debug/keymap.c", "diagnostic")
 
     def write(self, name: str, content: str) -> Path:
         path = self.root / name
@@ -73,21 +73,20 @@ class WorkspaceTests(unittest.TestCase):
 
     def test_compose_preserves_tools_and_isolates_variants(self) -> None:
         with patch.object(BUILD, "verify"):
-            default = BUILD.compose(self.root, "default")
-            via = BUILD.compose(self.root, "via")
+            debug = BUILD.compose(self.root, "debug")
+            release = BUILD.compose(self.root, "release")
+        self.assertEqual((debug / "lib/python/qmk/cli/__init__.py").read_text(), "CLI")
         self.assertEqual(
-            (default / "lib/python/qmk/cli/__init__.py").read_text(), "CLI"
+            (release / "keyboards/zuoya/gmk70/keymaps/release/keymap.c").read_text(),
+            "keymap",
         )
-        self.assertEqual(
-            (via / "keyboards/zuoya/gmk70/keymaps/via/keymap.c").read_text(), "keymap"
-        )
-        (default / "drivers/wireless/wireless.c").write_text("generated edit")
-        self.assertEqual((via / "drivers/wireless/wireless.c").read_text(), "radio")
+        (debug / "drivers/wireless/wireless.c").write_text("generated edit")
+        self.assertEqual((release / "drivers/wireless/wireless.c").read_text(), "radio")
         self.assertEqual(
             (self.root / "firmware/qmk-common/drivers/wireless/wireless.c").read_text(),
             "radio",
         )
-        origins = json.loads((via / "gmk70-source-origins.json").read_text())
+        origins = json.loads((release / "gmk70-source-origins.json").read_text())
         self.assertEqual(
             origins["drivers/wireless/wireless.c"],
             "firmware/qmk-common/drivers/wireless/wireless.c",
@@ -103,18 +102,16 @@ class WorkspaceTests(unittest.TestCase):
 
     def test_diagnostic_build_is_isolated_and_cleanable(self) -> None:
         with patch.object(BUILD, "verify"):
-            diagnostic = BUILD.compose(self.root, "via_diagnostic")
+            diagnostic = BUILD.compose(self.root, "debug")
         self.assertEqual(
-            (
-                diagnostic / "keyboards/zuoya/gmk70/keymaps/via_diagnostic/keymap.c"
-            ).read_text(),
+            (diagnostic / "keyboards/zuoya/gmk70/keymaps/debug/keymap.c").read_text(),
             "diagnostic",
         )
-        self.write("artifacts/qmk/via/normal.bin", "existing firmware")
+        self.write("artifacts/qmk/release/normal.bin", "existing firmware")
         BUILD.clean(self.root)
         self.assertFalse(diagnostic.exists())
         self.assertEqual(
-            (self.root / "artifacts/qmk/via/normal.bin").read_text(),
+            (self.root / "artifacts/qmk/release/normal.bin").read_text(),
             "existing firmware",
         )
 
@@ -133,11 +130,13 @@ class WorkspaceTests(unittest.TestCase):
 
     def test_clean_preserves_sources_dependencies_and_artifacts(self) -> None:
         generated = self.write(".work/qmk/default/.build/firmware.elf", "temporary")
+        legacy = self.write(".work/qmk/via_diagnostic/.build/firmware.elf", "legacy")
         compiler = self.write(".work/toolchains/compiler", "tool")
         artifact = self.write("artifacts/qmk/default/firmware.bin", "published")
         BUILD.clean(self.root)
         BUILD.clean(self.root)
         self.assertFalse(generated.exists())
+        self.assertFalse(legacy.exists())
         self.assertEqual(compiler.read_text(), "tool")
         self.assertEqual(artifact.read_text(), "published")
         self.assertEqual(

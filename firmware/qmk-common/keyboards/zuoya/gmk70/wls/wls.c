@@ -1,4 +1,5 @@
 #include "wls.h"
+#include "split_diagnostics.h"
 
 static ioline_t col_pins[MATRIX_COLS]   = MATRIX_COL_PINS;
 static ioline_t col_pins_r[MATRIX_COLS] = MATRIX_COL_PINS_RIGHT;
@@ -99,6 +100,7 @@ bool hs_rgb_blink_hook() {
                     hs_rgb_blink_set_timer(timer_read32());
                     md_send_devctrl(MD_SND_CMD_DEVCTRL_USB);
                     wait_ms(200);
+                    split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_RADIO_DISCONNECTED, *md_getp_state(), 0);
                     lpwr_set_timeout_manual(true);
                 }
             }
@@ -108,6 +110,7 @@ bool hs_rgb_blink_hook() {
             } else {
                 if (timer_elapsed32(hs_rgb_blink_get_timer()) >= HS_SLEEP_TIMEOUT) {
                     hs_rgb_blink_set_timer(timer_read32());
+                    split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_RADIO_IDLE, *md_getp_state(), 0);
                     lpwr_set_timeout_manual(true);
                 }
             }

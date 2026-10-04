@@ -53,4 +53,5 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           files: |
-            dist/**
+            dist/zuoya_gmk70_release.*
+            dist/zuoya_gmk70_debug.*

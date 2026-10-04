@@ -1,8 +1,16 @@
-build: build-qmk-via
-build-qmk-via:
-	bash ./scripts/build.sh qmk via
-build-diagnostic:
-	bash ./scripts/build.sh qmk via_diagnostic
+build: build-release build-debug
+build-release:
+	bash ./scripts/build.sh qmk release
+build-debug:
+	bash ./scripts/build.sh qmk debug
+build-updater: build-updater-release build-updater-debug
+build-updater-release:
+	bash ./scripts/build.sh qmk release updater
+build-updater-debug:
+	bash ./scripts/build.sh qmk debug updater
+.PHONY: build-updater build-updater-release build-updater-debug
+build-qmk-via: build-release
+build-diagnostic: build-debug
 build-default: build-qmk-default
 build-qmk-default:
 	bash ./scripts/build.sh qmk default
@@ -18,7 +26,7 @@ format:
 	bash ./scripts/format.sh
 test:
 	bash ./scripts/test.sh
-.PHONY: build build-qmk-via build-diagnostic build-default build-qmk-default build-vial build-zmk clean rebuild format test
+.PHONY: build build-release build-debug build-qmk-via build-diagnostic build-default build-qmk-default build-vial build-zmk clean rebuild format test
 
 setup:
 	bash ./scripts/setup.sh

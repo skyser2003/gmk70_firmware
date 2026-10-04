@@ -1,9 +1,12 @@
 RGB_MATRIX_CUSTOM_USER = yes
-DEBOUNCE_TYPE = sym_defer_pk
+DEBOUNCE_TYPE = sym_defer_g
 SRC += split_role.c
 SRC += stock_keycodes.c
-SRC += battery_indicator.c battery_indicator_qmk.c
-LDFLAGS += -Wl,--wrap=ws2812_flush
+SRC += stock_battery.c
+ifeq ($(strip $(GMK70_SPLIT_UPDATE)), yes)
+    OPT_DEFS += -DGMK70_SPLIT_UPDATE
+    SRC += update/image.c update/protocol.c update/wb32_flash.c update/qmk_update.c
+endif
 ifeq ($(strip $(VIA_ENABLE)), yes)
     SRC += stock_via.c
 endif

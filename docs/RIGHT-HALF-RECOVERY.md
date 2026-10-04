@@ -1,5 +1,9 @@
 # Right-half bootloader recovery
 
+## Debug USB command (October 3, 2026)
+
+Current debug firmware implements VIA command `0x0B` over direct USB, allowing software bootloader entry without a physical key press. Release leaves it unsupported. Each half must first have debug firmware installed, be connected directly as the USB master, and be in wired mode. Radio requests are rejected; the command is not relayed across the split. Unlike this board's mapped `QK_BOOT` handler, the new host command does not invalidate EEPROM. See [the packet format and build distinction](DEBUG-RELEASE.md). On October 3, both halves separately acknowledged this command, entered WB32 DFU, and accepted the corrected debug firmware with exact readback verification. All 360 matrix mappings on each half were preserved. These user-authorized device operations were separate from build/test commands, which do not reset or flash a device.
+
 ## Confirmed firmware regression
 
 The first fork build introduced an `is_keyboard_master()` override that returned only the B9 handedness signal. This preserved a left master without USB for wireless operation but incorrectly kept the right half in the slave role even when directly connected to a PC. QMK's key processing depends on that role, so a VIA-assigned `QK_BOOT` key could not execute locally on the right half.

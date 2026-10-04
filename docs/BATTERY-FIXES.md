@@ -1,4 +1,50 @@
-# Battery indicator repairs — September 28, 2026
+# Stock battery synchronization and historical repairs
+
+## Current scope — October 3, 2026
+
+The normal firmware uses official QMK 0.34.4 unchanged, with the existing GMK70 board/radio integration derived from uk-taniyama and Hangsheng. The comparison baseline for the battery repair is `c5c24d42d13f424a4c007a325f2579dbd21bca4e`, the integrated build before that work. Relative to that baseline, runtime changes in normal `release`/`default` are Custom(27)/Custom(7) handling/rendering, global `sym_defer_g` debounce increased from 1 to 5 ms, and the separately evidenced October 3 correction that retains STOP for wake cause NONE. The debug distribution adds the RAM recorder and direct-USB bootloader command; see [debug/release](DEBUG-RELEASE.md).
+
+The October 1 sleep-policy experiment was removed on October 2. State assignments still do not clear manual requests, and the preparation hook retains its original ordering. Only the NONE wake filter is restored on October 3, after a physical-device capture showed repeated unclassified STOP returns immediately becoming full wakes. This preserves the earlier board integration, including original VIA JSON compatibility, USB-first master selection, radio report adaptations for official QMK, and the pre-battery sleep/wake integration. It does not revert the whole board to an unmodified public port or establish factory-equivalent power management. The capture, stock evidence and outstanding checks are listed in [hardware validation](HARDWARE-VALIDATION.md).
+
+No 250 ms battery refresh, retry, expiry, global LED flush wrapper, SPI synchronization override, or RGB byte-order override remains. The existing two-second mode/percentage exchange and automatic low-battery warning are unchanged. The normal build has no diagnostic recorder. The previous artifacts and working source are saved in `artifacts/backups/2026-10-02-before-minimal-scope/`.
+
+Reverting the sleep experiment was a scope correction, **not proof that the reported sleep/wake symptom was fixed**. The host sleep tests now cover the captured NONE wake defect and preserve other baseline behavior, including inherited quirks. On October 3, both halves were separately updated with user authorization and exact readback verification; saved mappings were unchanged. The user then confirmed that idle lighting stayed off and a right-half key woke both halves. The new log confirms NONE retains STOP, but records USB/BT1 selection and disconnected radio status rather than paired-host switching. Broader stability checks remain pending; see [hardware evidence and limits](HARDWARE-VALIDATION.md). Diagnostic getter reads themselves do not reset, flash or change settings.
+
+October 2 scope verification compiled the baseline and restored `lowpower.c` with the same real QMK VIA headers, ARM toolchain and CFLAGS. Their object files were byte-identical (SHA-256 `47de2b325b106ecf6f45e30ba7956e1271437635738c81dcde2a50442c357007`); normal-build diagnostic hooks added no instructions to this unit. This historical comparison predates the October 3 NONE correction and isolates the sleep unit, not the whole firmware. Evidence is in `artifacts/analysis/minimal-scope-20261002/` and `artifacts/tests/2026-10-02-minimal-scope-qmk-sleep.txt`.
+
+## Stock event implementation and observations — October 1, 2026
+
+After the rollback below, the user confirmed that both custom keys work locally and requested stock behavior for the missing right-half bar, with no speculative recovery additions.
+
+`stock_battery.c` implements the observed V13/V15 A4/A5 battery and F0/F1 charging press/release messages. Each event changes the local flag and attempts one five-byte split RPC using the current QMK `USER_SYNC_MMS` ID. The receiving half changes its flag; stock response values are retained, including F1's response of 1. Key handlers do not check the result or schedule a retry. The original USB-mode guard applies to both Custom(27) press and release. No extra mode-transition clearing, reconnect recovery, expiry, held-state packet field, or periodic battery refresh is added.
+
+The original bar drawing has moved out of the RGB recorder into this module and takes `pov`, the shared master percentage already updated by the existing two-second `0x55` exchange. It retains the same LED indices, colors and percentage thresholds. This fixes the current source's use of the receiving half's local radio percentage. The advanced indicator callback still performs the drawing; no final-frame wrapper, synchronous SPI or RGB-order override is restored. Charging drawing, sleep/wake policy, 5 ms global debounce, VIA ABI, and recovery code are unchanged by this step.
+
+The last rollback packages are backed up at `artifacts/backups/2026-10-01-before-stock-battery-events/`. Fresh source/binary evidence is in `artifacts/analysis/stock-battery-events-20261001/`. Native tests exercise exact packets, local updates on transport failure, stock USB guarding, receiver acknowledgements, absence of traffic during repeated drawing, release, and both halves' number-row output at battery boundaries. All three QMK variants compiled successfully; host tests, tooling checks, BIN/HEX agreement, source archives and checksums passed. This is not a claimed fix for idle blackout or flashing.
+
+**Hardware confirmation, October 1:** after reporting installation of the latest diagnostic firmware, the user confirmed that Custom(27) displays the battery bar across both halves and Custom(7) displays charging status and returns to normal lighting after release. The battery test selected 2.4 GHz (device 6), then returned to USB without unplugging. The final read-only capture reports both halves in `NORMAL`, both LED-power outputs on, a connected split link, and 154 RPC calls with zero failures. The logger does not record every successful battery event, so the visible indicator results come from the user's observations. Bluetooth battery behavior, charging/full transitions, idle wake, repeated Bluetooth switching, and long-term stability remain unverified in this build.
+
+Captures: `artifacts/tests/2026-10-01-stock-battery-flashed-baseline.txt`, `2026-10-01-stock-battery-both-halves-confirmed.txt`, and `2026-10-01-stock-battery-charging-confirmed.txt`. The distributed diagnostic BIN has SHA-256 `0774087780a8c5078f9254106f143be5078a9d363b0f464470efc6c8f90f8e0c`; the getter identifies protocol 2 but does not independently attest the installed image hash. No firmware or settings were changed during these reads.
+
+## Earlier rollback — October 1, 2026
+
+The following describes the baseline preceding stock event restoration.
+
+At the user's request, Custom(27)/Custom(7) behavior and LED output are restored to the pre-repair source at `c5c24d42d13f424a4c007a325f2579dbd21bca4e`. The purpose is to compare right-half stability without this repository's battery fixes. This does not establish that those fixes caused the intermittent blackout, and it does not recreate the vendor binary.
+
+- Removed the `battery_indicator` policy/adapter, command `0x56`, its 250 ms refresh/retry/expiry logic, and the final `ws2812_flush` overlay.
+- Restored the local `rk_bat_req_flag`/`query()` percentage display and the original `im_bat_req_charging_flag` charging path. The existing `0x55` mode/percentage exchange remains at two-second intervals, without battery-key synchronization. Custom(27) remains suppressed in USB mode.
+- Removed explicit `WS2812_BYTE_ORDER` and `WS2812_SPI_SYNC` overrides. The pinned upstream driver again uses its default GRB encoding and asynchronous `spiStartSend`, as before the repair. Baseline charging colors/gates are restored rather than corrected independently.
+- Removed battery-specific getter, frame, and SPI probes. The separately added split/sleep logger remains diagnostic-only and now uses the existing mode reply; its protocol 2 marks SPI telemetry unavailable.
+- Preserved the original VIA JSON and explicit custom keycode values, saved-map compatibility, wireless/flashing recovery work, official QMK pin, and global `sym_defer_g` debounce at 5 ms.
+
+The right-half percentage bar and charging indication may again be missing or incorrect. The pre-rollback packages for all three variants are retained at `artifacts/backups/2026-10-01-before-battery-rollback/`. Build commands do not access or flash the keyboard. Use matching new firmware on both halves for a manual comparison; reloading the JSON is unnecessary.
+
+The baseline LED regression test compiles the real pinned SPI driver to verify asynchronous dispatch, GRB encoding, complete framing, and color updates. Existing tests cover stock mapping and recovery behavior. Hardware stability still requires a manual comparison with the new firmware.
+
+## Historical repair — September 28, 2026
+
+Everything below describes the removed implementation and its earlier tests/results, not current behavior.
 
 These changes repair the missing right-half battery bar, incorrect red/green wire order, and missing charging indication. Explicit battery requests are applied after other lighting. The working RGB order and synchronous transmission tested in the diagnostic build are now shared by all three QMK variants.
 

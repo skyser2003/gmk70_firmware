@@ -63,7 +63,8 @@ firmware/
         default/              shared baseline keymap
     drivers/wireless/          existing UART radio/host/low-power implementation
   qmk-via/
-    keymaps/via/               QMK/VIA-specific keymap
+    keymaps/release/           normal QMK/VIA configuration
+    keymaps/debug/             same layout plus logging and USB bootloader command
     compat/                    adaptations for the selected official QMK release
   qmk-vial/
     keymaps/vial/              keymap.c, rules.mk, config.h, vial.json (future)
@@ -96,7 +97,8 @@ tools/                         project tooling, including offline keymap migrati
   vial/<variant>/              assembled Vial build tree per variant
   zmk/                        West workspace, dependency checkouts and build dirs
 artifacts/
-  qmk/{default,via}/
+  qmk/{release,debug}/         the two VIA distributions
+  qmk/default/                 optional fixed-keymap development baseline
   vial/vial/                   future
   zmk/{default,studio}/        future; separate half outputs below each variant
 ```

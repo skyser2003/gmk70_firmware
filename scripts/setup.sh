@@ -38,4 +38,6 @@ if [[ ! -x "$arm_directory/bin/arm-none-eabi-gcc" ]]; then
 fi
 "$uv_binary" sync --frozen --project tools/build-support
 "$uv_binary" sync --frozen --project tools/keymap-migration
+"$uv_binary" sync --frozen --project tools/battery-diagnostics
+"$uv_binary" sync --frozen --project tools/firmware-update
 printf '\nReady: make test, make build-default, or make build\n'

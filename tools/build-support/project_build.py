@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import TypedDict, cast
 
 ROOT = Path(__file__).resolve().parents[2]
-VARIANTS = ("default", "via", "via_diagnostic")
+VARIANTS = ("default", "release", "debug")
+LEGACY_VARIANTS = ("via", "via_diagnostic")
 IGNORED = {".git", ".venv", ".build", "__pycache__", ".ruff_cache", ".mypy_cache"}
 
 
@@ -128,7 +129,7 @@ def clean(root: Path) -> None:
     directory = generated_path(root, "qmk")
     if directory.exists():
         for child in directory.iterdir():
-            if child.name not in VARIANTS or child.is_symlink():
+            if child.name not in (*VARIANTS, *LEGACY_VARIANTS) or child.is_symlink():
                 raise ValueError(f"Refusing to clean unexpected build path: {child}")
         shutil.rmtree(directory)
 
@@ -226,7 +227,7 @@ def main() -> None:
             case "verify":
                 verify(ROOT)
             case "compose":
-                print(compose(ROOT, args.argument or "default"))
+                print(compose(ROOT, args.argument or "release"))
             case "clean":
                 clean(ROOT)
             case "export":

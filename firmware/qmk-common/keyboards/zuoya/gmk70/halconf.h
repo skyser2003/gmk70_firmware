@@ -8,5 +8,8 @@
 #define SPI_USE_WAIT TRUE
 #define PAL_USE_CALLBACKS TRUE
 #define SPI_SELECT_MODE SPI_SELECT_MODE_PAD
+#ifdef GMK70_SPLIT_UPDATE
+#    define HAL_USE_EFL TRUE
+#endif
 
 #include_next <halconf.h>

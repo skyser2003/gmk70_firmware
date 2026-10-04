@@ -7,8 +7,9 @@
 #include "quantum.h"
 #include "process_rgb_matrix.h"
 #include "serial_usart.h"
-#include "battery_diagnostics.h"
-#include "battery_indicator.h"
+#include "split_diagnostics.h"
+#include "stock_battery.h"
+#include "update/qmk_update.h"
 #ifdef WIRELESS_ENABLE
 #    include "wireless.h"
 #    include "usb_main.h"
@@ -74,33 +75,6 @@ bool            no_record_fg;
 bool            lower_sleep = false;
 uint8_t         pov;
 uint8_t         buff[] = {14, 8, 2, 1, 1, 1, 1, 1, 1, 1, 0};
-
-#ifdef GMK70_BATTERY_DIAGNOSTICS
-battery_diag_snapshot_t battery_diagnostics_snapshot(void) {
-    return (battery_diag_snapshot_t){
-        .layers         = layer_state,
-        .default_layers = default_layer_state,
-        .flags          = (is_keyboard_master() ? BATTERY_DIAG_MASTER : 0) | (is_keyboard_left() ? BATTERY_DIAG_LEFT : 0) | (charging_state ? BATTERY_DIAG_CHARGING : 0) | (bat_full_flag ? BATTERY_DIAG_FULL : 0) | (rgbrec_is_started() ? BATTERY_DIAG_RECORDING : 0) | (gmk70_battery_requested(true) ? BATTERY_DIAG_LEVEL_REQUEST : 0) | (gmk70_battery_requested(false) ? BATTERY_DIAG_CHARGING_REQUEST : 0) | (enable_bat_indicators ? BATTERY_DIAG_INDICATORS_ENABLED : 0) | (inqbat_flag ? BATTERY_DIAG_INQUIRY_BLOCK : 0) | (test_white_light_flag ? BATTERY_DIAG_WHITE_TEST : 0) | (rgb_matrix_is_enabled() ? BATTERY_DIAG_RGB_ENABLED : 0) | (rgb_matrix_get_suspend_state() ? BATTERY_DIAG_RGB_SUSPENDED : 0),
-        .board_device   = confinfo.devs,
-        .radio_device   = wireless_get_current_devs(),
-        .radio_state    = *md_getp_state(),
-        .battery        = *md_getp_bat(),
-        .peer_battery   = pov,
-        .rgb_mode       = rgb_matrix_get_mode(),
-        .brightness     = rgb_matrix_get_val(),
-        .led_flags      = rgb_matrix_get_flags(),
-        .pins           = (gpio_read_pin(A7) << 0) | (gpio_read_pin(A15) << 1) | (gpio_read_pin(C15) << 2) | (gpio_read_pin(C14) << 3) | (gpio_read_pin(A5) << 4) | (gpio_read_pin(A8) << 5) | (gpio_read_pin(B9) << 6),
-    };
-}
-#endif
-
-battery_indicator_state_t gmk70_battery_local_state(void) {
-    return battery_indicator_state(gmk70_battery_requested(true), gmk70_battery_requested(false), confinfo.devs != DEVS_USB, charging_state, bat_full_flag, *md_getp_bat());
-}
-
-bool gmk70_battery_overlay_allowed(void) {
-    return !test_white_light_flag && !rgbrec_is_started();
-}
 
 void usart_init(void) {
     uprintf("UART INIT START\n");
@@ -226,6 +200,9 @@ void keyboard_post_init_kb(void) {
     pov = *md_getp_bat();
     // usart_init();
     transaction_register_rpc(USER_SYNC_MMS, user_sync_mms_slave_handler);
+#ifdef GMK70_SPLIT_UPDATE
+    gmk_update_init();
+#endif
 }
 
 #ifdef WIRELESS_ENABLE
@@ -302,6 +279,9 @@ void suspend_power_down_user(void) {
 }
 
 bool lpwr_is_allow_timeout_hook(void) {
+#    ifdef GMK70_SPLIT_UPDATE
+    if (gmk_update_active()) return false;
+#    endif
     // Neither half may stop its split UART while operating over USB.
     if (wireless_get_current_devs() == DEVS_USB) {
         return false;
@@ -448,15 +428,12 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 uint32_t    hs_ct_time;
 RGB         rgb_test_open;
 static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
-    battery_diagnostics_key(keycode, record->event.pressed, BATTERY_DIAG_ENTERED);
     if (process_record_user(keycode, record) != true) {
-        battery_diagnostics_key(keycode, record->event.pressed, BATTERY_DIAG_RECORDING_CONSUMED);
         return false;
     }
 
 #ifdef WIRELESS_ENABLE
     if (process_record_wls(keycode, record) != true) {
-        battery_diagnostics_key(keycode, record->event.pressed, BATTERY_DIAG_DEVICE_CONSUMED);
         return false;
     }
 #endif
@@ -861,11 +838,10 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             }
             return false;
         } break;
-        case KC_BATQ: {
-            gmk70_battery_request(false, record->event.pressed);
-            battery_diagnostics_key(keycode, record->event.pressed, BATTERY_DIAG_CHARGING_HANDLED);
+        case KC_BATQ:
+        case HS_BATQ:
+            stock_battery_key(keycode, record->event.pressed, confinfo.devs != DEVS_USB);
             return false;
-        } break;
         case QK_BOOT: {
             if (record->event.pressed) {
                 dprintf("into boot!!!\r\n");
@@ -1003,12 +979,6 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
 
             return true;
         } break;
-        case HS_BATQ: {
-            gmk70_battery_request(true, record->event.pressed);
-            battery_diagnostics_key(keycode, record->event.pressed, BATTERY_DIAG_LEVEL_HANDLED);
-            return false;
-        } break;
-
         default:
             break;
     }
@@ -1027,13 +997,16 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
 }
 
 void housekeeping_task_user(void) { // loop
+#ifdef GMK70_SPLIT_UPDATE
+    gmk_update_task();
+#endif
+    split_diagnostics_loop();
     uint8_t         hs_now_mode;
     static uint32_t hs_current_time;
 
     charging_state = gpio_read_pin(HS_BAT_CABLE_PIN);
 
     bat_full_flag = gpio_read_pin(BAT_FULL_PIN);
-    gmk70_battery_task();
 
     if (charging_state && (bat_full_flag)) {
         hs_now_mode = MD_SND_CMD_DEVCTRL_CHARGING_DONE;
@@ -1218,9 +1191,12 @@ void bat_indicators(void) {
         return;
     }
 
-    // Automatic low-battery warning and sleep are separate from held requests.
-    if (charging_state) {
+    if (charging_state && (bat_full_flag)) {
         battery_process_time = 0;
+        if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0xFF, 0x00, 0x00);
+    } else if (charging_state) {
+        battery_process_time = 0;
+        if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0x00, 0xFF, 0x00);
     } else if (*md_getp_bat() <= BATTERY_CAPACITY_LOW) {
         rgb_matrix_hs_bat_set(HS_MATRIX_BLINK_INDEX_BAT, (RGB){0xFF, 0x00, 0x00}, 250, 1);
 
@@ -1232,6 +1208,7 @@ void bat_indicators(void) {
             if (battery_process_time && timer_elapsed32(battery_process_time) > 60000) {
                 battery_process_time = 0;
                 lower_sleep          = true;
+                split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_LOW_BATTERY, *md_getp_bat(), 0);
                 lpwr_set_timeout_manual(true);
             }
         }
@@ -1331,7 +1308,6 @@ void rgb_matrix_hs_indicator(void) {
 }
 
 bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max) {
-    battery_diagnostics_render(BATTERY_DIAG_INDICATOR);
     if (test_white_light_flag) {
         RGB rgb_test_open = hsv_to_rgb((HSV){.h = 0, .s = 0, .v = RGB_MATRIX_VAL_STEP * 5});
         rgb_matrix_set_color_all(rgb_test_open.r, rgb_test_open.g, rgb_test_open.b);
@@ -1379,6 +1355,7 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max) {
 
     rgb_matrix_hs_indicator();
     if (confinfo.filp) rgb_matrix_set_color(32, RGB_MATRIX_MAXIMUM_BRIGHTNESS, RGB_MATRIX_MAXIMUM_BRIGHTNESS, RGB_MATRIX_MAXIMUM_BRIGHTNESS);
+    stock_battery_render(pov);
     return true;
 }
 
@@ -1445,15 +1422,15 @@ void user_sync_mms_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t
     }
     const master_to_slave_t *m2s = (const master_to_slave_t *)in_data;
     slave_to_master_t       *s2m = (slave_to_master_t *)out_data;
+    split_diagnostics_received(m2s->cmd);
+    if (stock_battery_receive(m2s->cmd, &s2m->resp)) return;
 
     switch (m2s->cmd) {
-        case BATTERY_INDICATOR_COMMAND:
-            s2m->resp = gmk70_battery_receive(m2s->body) ? BATTERY_INDICATOR_COMMAND : 0xFF;
-            break;
         case 0x55: // sync multimode
             wireless_devs_change(m2s->body[0], m2s->body[1], false);
             pov       = m2s->body[2];
             s2m->resp = 0x00;
+            split_diagnostics_reply(s2m->body);
             break;
         case 0xAA:
             s2m->resp   = 0x00;
