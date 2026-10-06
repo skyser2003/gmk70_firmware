@@ -5,9 +5,9 @@ import tempfile
 import unittest
 import zlib
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from update import Manifest, Op, Package, Reply, Updater
+from update import Manifest, Op, Package, Reply, Updater, UsbLink
 
 
 def package(profile: str = "debug") -> Package:
@@ -103,6 +103,52 @@ class FakeLink:
 
     def close(self) -> None:
         pass
+
+
+class UsbDiscoveryTests(unittest.TestCase):
+    def test_stock_and_legacy_firmware_names(self) -> None:
+        for manufacturer in ("HS", "LEO"):
+            with self.subTest(manufacturer=manufacturer):
+                backend = Mock()
+                backend.enumerate.return_value = [
+                    {
+                        "usage_page": 0xFF60,
+                        "usage": 0x61,
+                        "manufacturer_string": manufacturer,
+                        "path": b"keyboard-raw-hid",
+                    },
+                    {
+                        "usage_page": 1,
+                        "usage": 6,
+                        "manufacturer_string": manufacturer,
+                        "path": b"keyboard-typing",
+                    },
+                ]
+                with patch.dict("sys.modules", {"hid": backend}):
+                    link = UsbLink()
+                    backend.enumerate.assert_called_once_with(0x342D, 0xE491)
+                    backend.device.return_value.open_path.assert_called_once_with(
+                        b"keyboard-raw-hid"
+                    )
+                    link.close()
+
+    def test_unknown_or_ambiguous_devices_are_not_opened(self) -> None:
+        for manufacturers in (("other",), ("HS", "LEO")):
+            with self.subTest(manufacturers=manufacturers):
+                backend = Mock()
+                backend.enumerate.return_value = [
+                    {
+                        "usage_page": 0xFF60,
+                        "usage": 0x61,
+                        "manufacturer_string": manufacturer,
+                        "path": manufacturer.encode(),
+                    }
+                    for manufacturer in manufacturers
+                ]
+                with patch.dict("sys.modules", {"hid": backend}):
+                    with self.assertRaisesRegex(RuntimeError, "exactly one"):
+                        UsbLink()
+                    backend.device.return_value.open_path.assert_not_called()
 
 
 class PackageTests(unittest.TestCase):

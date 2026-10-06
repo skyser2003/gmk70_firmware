@@ -4,7 +4,6 @@
 #pragma once
 
 #include QMK_KEYBOARD_H
-#include "rgb_record/rgb_record.h"
 
 enum layers {
     _BL = 0,
@@ -24,11 +23,11 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         MOR_4,      KC_LCTL,  MO(_FL),  KC_LALT,            KC_SPC,                                 KC_SPC,             KC_RALT,  KC_RGUI,            KC_LEFT,  KC_DOWN,  KC_RGHT),
 
     [_FL] = LAYOUT( /* Base */
-        QK_BOOT,    _______, _______,  KC_F1,    KC_F2,    KC_F3,    KC_F4,    KC_F5,             KC_F6,    KC_F7,    KC_F8,    KC_F9,    KC_F10,   KC_F11,   KC_F12,   EE_CLR,
-        _______,    RM_NEXT,  KC_BT1,   KC_BT2,   KC_BT3,   KC_2G4,   _______,                      KC_PSCR,  KC_SCRL,  KC_PAUSE, _______,  _______,  RM_HUEU,  RM_HUED,  RL_MOD,
-        _______,    _______,  KC_NO,    TO(_MBL), _______,  _______,  _______,                      KC_HOME,  KC_END,   KC_PGUP,  KC_PGDN,  RM_SATD,  RM_SATU,            KC_END,
-        _______,    _______,  _______,  RM_TOGG,  _______,  NK_TOGG,  HS_BATQ,            HS_BATQ,  _______,  _______,  _______,  _______,  _______,  _______,  RM_VALU,  KC_INS,
-        _______,    KC_FILP,  _______,  KC_LALT,            KC_BATQ,                                KC_BATQ,            KC_RALT,  GU_TOGG,            RM_SPDU,  RM_VALD,  RM_SPDD),
+        _______,    _______, _______,  KC_F1,    KC_F2,    KC_F3,    KC_F4,    KC_F5,             KC_F6,    KC_F7,    KC_F8,    KC_F9,    KC_F10,   KC_F11,   KC_F12,   EE_CLR,
+        _______,    UG_NEXT,  KC_BT1,   KC_BT2,   KC_BT3,   KC_2G4,   _______,                      KC_PSCR,  KC_SCRL,  KC_PAUSE, _______,  _______,  UG_HUED,  UG_HUEU,  RL_MOD,
+        _______,    _______,  KC_NO,    TO(_MBL), _______,  _______,  _______,                      KC_HOME,  KC_END,   KC_PGUP,  KC_PGDN,  UG_SATD,  UG_SATU,            KC_END,
+        _______,    _______,  _______,  UG_TOGG,  _______,  NK_TOGG,  HS_BATQ,            HS_BATQ,  _______,  _______,  _______,  _______,  _______,  STOCK_RESERVED_19,  UG_VALU,  KC_INS,
+        _______,    KC_FILP,  _______,  KC_LALT,            KC_BATQ,                                KC_BATQ,            KC_RALT,  GU_TOGG,            UG_SPDD,  UG_VALD,  UG_SPDU),
 
     [_MBL] = LAYOUT( /* Base */
         KC_MUTE,    KC_ESC,   KC_GRV,   KC_1,     KC_2,     KC_3,     KC_4,     KC_5,             KC_6,     KC_7,     KC_8,     KC_9,     KC_0,     KC_MINS,  KC_EQL,   KC_BSPC,
@@ -38,11 +37,11 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         MOR_4,      KC_LCTL,  MO(_MFL), KC_LGUI,            KC_SPC,                                 KC_SPC,             KC_RGUI,  KC_RALT,            KC_LEFT,  KC_DOWN,  KC_RGHT),
 
     [_MFL] = LAYOUT( /* Base */
-        QK_BOOT,    _______, _______,  KC_F1,    KC_F2,    KC_F3,    KC_F4,    KC_F5,             KC_F6,    KC_F7,    KC_F8,    KC_F9,    KC_F10,   KC_F11,   KC_F12,   EE_CLR,
-        _______,    RM_NEXT,  KC_BT1,   KC_BT2,   KC_BT3,   KC_2G4,   _______,                      KC_PSCR,  KC_SCRL,  KC_PAUSE, _______,  _______,  RM_HUEU,  RM_HUED,  RL_MOD,
-        _______,    _______,  TO(_BL),  KC_NO,    _______,  _______,  _______,                      KC_HOME,  KC_END,   KC_PGUP,  KC_PGDN,  RM_SATD,  RM_SATU,            KC_END,
-        _______,    _______,  _______,  RM_TOGG,  _______,  _______,  HS_BATQ,            HS_BATQ,  _______,  _______,  _______,  _______,  _______,  _______,  RM_VALU,  KC_INS,
-        _______,    KC_FILP,  _______,  KC_LGUI,            KC_BATQ,                                KC_BATQ,            KC_RGUI,  KC_RALT,            RM_SPDU,  RM_VALD,  RM_SPDD),
+        _______,    _______, _______,  KC_F1,    KC_F2,    KC_F3,    KC_F4,    KC_F5,             KC_F6,    KC_F7,    KC_F8,    KC_F9,    KC_F10,   KC_F11,   KC_F12,   EE_CLR,
+        _______,    UG_NEXT,  KC_BT1,   KC_BT2,   KC_BT3,   KC_2G4,   _______,                      KC_PSCR,  KC_SCRL,  KC_PAUSE, _______,  _______,  UG_HUED,  UG_HUEU,  RL_MOD,
+        _______,    _______,  TO(_BL),  KC_NO,    _______,  _______,  _______,                      KC_HOME,  KC_END,   KC_PGUP,  KC_PGDN,  UG_SATD,  UG_SATU,            KC_END,
+        _______,    _______,  _______,  UG_TOGG,  _______,  _______,  HS_BATQ,            HS_BATQ,  _______,  _______,  _______,  _______,  _______,  STOCK_RESERVED_19,  UG_VALU,  KC_INS,
+        _______,    KC_FILP,  _______,  KC_LGUI,            KC_BATQ,                                KC_BATQ,            KC_RGUI,  KC_RALT,            UG_SPDD,  UG_VALD,  UG_SPDU),
 
 };
 
@@ -50,9 +49,9 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 #ifdef ENCODER_MAP_ENABLE
 const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
     [0] = {ENCODER_CCW_CW(KC_VOLD, KC_VOLU)},
-    [1] = {ENCODER_CCW_CW(_______, _______)},
-    [2] = {ENCODER_CCW_CW(_______, _______)},
-    [3] = {ENCODER_CCW_CW(_______, _______)},
+    [1] = {ENCODER_CCW_CW(KC_VOLD, KC_VOLU)},
+    [2] = {ENCODER_CCW_CW(KC_VOLD, KC_VOLU)},
+    [3] = {ENCODER_CCW_CW(KC_VOLD, KC_VOLU)},
 };
 #endif
 // clang-format on

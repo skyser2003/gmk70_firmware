@@ -17,6 +17,8 @@
 #define MD_BT1_NAME "GMK70-1"
 #define MD_BT2_NAME "GMK70-2"
 #define MD_BT3_NAME "GMK70-3"
+#define MD_BT4_NAME "WB KB 4"
+#define MD_BT5_NAME "WB KB 5"
 #define MD_DONGLE_PRODUCT "ZUOYA GMK70"
 
 /* Device Connection RGB Indicator Light Index And Color */
@@ -75,6 +77,8 @@
 
 /* Encoder */
 #define ENCODER_MAP_KEY_DELAY 1
+// V15 has one encoder on the left; do not mirror its count onto the right.
+#define NUM_ENCODERS_RIGHT 0
 
 /* SPI */
 #define SPI_DRIVER SPIDQ
@@ -95,11 +99,14 @@
 /* WS2812 */
 #define WS2812_SPI_DRIVER SPIDM2
 #define WS2812_SPI_DIVISOR 32
+#define WS2812_BYTE_ORDER WS2812_BYTE_ORDER_RGB
+#define DEVICE_VER 0x000F
 
-/* rgb_record */
-#define ENABLE_RGB_MATRIX_RGBR_PLAY
-#define RGBREC_CHANNEL_NUM 4
-#define EECONFIG_CONFINFO_USE_SIZE (4 + 16)
-#define EECONFIG_RGBREC_USE_SIZE (RGBREC_CHANNEL_NUM * MATRIX_ROWS * MATRIX_COLS * 2)
-#define EECONFIG_USER_DATA_SIZE (EECONFIG_RGBREC_USE_SIZE + EECONFIG_CONFINFO_USE_SIZE)
-#define CONFINFO_USER_OFFSET EECONFIG_RGBREC_USE_SIZE
+/* V15 secondary lighting engine and dynamic-map storage. */
+#define RGBLIGHT_DEFAULT_MODE 14
+#define RGBLIGHT_DEFAULT_VAL 80
+#define RGBLIGHT_DEFAULT_SPD 0
+#define VIA_EEPROM_MAGIC_ADDR 0x22
+#define DYNAMIC_KEYMAP_EEPROM_ADDR 0x26
+#define DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR 0x306
+#define DYNAMIC_KEYMAP_MACRO_EEPROM_SIZE 0xCFA

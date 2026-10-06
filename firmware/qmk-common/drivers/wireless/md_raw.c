@@ -27,17 +27,15 @@ void __wrap_raw_hid_send(uint8_t *data, uint8_t length) {
 void md_receive_raw_cb(uint8_t *data, uint8_t length) {
     if (length == RAW_EPSIZE) {
 #    ifdef GMK70_DEBUG_USB_BOOTLOADER
-        // Radio raw HID shares VIA's parser. Never forward the debug-only USB
-        // bootloader command, even if the physical selector currently says USB.
-        if (data[0] == id_bootloader_jump
+        // The optional split updater retains its direct-USB gate. Ordinary
+        // stock VIA commands, including 0x0B, share the normal radio parser.
 #        ifdef GMK70_SPLIT_UPDATE
-            || data[0] == 0x7F
-#        endif
-        ) {
+        if (data[0] == 0x7F) {
             data[0] = id_unhandled;
             md_send_raw(data, length);
             return;
         }
+#        endif
 #    endif
         raw_hid_receive(data, length);
     }

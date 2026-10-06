@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Execute the maintained state machine with simulated time and MCU interrupts.
 // These tests cannot establish which interrupt occurred on a physical keyboard.
-// Reject unclassified wakes as observed in stock V13/V15 and the October 3
-// device capture. Preserve the other public-port transitions and timing.
+// Reject unclassified wakes and restore the recovered V15 state transitions.
 #include <assert.h>
 #include <stdio.h>
 #include "quantum.h"
 #include "usb_main.h"
 #include "wireless.h"
+void md_receive_host_cb(bool resume);
 
 typedef struct {
     uint32_t        now;
@@ -19,6 +19,7 @@ typedef struct {
     uint8_t         device;
     bool            rgb_enabled;
     bool            duplicate_request;
+    bool            held;
     lpwr_wakeupcd_t wake_source;
 } sleep_fixture_t;
 
@@ -66,8 +67,11 @@ bool lpwr_is_allow_timeout_hook(void) {
     return fixture.device != DEVS_USB;
 }
 bool lpwr_is_allow_presleep_hook(void) {
+    return !fixture.held;
+}
+void lpwr_presleep_hook(void) {
+    assert(!fixture.rgb_enabled);
     ++fixture.prepare_calls;
-    return true;
 }
 
 void mcu_stop_mode(void) {
@@ -103,19 +107,21 @@ static void enter_stop(void) {
     assert(!fixture.rgb_enabled);
 }
 
-static void test_preparation_keeps_baseline_timing(void) {
+static void test_preparation_waits_for_release(void) {
     reset_fixture(DEVS_BT1, true);
     request_sleep();
+    fixture.held = true;
     for (uint8_t i = 0; i < 19; ++i)
         tick(10);
-    assert(fixture.prepare_calls == 19);
+    assert(fixture.prepare_calls == 0);
     assert(fixture.rgb_enabled);
-    tick(10);
-    assert(fixture.prepare_calls == 20);
+    fixture.held = false;
+    tick(0);
+    assert(fixture.prepare_calls == 1);
     assert(lpwr_get_state() == LPWR_STOP);
     for (uint8_t i = 0; i < 10; ++i)
         tick(10);
-    assert(fixture.prepare_calls == 20);
+    assert(fixture.prepare_calls == 1);
 }
 
 static void test_unclassified_interrupt_stays_asleep(void) {
@@ -180,7 +186,7 @@ static void test_real_wakes_restore_previous_lighting(void) {
     }
 }
 
-static void test_pending_request_keeps_baseline_lifetime(void) {
+static void test_pending_request_cleared_by_state_change(void) {
     reset_fixture(DEVS_BT1, true);
     enter_stop();
     fixture.duplicate_request = true;
@@ -189,21 +195,21 @@ static void test_pending_request_keeps_baseline_lifetime(void) {
     assert(lpwr_get_state() == LPWR_WAKEUP);
     tick(200);
     assert(lpwr_get_state() == LPWR_NORMAL);
-    assert(lpwr_get_timeout_manual());
+    assert(!lpwr_get_timeout_manual());
     tick(1);
-    assert(lpwr_get_state() == LPWR_PRESLEEP);
+    assert(lpwr_get_state() == LPWR_NORMAL);
     assert(!lpwr_get_timeout_manual());
     assert(fixture.power_down_calls == 1 && fixture.wake_calls == 1);
 }
 
-static void test_uart_wake_preserves_pending_request(void) {
+static void test_uart_wake_clears_pending_request(void) {
     reset_fixture(DEVS_2G4, true);
     enter_stop();
     fixture.duplicate_request = true;
     fixture.wake_source       = LPWR_WAKEUP_UART;
     tick(200);
     assert(lpwr_get_state() == LPWR_STOP);
-    assert(lpwr_get_timeout_manual());
+    assert(!lpwr_get_timeout_manual());
 }
 
 static void test_usb_and_timeout_unchanged(void) {
@@ -222,6 +228,37 @@ static void test_usb_and_timeout_unchanged(void) {
     assert(lpwr_get_state() == LPWR_PRESLEEP);
 }
 
+static void test_repeated_resume_keeps_wake_deadline(void) {
+    reset_fixture(DEVS_BT1, true);
+    enter_stop();
+    md_receive_host_cb(true);
+    assert(lpwr_get_state() == LPWR_WAKEUP);
+    tick(100);
+    const uint32_t deadline = lpwr_timestamp_read();
+    for (unsigned i = 0; i < 20; ++i)
+        md_receive_host_cb(true);
+    assert(lpwr_timestamp_read() == deadline);
+    tick(100);
+    assert(lpwr_get_state() == LPWR_NORMAL && fixture.wake_calls == 1);
+}
+
+static void test_stock_activity_is_separate_from_matrix_release(void) {
+    reset_fixture(DEVS_BT1, true);
+    tick(299999);
+    // QMK updates its input activity on releases. V15's board deadline uses
+    // key presses, raw HID and state/channel changes instead.
+    fixture.last_activity = fixture.now;
+    tick(1);
+    assert(lpwr_get_state() == LPWR_PRESLEEP);
+    reset_fixture(DEVS_BT1, true);
+    tick(299999);
+    lpwr_activity_trigger();
+    tick(299999);
+    assert(lpwr_get_state() == LPWR_NORMAL);
+    tick(1);
+    assert(lpwr_get_state() == LPWR_PRESLEEP);
+}
+
 typedef struct {
     const char *name;
     void (*run)(void);
@@ -229,7 +266,7 @@ typedef struct {
 
 int main(int argc, char **argv) {
     const sleep_test_t tests[] = {
-        {"baseline-preparation", test_preparation_keeps_baseline_timing}, {"unclassified-interrupt", test_unclassified_interrupt_stays_asleep}, {"radio-uart", test_radio_uart_stays_asleep}, {"real-wakes", test_real_wakes_restore_previous_lighting}, {"baseline-pending-request", test_pending_request_keeps_baseline_lifetime}, {"baseline-uart-request", test_uart_wake_preserves_pending_request}, {"usb-and-timeout", test_usb_and_timeout_unchanged},
+        {"held-preparation", test_preparation_waits_for_release}, {"unclassified-interrupt", test_unclassified_interrupt_stays_asleep}, {"radio-uart", test_radio_uart_stays_asleep}, {"real-wakes", test_real_wakes_restore_previous_lighting}, {"pending-request", test_pending_request_cleared_by_state_change}, {"uart-request", test_uart_wake_clears_pending_request}, {"usb-and-timeout", test_usb_and_timeout_unchanged}, {"resume-deadline", test_repeated_resume_keeps_wake_deadline}, {"activity-deadline", test_stock_activity_is_separate_from_matrix_release},
     };
     bool ran = false;
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {

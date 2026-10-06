@@ -16,7 +16,6 @@
 #define HS_GET_MODE_PIN(state) HS_GET_MODE_PIN_(state)
 #define HS_MODEIO_DETECTION_TIME 50
 #define HS_LBACK_TIMEOUT (30 * 1000)
-#define HS_SLEEP_TIMEOUT (1 * 60000) //(1 * 60000)
 
 enum modeio_mode { hs_none = 0, hs_usb, hs_bt, hs_2g4, hs_wireless };
 

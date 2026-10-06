@@ -38,8 +38,8 @@ int main(void) {
     ws2812_set_color(33, 255, 0, 0);
     ws2812_flush();
     assert(sends == 1);
-    const uint8_t red_grb[] = {0x88, 0x88, 0x88, 0x88, 0xEE, 0xEE, 0xEE, 0xEE, 0x88, 0x88, 0x88, 0x88};
-    assert(memcmp(packet + 4 + 33 * 12, red_grb, sizeof(red_grb)) == 0);
+    const uint8_t red_rgb[] = {0xEE, 0xEE, 0xEE, 0xEE, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88};
+    assert(memcmp(packet + 4 + 33 * 12, red_rgb, sizeof(red_rgb)) == 0);
     for (size_t i = 0; i < 4; ++i)
         assert(packet[i] == 0);
     for (size_t i = 4 + 77 * 12; i < sizeof(packet); ++i)
@@ -48,13 +48,13 @@ int main(void) {
     ws2812_set_color(33, 0, 255, 0);
     ws2812_flush();
     assert(sends == 2);
-    const uint8_t green_grb[] = {0xEE, 0xEE, 0xEE, 0xEE, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88};
-    assert(memcmp(packet + 4 + 33 * 12, green_grb, sizeof(green_grb)) == 0);
+    const uint8_t green_rgb[] = {0x88, 0x88, 0x88, 0x88, 0xEE, 0xEE, 0xEE, 0xEE, 0x88, 0x88, 0x88, 0x88};
+    assert(memcmp(packet + 4 + 33 * 12, green_rgb, sizeof(green_rgb)) == 0);
     ws2812_set_color(33, 0, 0, 0);
     ws2812_flush();
     assert(sends == 3);
     for (size_t i = 4; i < 4 + 77 * 12; ++i)
         assert(packet[i] == 0x88);
-    puts("Baseline asynchronous GRB LED output tests passed");
+    puts("Baseline asynchronous stock RGB LED output tests passed");
     return 0;
 }

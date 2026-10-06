@@ -13,6 +13,9 @@ uint8_t *md_getp_state(void) {
 uint8_t *md_getp_indicator(void) {
     return &radio_fixture.indicator;
 }
+bool md_reports_inhibited(void) {
+    return radio_fixture.state == MD_STATE_PAIRING;
+}
 void set_transport(transport_t transport) {
     radio_fixture.transport = transport;
 }
@@ -57,6 +60,7 @@ void         last_matrix_activity_trigger(void) {}
 void         md_init(void) {}
 void         md_main_task(void) {}
 void         lpwr_task(void) {}
+void         lpwr_activity_trigger(void) {}
 void         usb_remote_wakeup(void) {}
 lpwr_state_t lpwr_get_state(void) {
     return LPWR_NORMAL;

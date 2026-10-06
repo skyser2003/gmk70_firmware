@@ -1,5 +1,7 @@
 # Original VIA definition compatibility
 
+Current V15 reconstruction status, EEPROM layout changes and verification limits are documented in [STOCK-V15-RECONSTRUCTION.md](STOCK-V15-RECONSTRUCTION.md). The historical behavior notes below describe earlier revisions where they conflict with that reconstruction.
+
 The target is the unchanged vendor `definitions/via/ZUOYA_GMK70.json`, SHA-256 `e878d51b9c1bdbf182feb48fa892ad822c9b4b8ff94f42ebe6b5e7fd0ba94789`. USB VID/PID `342D:E491`, the 10x9 matrix, physical layout, and encoder coordinate already matched. The prior compact custom-key enum did not.
 
 ## Stable custom keycodes

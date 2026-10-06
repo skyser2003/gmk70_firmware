@@ -104,16 +104,8 @@ bool hs_rgb_blink_hook() {
                     lpwr_set_timeout_manual(true);
                 }
             }
+            break;
         case MD_STATE_CONNECTED:
-            if (hs_rgb_blink_get_timer() == 0x00) {
-                hs_rgb_blink_set_timer(timer_read32());
-            } else {
-                if (timer_elapsed32(hs_rgb_blink_get_timer()) >= HS_SLEEP_TIMEOUT) {
-                    hs_rgb_blink_set_timer(timer_read32());
-                    split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_RADIO_IDLE, *md_getp_state(), 0);
-                    lpwr_set_timeout_manual(true);
-                }
-            }
         default:
             break;
     }

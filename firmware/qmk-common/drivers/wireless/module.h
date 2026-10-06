@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
+#include <stdbool.h>
+#include <stdint.h>
 
 // device index
 enum {
@@ -104,6 +106,7 @@ enum {
 void     md_init(void);
 void     md_main_task(void);
 void     md_send_kb(uint8_t *data);
+void     md_send_devinfo(const char *name);
 void     md_send_nkro(uint8_t *data);
 void     md_send_consumer(uint8_t *data);
 void     md_send_system(uint8_t *data);
@@ -119,6 +122,7 @@ bool     md_receive_process_user(uint8_t *pdata, uint8_t len);
 void     md_devs_change(uint8_t devs, bool reset);
 bool     md_inquire_bat(void);
 uint8_t  md_get_version(void);
+bool     md_reports_inhibited(void);
 uint8_t *md_getp_state(void);
 uint8_t *md_getp_bat(void);
 uint8_t *md_getp_indicator(void);

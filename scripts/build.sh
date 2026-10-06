@@ -61,9 +61,9 @@ fi
 # Enforce the distribution boundary against the actual compiled adapter.
 if [[ "$keymap" != default ]]; then
     bootloader_symbols="$(arm-none-eabi-nm -u "$build_root/.build/obj_$target/stock_via.o")"
+    grep -q ' gmk70_stock_request_bootloader$' <<< "$bootloader_symbols"
     if [[ "$keymap" == debug ]]; then
         grep -q -- '-DGMK70_DEBUG_USB_BOOTLOADER' "$output/cflags.txt"
-        grep -q ' reset_keyboard$' <<< "$bootloader_symbols"
     elif grep -q -- '-DGMK70_DEBUG_USB_BOOTLOADER\|-DGMK70_SPLIT_DIAGNOSTICS' "$output/cflags.txt" || grep -q ' reset_keyboard$' <<< "$bootloader_symbols"; then
         printf 'Release unexpectedly contains debug features\n' >&2
         exit 1
@@ -78,11 +78,11 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
         printf 'EXPERIMENTAL: initial direct-USB install.bin for each half; subsequent updates use application.bin + update.json. Requires verified 256 KB MCU. Hardware validation pending.\n'
     fi
     if [[ "$keymap" == debug ]]; then
-        printf 'Debug features: split RAM logger; direct USB VIA 0x0B bootloader command\n'
+        printf 'Debug features: split RAM logger; optional direct USB split updater\n'
     else
-        printf 'Debug features: disabled (no remote bootloader command)\n'
+        printf 'Debug features: disabled\n'
     fi
-    printf 'Custom keycode ABI: stock-v13 (see docs/STOCK-COMPATIBILITY.md)\n'
+    printf 'Behavior target: stock V15 (see docs/STOCK-V15-RECONSTRUCTION.md)\n'
     printf 'Pinned sources:\n'
     cat dependencies/sources.lock.json
     arm-none-eabi-gcc --version

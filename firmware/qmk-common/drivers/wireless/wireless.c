@@ -43,10 +43,7 @@ uint8_t wireless_keyboard_leds(void) {
 void wireless_send_keyboard(report_keyboard_t *report) {
     uint8_t wls_report_kb[MD_SND_CMD_KB_LEN] = {0};
 
-    if (*md_getp_state() != MD_STATE_CONNECTED) {
-        wireless_devs_change(wls_devs, wls_devs, false);
-        return;
-    }
+    if (md_reports_inhibited()) return;
 
     if (report != NULL) {
         wls_report_kb[0] = report->mods;
@@ -59,10 +56,7 @@ void wireless_send_nkro(report_nkro_t *report) {
     static report_keyboard_t keyboard_report                      = {0};
     uint8_t                  overflow_report[MD_SND_CMD_NKRO_LEN] = {0};
 
-    if (*md_getp_state() != MD_STATE_CONNECTED) {
-        wireless_devs_change(wls_devs, wls_devs, false);
-        return;
-    }
+    if (md_reports_inhibited()) return;
 
     if (report == NULL) {
         memset(&keyboard_report, 0, sizeof(keyboard_report));
@@ -115,10 +109,7 @@ void wireless_send_mouse(report_mouse_t *report) {
 
     wls_report_mouse_t wls_report_mouse = {0};
 
-    if (*md_getp_state() != MD_STATE_CONNECTED) {
-        wireless_devs_change(wls_devs, wls_devs, false);
-        return;
-    }
+    if (md_reports_inhibited()) return;
 
     if (report != NULL) {
         wls_report_mouse.buttons = report->buttons;
@@ -132,10 +123,7 @@ void wireless_send_mouse(report_mouse_t *report) {
 }
 
 void wireless_send_extra(report_extra_t *report) {
-    if (*md_getp_state() != MD_STATE_CONNECTED) {
-        wireless_devs_change(wls_devs, wls_devs, false);
-        return;
-    }
+    if (md_reports_inhibited()) return;
 
     if (report != NULL) {
         uint16_t usage = report->usage;
@@ -174,6 +162,7 @@ void wireless_devs_change(uint8_t old_devs, uint8_t new_devs, bool reset) {
 
     wls_devs = new_devs;
     last_matrix_activity_trigger();
+    lpwr_activity_trigger();
 
     md_devs_change(new_devs, reset);
     wireless_devs_change_kb(old_devs, new_devs, reset);
@@ -193,7 +182,9 @@ void wireless_post_task(void) {}
 void wireless_task(void) {
     wireless_pre_task();
     lpwr_task();
+#ifndef GMK70_RADIO_THREAD
     md_main_task();
+#endif
     wireless_post_task();
 
     /* usb_remote_wakeup() should be invoked last so that we have chance

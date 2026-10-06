@@ -3,12 +3,20 @@
 
 #include QMK_KEYBOARD_H
 #include "wls/wls.h"
-#include "rgb_record/rgb_record.h"
+#include "stock_lighting.h"
 #include "quantum.h"
 #include "process_rgb_matrix.h"
 #include "serial_usart.h"
 #include "split_diagnostics.h"
 #include "stock_battery.h"
+#include "stock_power.h"
+#include "stock_v15.h"
+void last_matrix_activity_trigger(void);
+#ifdef VIA_ENABLE
+#    include "via.h"
+#    include "dynamic_keymap.h"
+#endif
+#include "smsg.h"
 #include "update/qmk_update.h"
 #ifdef WIRELESS_ENABLE
 #    include "wireless.h"
@@ -20,16 +28,33 @@
 typedef union {
     uint32_t raw;
     struct {
+        uint8_t devs;
+        uint8_t previous_devs;
+        uint8_t last_btdevs;
         uint8_t flag : 1;
-        uint8_t devs : 3;
-        uint8_t record_channel : 4;
-        uint8_t record_last_mode;
-        uint8_t last_btdevs : 3;
-        uint8_t dir_flag : 1;
-        uint8_t filp : 1;
+        uint8_t sleep_selector : 3;
+        uint8_t reserved : 4;
     };
 } confinfo_t;
-confinfo_t confinfo;
+confinfo_t      confinfo;
+static uint32_t stock_board_flags;
+static void     stock_gui_lock(bool locked) {
+    keymap_config.no_gui = locked;
+    if (locked)
+        stock_board_flags |= 4;
+    else
+        stock_board_flags &= ~4u;
+    eeconfig_update_user(stock_board_flags);
+}
+
+static void stock_matrix_power(bool enabled) {
+    if (enabled)
+        rgb_matrix_enable();
+    else
+        rgb_matrix_disable();
+    gpio_write_pin(LED_POWER_EN_PIN, enabled);
+    gpio_write_pin(LED_POWER_EN2_PIN, enabled);
+}
 
 typedef struct {
     bool     active;
@@ -69,10 +94,10 @@ bool            bat_full_flag         = false;
 bool            enable_bat_indicators = true;
 uint32_t        bat_indicator_cnt     = true;
 static uint32_t ee_clr_timer          = 0;
+static bool     stock_reset_pending;
+static bool     stock_bootloader_pending;
 bool            test_white_light_flag = false;
-HSV             start_hsv;
-bool            no_record_fg;
-bool            lower_sleep = false;
+bool            lower_sleep           = false;
 uint8_t         pov;
 uint8_t         buff[] = {14, 8, 2, 1, 1, 1, 1, 1, 1, 1, 0};
 
@@ -102,19 +127,20 @@ uint32_t eeconfig_confinfo_read(void) {
 }
 
 void eeconfig_confinfo_default(void) {
-    confinfo.raw              = 0;
-    confinfo.flag             = true;
-    confinfo.record_channel   = 0;
-    confinfo.record_last_mode = 0xff;
-    confinfo.last_btdevs      = 1;
-    confinfo.dir_flag         = 0;
+    confinfo.raw           = 0;
+    confinfo.flag          = false;
+    confinfo.previous_devs = 1;
+    confinfo.last_btdevs   = 1;
+    stock_board_flags      = 0;
+    eeconfig_update_user(0);
+    confinfo.sleep_selector = 7;
 
     // #ifdef WIRELESS_ENABLE
     //     confinfo.devs = DEVS_USB;
     // #endif
 
-    eeconfig_init_user_datablock();
     eeconfig_confinfo_update(confinfo.raw);
+    confinfo.flag = true;
 
 #ifdef RGBLIGHT_ENABLE
     rgblight_mode(buff[0]);
@@ -139,12 +165,68 @@ void master_sync_mms_slave(uint8_t last_mode, uint8_t now_mode, uint8_t reset) {
 
 void eeconfig_confinfo_init(void) {
     confinfo.raw = eeconfig_confinfo_read();
-    if (!confinfo.flag || confinfo.raw == UINT32_MAX || confinfo.devs > DEVS_2G4 || confinfo.last_btdevs < DEVS_BT1 || confinfo.last_btdevs > DEVS_BT5 || confinfo.record_channel >= RGBREC_CHANNEL_NUM) {
+    if (!confinfo.raw || confinfo.raw == UINT32_MAX || confinfo.devs > DEVS_2G4 || confinfo.last_btdevs < DEVS_BT1 || confinfo.last_btdevs > DEVS_BT5) {
         eeconfig_confinfo_default();
     }
+    confinfo.flag     = true;
+    stock_board_flags = eeconfig_read_user();
+    if (stock_board_flags == UINT32_MAX) stock_board_flags = 0;
+    keymap_config.no_gui = (stock_board_flags & 4) != 0;
+    lpwr_set_timeout_value(stock_power_timeout(confinfo.sleep_selector));
+}
+
+uint8_t gmk70_stock_sleep_get(void) {
+    return confinfo.sleep_selector;
+}
+
+void gmk70_stock_sleep_set(uint8_t selector) {
+    confinfo.sleep_selector = selector & 7;
+    lpwr_set_timeout_value(stock_power_timeout(confinfo.sleep_selector));
+    eeconfig_confinfo_update(confinfo.raw);
+}
+
+uint8_t gmk70_stock_nkro_get(void) {
+    return keymap_config.nkro;
+}
+
+void gmk70_stock_nkro_set(uint8_t enabled) {
+    keymap_config.nkro = enabled != 0;
+}
+
+uint8_t gmk70_stock_brightness_get(void) {
+    return (uint16_t)rgb_matrix_get_val() * 255 / 80;
+}
+
+void gmk70_stock_brightness_set(uint8_t value) {
+    HSV hsv = rgb_matrix_get_hsv();
+    rgb_matrix_sethsv_noeeprom(hsv.h, hsv.s, ((uint16_t)value * 80) >> 8);
+}
+
+void gmk70_stock_activity(void) {
+    last_matrix_activity_trigger();
+    lpwr_activity_trigger();
+    if (lpwr_get_state() != LPWR_NORMAL)
+        lpwr_set_state(LPWR_WAKEUP);
+    else
+        lpwr_update_timestamp();
+}
+
+void lpwr_state_changed_hook(void) {
+    // V15 0x08002890 clears the query flag and requests voltage on assignment.
+    inqbat_flag = false;
+    md_send_devctrl(MD_SND_CMD_DEVCTRL_INQVOL);
+}
+
+void gmk70_stock_request_reset(void) {
+    stock_reset_pending = true;
+}
+
+void gmk70_stock_request_bootloader(void) {
+    stock_bootloader_pending = true;
 }
 
 void keyboard_post_init_kb(void) {
+    stock_lighting_init();
 #ifdef CONSOLE_ENABLE
     debug_enable = true;
     debug_matrix = true;
@@ -192,10 +274,6 @@ void keyboard_post_init_kb(void) {
 #endif
 
     keyboard_post_init_user();
-
-    rgbrec_init(confinfo.record_channel);
-
-    start_hsv = rgb_matrix_get_hsv();
 
     pov = *md_getp_bat();
     // usart_init();
@@ -263,6 +341,7 @@ void suspend_wakeup_init_user(void) {
 }
 
 void suspend_power_down_user(void) {
+    if (lpwr_get_state() != LPWR_NORMAL) return;
     if (!is_keyboard_master()) {
         return;
     }
@@ -283,7 +362,7 @@ bool lpwr_is_allow_timeout_hook(void) {
     if (gmk_update_active()) return false;
 #    endif
     // Neither half may stop its split UART while operating over USB.
-    if (wireless_get_current_devs() == DEVS_USB) {
+    if (wireless_get_current_devs() == DEVS_USB && (USB_DRIVER.state == USB_ACTIVE || !lpwr_get_timeout_manual())) {
         return false;
     }
 
@@ -291,6 +370,14 @@ bool lpwr_is_allow_timeout_hook(void) {
 }
 
 bool lpwr_is_allow_presleep_hook(void) {
+    return stock_power_prepare_allowed(lower_sleep);
+}
+
+bool lpwr_host_resume_allowed_hook(void) {
+    return !lower_sleep;
+}
+
+void lpwr_presleep_hook(void) {
     extern bool charging_state;
 
     if (is_keyboard_master()) {
@@ -314,7 +401,6 @@ bool lpwr_is_allow_presleep_hook(void) {
             usbStop(&USBD1);
         }
     }
-    return true;
 }
 
 void wireless_post_task(void) {
@@ -323,10 +409,10 @@ void wireless_post_task(void) {
         return;
     }
     // auto switching devs
-    if (post_init_timer && timer_elapsed32(post_init_timer) >= 100) {
-        md_send_devctrl(MD_SND_CMD_DEVCTRL_FW_VERSION);   // get the module fw version.
+    if (post_init_timer && timer_elapsed32(post_init_timer) >= 2000) {
         md_send_devctrl(MD_SND_CMD_DEVCTRL_SLEEP_BT_EN);  // timeout 30min to sleep in bt mode, enable
         md_send_devctrl(MD_SND_CMD_DEVCTRL_SLEEP_2G4_EN); // timeout 30min to sleep in 2.4g mode, enable
+        md_send_devctrl(MD_SND_CMD_DEVCTRL_FW_VERSION);   // get the module fw version.
         wireless_devs_change(!confinfo.devs, confinfo.devs, false);
         post_init_timer = 0x00;
     }
@@ -396,32 +482,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         hs_rgb_blink_set_timer(timer_read32());
     }
 
-    switch (keycode) {
-        case MO(_FL):
-        case MO(_MFL): {
-            if (!record->event.pressed && rgbrec_is_started()) {
-                if (no_record_fg == true) {
-                    no_record_fg = false;
-                    rgbrec_register_record(keycode, record);
-                }
-                no_record_fg = true;
-            }
-            break;
-        }
-
-        case RM_NEXT:
-            break;
-        default: {
-            if (rgbrec_is_started()) {
-                if (!IS_QK_MOMENTARY(keycode) && record->event.pressed) {
-                    rgbrec_register_record(keycode, record);
-
-                    return false;
-                }
-            }
-        } break;
-    }
-
     return true;
 }
 
@@ -447,8 +507,24 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
         return false;
     }
     switch (keycode) {
+        case GU_TOGG:
+        case RM_TOGG:
+            if (record->event.pressed) {
+                uint8_t command;
+                if (keycode == GU_TOGG) {
+                    stock_gui_lock(!keymap_config.no_gui);
+                    command = keymap_config.no_gui ? 0xAE : 0xAF;
+                } else {
+                    stock_matrix_power(!rgb_matrix_is_enabled());
+                    command = rgb_matrix_is_enabled() ? 0xC1 : 0xC2;
+                }
+                master_to_slave_t request  = {.cmd = command};
+                slave_to_master_t response = {0};
+                (void)transaction_rpc_exec(USER_SYNC_MMS, sizeof(request), &request, sizeof(response), &response);
+            }
+            return false;
         case KC_F1: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_MSEL);
@@ -461,7 +537,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F2: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_VOLD);
@@ -474,7 +550,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F3: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_VOLU);
@@ -487,7 +563,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F4: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_MUTE);
@@ -500,7 +576,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F5: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_MSTP);
@@ -513,7 +589,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F6: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_MPRV);
@@ -526,7 +602,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F7: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_MPLY);
@@ -539,7 +615,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F8: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_MNXT);
@@ -552,7 +628,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F9: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_MAIL);
@@ -565,7 +641,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F10: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_WHOM);
@@ -578,7 +654,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F11: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_CALC);
@@ -591,7 +667,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_F12: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code16(KC_WSCH);
@@ -604,7 +680,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_1: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F1);
@@ -623,7 +699,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_2: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F2);
@@ -642,7 +718,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_3: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F3);
@@ -663,7 +739,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_4: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F4);
@@ -684,7 +760,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_5: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F5);
@@ -701,7 +777,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_6: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F6);
@@ -718,7 +794,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_7: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F7);
@@ -737,7 +813,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_8: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F8);
@@ -756,7 +832,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_9: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F9);
@@ -775,7 +851,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_0: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F10);
@@ -794,7 +870,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_MINS: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F11);
@@ -813,7 +889,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             return true;
         } break;
         case KC_EQL: {
-            if (confinfo.filp) {
+            if ((stock_board_flags & 0x10)) {
                 if (!keymap_is_mac_system()) {
                     if (record->event.pressed) {
                         register_code(KC_F12);
@@ -833,8 +909,8 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
         } break;
         case KC_FILP: {
             if (record->event.pressed) {
-                confinfo.filp = !confinfo.filp;
-                eeconfig_confinfo_update(confinfo.raw);
+                stock_board_flags ^= 0x10;
+                eeconfig_update_user(stock_board_flags);
             }
             return false;
         } break;
@@ -842,28 +918,18 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
         case HS_BATQ:
             stock_battery_key(keycode, record->event.pressed, confinfo.devs != DEVS_USB);
             return false;
-        case QK_BOOT: {
-            if (record->event.pressed) {
-                dprintf("into boot!!!\r\n");
-                eeconfig_disable();
-                bootloader_jump();
-            }
-        } break;
 
         case NK_TOGG: {
-            if (rgbrec_is_started()) {
-                return false;
-            }
             if (record->event.pressed) {
                 rgb_matrix_hs_indicator_set(0xFF, (RGB){0x00, 0x6E, 0x00}, 250, 1);
             }
         } break;
         case RL_MOD: {
-            if (rgbrec_is_started()) {
-                return false;
-            }
             if (record->event.pressed) {
-                rgb_matrix_step();
+                stock_lighting_step();
+                master_to_slave_t request  = {.cmd = 0xA6};
+                slave_to_master_t response = {0};
+                (void)transaction_rpc_exec(USER_SYNC_MMS, sizeof(request), &request, sizeof(response), &response);
             }
 
             return false;
@@ -879,38 +945,30 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
         } break;
         case RM_SPDU: {
             if (record->event.pressed) {
-                if (rgb_matrix_get_speed() >= 215) {
+                if (rgb_matrix_get_speed() == 255) {
                     rgb_blink_dir();
                 }
             }
         } break;
         case RM_SPDD: {
             if (record->event.pressed) {
-                if (rgb_matrix_get_speed() <= 95) {
+                if (rgb_matrix_get_speed() <= 51) {
                     rgb_blink_dir();
+                    rgb_matrix_set_speed(51);
+                    return false;
                 }
             }
         } break;
         case RM_VALU: {
             if (record->event.pressed) {
-                rgb_matrix_enable();
-                gpio_write_pin_high(LED_POWER_EN_PIN);
-                gpio_write_pin_high(LED_POWER_EN2_PIN);
-                if (rgb_matrix_get_speed() >= 120) {
+                if (rgb_matrix_get_val() >= 64) {
                     rgb_blink_dir();
                 }
             }
         } break;
         case RM_VALD: {
             if (record->event.pressed) {
-                if (rgb_matrix_get_val() <= RGB_MATRIX_VAL_STEP) {
-                    gpio_write_pin_low(LED_POWER_EN_PIN);
-                    gpio_write_pin_low(LED_POWER_EN2_PIN);
-                    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; i++) {
-                        rgb_matrix_set_color(i, 0, 0, 0);
-                    }
-                }
-                if (rgb_matrix_get_speed() <= 30) {
+                if (rgb_matrix_get_val() <= 16) {
                     rgb_blink_dir();
                 }
             }
@@ -955,7 +1013,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
         } break;
         case KC_LCMD: {
             if (keymap_is_mac_system()) {
-                if (keymap_config.no_gui && !rgbrec_is_started()) {
+                if (keymap_config.no_gui) {
                     if (record->event.pressed) {
                         register_code16(KC_LCMD);
                     } else {
@@ -968,7 +1026,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
         } break;
         case KC_RCMD: {
             if (keymap_is_mac_system()) {
-                if (keymap_config.no_gui && !rgbrec_is_started()) {
+                if (keymap_config.no_gui) {
                     if (record->event.pressed) {
                         register_code16(KC_RCMD);
                     } else {
@@ -989,6 +1047,11 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
 // Saved maps from pre-0.28 QMK used underglow codes for matrix lighting.
 // Pass their translated value through both the board hooks and upstream handler.
 bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+    if (record->event.pressed) lpwr_activity_trigger();
+    stock_power_key(record->event.pressed);
+    // V15 board gate 0x08005420 runs before ordinary key processing. Special
+    // controls remain available for reconnecting; report delivery is not gated.
+    if (confinfo.devs != DEVS_USB && *md_getp_state() != MD_STATE_CONNECTED && keycode >= 4 && keycode <= 0xA4) return false;
     uint16_t translated = gmk70_rgb_keycode(keycode);
     if (!process_gmk70_record(translated, record)) {
         return false;
@@ -997,6 +1060,16 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
 }
 
 void housekeeping_task_user(void) { // loop
+    if (is_keyboard_master() && lpwr_get_state() == LPWR_NORMAL) {
+        if (stock_bootloader_pending) {
+            stock_bootloader_pending = false;
+            reset_keyboard();
+        }
+        if (stock_reset_pending && !smsg_is_busy()) {
+            stock_reset_pending = false;
+            hs_reset_settings();
+        }
+    }
 #ifdef GMK70_SPLIT_UPDATE
     gmk_update_task();
 #endif
@@ -1019,7 +1092,6 @@ void housekeeping_task_user(void) { // loop
     if (!hs_current_time || timer_elapsed32(hs_current_time) > 1000) {
         hs_current_time = timer_read32();
         md_send_devctrl(hs_now_mode);
-        md_send_devctrl(MD_SND_CMD_DEVCTRL_INQVOL);
     }
 
     if (is_keyboard_master()) {
@@ -1056,6 +1128,7 @@ void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) {
 
     if (confinfo.devs != wireless_get_current_devs()) {
         confinfo.devs = wireless_get_current_devs();
+        if (confinfo.devs) confinfo.previous_devs = confinfo.devs;
         if (confinfo.devs >= DEVS_BT1 && confinfo.devs <= DEVS_BT5) confinfo.last_btdevs = confinfo.devs;
         eeconfig_confinfo_update(confinfo.raw);
     }
@@ -1193,10 +1266,10 @@ void bat_indicators(void) {
 
     if (charging_state && (bat_full_flag)) {
         battery_process_time = 0;
-        if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0xFF, 0x00, 0x00);
+        if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0x00, 80, 0x00);
     } else if (charging_state) {
         battery_process_time = 0;
-        if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0x00, 0xFF, 0x00);
+        if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 80, 0x00, 0x00);
     } else if (*md_getp_bat() <= BATTERY_CAPACITY_LOW) {
         rgb_matrix_hs_bat_set(HS_MATRIX_BLINK_INDEX_BAT, (RGB){0xFF, 0x00, 0x00}, 250, 1);
 
@@ -1325,20 +1398,17 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max) {
         ee_clr_timer = 0;
     }
 
-    if (host_keyboard_led_state().caps_lock) rgb_matrix_set_color(HS_RGB_INDEX_CAPS, 0x20, 0x20, 0x20);
+    stock_lighting_render();
+    if ((stock_board_flags & 0x10)) rgb_matrix_set_color(32, 80, 80, 80);
+    stock_battery_render(pov);
+    if (host_keyboard_led_state().caps_lock) rgb_matrix_set_color(HS_RGB_INDEX_CAPS, 80, 80, 80);
 
-    if (!keymap_is_mac_system() && keymap_config.no_gui) rgb_matrix_set_color(HS_RGB_INDEX_WIN_LOCK, 0x20, 0x20, 0x20);
-
-#ifdef RGBLIGHT_ENABLE
-    if (rgb_matrix_indicators_advanced_rgblight(led_min, led_max) != true) {
-        return false;
-    }
-#endif
+    if (!keymap_is_mac_system() && keymap_config.no_gui) rgb_matrix_set_color(HS_RGB_INDEX_WIN_LOCK, 80, 80, 80);
 
 #ifdef WIRELESS_ENABLE
     rgb_matrix_wls_indicator();
 
-    if (enable_bat_indicators && !inqbat_flag && !rgbrec_is_started()) {
+    if (enable_bat_indicators && !inqbat_flag) {
         rgb_matrix_hs_bat();
         bat_indicators();
         bat_indicator_cnt = timer_read32();
@@ -1354,8 +1424,6 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max) {
 #endif
 
     rgb_matrix_hs_indicator();
-    if (confinfo.filp) rgb_matrix_set_color(32, RGB_MATRIX_MAXIMUM_BRIGHTNESS, RGB_MATRIX_MAXIMUM_BRIGHTNESS, RGB_MATRIX_MAXIMUM_BRIGHTNESS);
-    stock_battery_render(pov);
     return true;
 }
 
@@ -1399,7 +1467,14 @@ void hs_reset_settings(void) {
         return;
     }
     hs_rgb_blink_set_timer(timer_read32());
-    keyboard_post_init_kb();
+    // Stock settings reset does not create another radio thread or re-register
+    // split transactions. Restore state in the existing keyboard instance.
+    eeconfig_confinfo_init();
+#ifdef VIA_ENABLE
+    dynamic_keymap_reset();
+    dynamic_keymap_macro_reset();
+    via_eeprom_set_valid(true);
+#endif
 }
 
 void lpwr_wakeup_hook(void) {
@@ -1450,6 +1525,20 @@ void user_sync_mms_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t
         case 0xDD:
             hs_reset_settings();
             s2m->resp = 0x00;
+            break;
+        case 0xA6:
+            stock_lighting_step();
+            s2m->resp = 0;
+            break;
+        case 0xAE:
+        case 0xAF:
+            stock_gui_lock(m2s->cmd == 0xAE);
+            s2m->resp = 0;
+            break;
+        case 0xC1:
+        case 0xC2:
+            stock_matrix_power(m2s->cmd == 0xC1);
+            s2m->resp = 0;
             break;
         default:
             break;

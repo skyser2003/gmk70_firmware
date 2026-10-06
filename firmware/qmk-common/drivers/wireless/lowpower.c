@@ -11,7 +11,7 @@
 #endif
 
 #ifndef LPWR_PRESLEEP_DELAY
-#    define LPWR_PRESLEEP_DELAY 200
+#    define LPWR_PRESLEEP_DELAY 0
 #endif
 
 #ifndef LPWR_STOP_DELAY
@@ -26,10 +26,14 @@ static lpwr_state_t    lpwr_state         = LPWR_NORMAL;
 static lpwr_mode_t     lpwr_mode          = LPWR_MODE_TIMEOUT;
 static uint32_t        lpwr_timeout_value = LPWR_TIMEOUT;
 static uint32_t        lpwr_timestamp     = 0x00;
-static lpwr_wakeupcd_t lpwr_wakeupcd      = LPWR_WAKEUP_NONE;
-static bool            manual_timeout     = false;
+static uint32_t        lpwr_activity_timestamp;
+static lpwr_wakeupcd_t lpwr_wakeupcd  = LPWR_WAKEUP_NONE;
+static bool            manual_timeout = false;
 
 static bool rgb_enable_bak = false;
+
+void lpwr_state_changed_hook(void) __attribute__((weak));
+void lpwr_state_changed_hook(void) {}
 
 void last_matrix_activity_trigger(void);
 
@@ -46,7 +50,11 @@ lpwr_state_t lpwr_get_state(void) {
 
 void lpwr_set_state(lpwr_state_t state) {
     if (lpwr_state != state) split_diagnostics_event(SPLIT_DIAG_STATE, lpwr_state, state, manual_timeout);
-    lpwr_state = state;
+    lpwr_state     = state;
+    manual_timeout = false;
+    lpwr_update_timestamp();
+    lpwr_activity_trigger();
+    lpwr_state_changed_hook();
 }
 
 lpwr_mode_t lpwr_get_mode(void) {
@@ -67,6 +75,10 @@ uint32_t lpwr_timeout_value_read(void) {
 
 void lpwr_update_timestamp(void) {
     lpwr_timestamp = sync_timer_read32();
+}
+
+void lpwr_activity_trigger(void) {
+    lpwr_activity_timestamp = sync_timer_read32();
 }
 
 uint32_t lpwr_timestamp_read(void) {
@@ -114,10 +126,15 @@ bool lpwr_get_timeout_manual(void) {
 }
 
 // 2.4g mode, host state
+bool lpwr_host_resume_allowed_hook(void) __attribute__((weak));
+bool lpwr_host_resume_allowed_hook(void) {
+    return true;
+}
+
 void md_receive_host_cb(bool resume) {
     split_diagnostics_event(SPLIT_DIAG_HOST, resume, lpwr_state, manual_timeout);
     if (resume) {
-        if (lpwr_get_state() != LPWR_NORMAL) {
+        if (lpwr_host_resume_allowed_hook() && (lpwr_get_state() == LPWR_PRESLEEP || lpwr_get_state() == LPWR_STOP)) {
             lpwr_update_timestamp();
             lpwr_set_state(LPWR_WAKEUP);
         }
@@ -147,9 +164,9 @@ bool lpwr_is_allow_timeout(void) {
         return false;
     }
 
-    if (manual_timeout || (timeout && (last_input_activity_elapsed() >= timeout))) {
+    if (manual_timeout || (timeout && (sync_timer_elapsed32(lpwr_activity_timestamp) >= timeout))) {
 #ifdef GMK70_SPLIT_DIAGNOSTICS
-        const uint32_t idle_seconds = last_input_activity_elapsed() / 1000;
+        const uint32_t idle_seconds = sync_timer_elapsed32(lpwr_activity_timestamp) / 1000;
         split_diagnostics_event(SPLIT_DIAG_TIMEOUT, manual_timeout, idle_seconds > UINT8_MAX ? UINT8_MAX : idle_seconds, wireless_get_current_devs());
 #endif
         manual_timeout = false;

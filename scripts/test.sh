@@ -14,6 +14,27 @@ cc "${common_flags[@]}" tests/qmk/update_test.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
     -o artifacts/tests/qmk/updater
 artifacts/tests/qmk/updater
+cc "${common_flags[@]}" -Itests/qmk/module_stubs \
+    '-DPRODUCT="ZUOYA GMK70"' '-DMANUFACTURER="HS"' \
+    -DVENDOR_ID=0x342d -DPRODUCT_ID=0xe491 \
+    tests/qmk/module_test.c firmware/qmk-common/drivers/wireless/module.c \
+    firmware/qmk-common/drivers/wireless/smsg.c -o artifacts/tests/qmk/module
+artifacts/tests/qmk/module
+cc "${common_flags[@]}" tests/qmk/stock_power_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/stock_power.c -o artifacts/tests/qmk/stock-power
+artifacts/tests/qmk/stock-power
+settings_flags=(
+    -Itests/qmk/stock_settings_stubs -Idependencies/qmk/platforms
+    -Idependencies/qmk/quantum/rgblight -Idependencies/qmk/quantum/rgb_matrix
+    -DEEPROM_TEST_HARNESS -DVIA_ENABLE -DRGBLIGHT_LED_COUNT=6
+    -DMATRIX_ROWS=10 -DMATRIX_COLS=9 -DRGB_MATRIX_LED_COUNT=77
+)
+cc "${settings_flags[@]}" "${common_flags[@]}" tests/qmk/stock_eeprom_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/stock_eeprom.c -o artifacts/tests/qmk/stock-eeprom
+artifacts/tests/qmk/stock-eeprom
+cc "${settings_flags[@]}" "${common_flags[@]}" tests/qmk/stock_lighting_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/stock_lighting.c -o artifacts/tests/qmk/stock-lighting
+artifacts/tests/qmk/stock-lighting
 cc -Itests/qmk/lowpower_stubs "${common_flags[@]}" -DRGB_MATRIX_ENABLE \
     tests/qmk/lowpower_test.c firmware/qmk-common/drivers/wireless/lowpower.c \
     -o artifacts/tests/qmk/lowpower
@@ -47,7 +68,7 @@ cc "${common_flags[@]}" -Itests/qmk/stock_battery_stubs \
     -o artifacts/tests/qmk/stock-battery
 artifacts/tests/qmk/stock-battery
 cc "${common_flags[@]}" tests/qmk/stock_via_test.c \
-    firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/stock-via
+    tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/stock-via
 artifacts/tests/qmk/stock-via
 for profile in release debug; do
     profile_flags=()
@@ -56,7 +77,7 @@ for profile in release debug; do
     fi
     cc "${common_flags[@]}" -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs \
         -DRAW_ENABLE "${profile_flags[@]}" tests/qmk/usb_bootloader_test.c \
-        firmware/qmk-via/compat/stock_via.c firmware/qmk-common/drivers/wireless/md_raw.c \
+        tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c firmware/qmk-common/drivers/wireless/md_raw.c \
         -Wl,--wrap=raw_hid_send -o "artifacts/tests/qmk/usb-bootloader-$profile"
     "artifacts/tests/qmk/usb-bootloader-$profile"
     cc -Itests/qmk/update_stubs "${common_flags[@]}" -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs \
@@ -64,14 +85,14 @@ for profile in release debug; do
         firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
         firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
         firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
-        firmware/qmk-via/compat/stock_via.c firmware/qmk-common/drivers/wireless/md_raw.c \
+        tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c firmware/qmk-common/drivers/wireless/md_raw.c \
         -Wl,--wrap=raw_hid_send -o "artifacts/tests/qmk/update-adapter-$profile"
     "artifacts/tests/qmk/update-adapter-$profile"
 done
 cc "${common_flags[@]}" -Itests/qmk/split_diagnostic_stubs -DGMK70_SPLIT_DIAGNOSTICS \
     tests/qmk/split_diagnostics_test.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/split_diagnostics.c \
-    firmware/qmk-via/compat/stock_via.c \
+    tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c \
     -o artifacts/tests/qmk/split-diagnostics
 artifacts/tests/qmk/split-diagnostics
 cc -Itests/qmk/output_stubs -Idependencies/qmk/drivers/led "${common_flags[@]}" \

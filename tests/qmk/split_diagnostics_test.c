@@ -63,7 +63,7 @@ static void test_getter_boundary(void) {
     }
     for (unsigned command = 0; command <= UINT8_MAX; ++command) {
         data[0] = command;
-        if (command != 2) assert(!via_command_kb(data, 32));
+        if (command != 2 && command != 1 && command != 0x0A && command != 0x0B && command != 0x21) assert(!via_command_kb(data, 32));
     }
     data[0] = 2;
     for (uint8_t i = 3; i < 32; ++i) {

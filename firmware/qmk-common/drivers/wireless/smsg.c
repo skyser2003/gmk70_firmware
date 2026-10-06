@@ -3,6 +3,9 @@
 
 #include "smsg.h"
 #include <string.h>
+#ifdef GMK70_RADIO_THREAD
+#    include "ch.h"
+#endif
 
 #ifndef SMSG_NUM
 #    define SMSG_NUM 40
@@ -43,7 +46,7 @@ void smsg_init(void) {
     smsg_instance.state     = smsg_state_free;
 }
 
-bool smsg_push(uint8_t *buf, uint32_t size) {
+static bool smsg_push_locked(uint8_t *buf, uint32_t size) {
     if (smsg_instance.in_ptr == END_PTR) {
         if (smsg_instance.ptr == smsg_instance.out_ptr) {
             return false;
@@ -73,6 +76,17 @@ bool smsg_push(uint8_t *buf, uint32_t size) {
     }
 
     return true;
+}
+
+bool smsg_push(uint8_t *buf, uint32_t size) {
+#ifdef GMK70_RADIO_THREAD
+    chSysLock();
+#endif
+    bool accepted = smsg_push_locked(buf, size);
+#ifdef GMK70_RADIO_THREAD
+    chSysUnlock();
+#endif
+    return accepted;
 }
 
 uint32_t smsg_peek(uint8_t *buf) {

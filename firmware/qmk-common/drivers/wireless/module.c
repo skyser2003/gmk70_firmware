@@ -5,6 +5,10 @@
 #include "module.h"
 #include "smsg.h"
 #include "uart.h"
+#ifdef GMK70_RADIO_THREAD
+#    include "ch.h"
+static MUTEX_DECL(md_uart_mutex);
+#endif
 
 #ifndef MD_BAUD_RATE
 #    define MD_BAUD_RATE 115200
@@ -15,7 +19,7 @@
 #endif
 
 #ifndef MD_SEND_PKT_RETRY
-#    define MD_SEND_PKT_RETRY 40
+#    define MD_SEND_PKT_RETRY 50
 #endif
 
 #ifndef MD_SEND_PKT_PAYLOAD_MAX
@@ -62,6 +66,7 @@ typedef struct {
     uint8_t indicator;
     uint8_t version;
     uint8_t bat;
+    bool    inhibit_reports;
 } md_info_t;
 
 static uint8_t md_pkt_payload[MD_SEND_PKT_PAYLOAD_MAX] = {0};
@@ -75,9 +80,15 @@ static md_info_t md_info = {
     .state     = MD_STATE_NONE,
 };
 
+static uint8_t  selected_device;
+static uint8_t  status_context;
+static uint32_t smsg_timer;
+static uint8_t  smsg_retry;
+static uint8_t  smsg_limit;
+
 static void md_send_ack(void) {
     uint8_t sdata[0x03] = {0x61, 0x0D, 0x0A};
-    uart_transmit(sdata, sizeof(sdata));
+    md_send_pkt(sdata, sizeof(sdata));
 }
 
 static bool md_check_sum(const uint8_t *data, uint32_t length) {
@@ -159,11 +170,16 @@ static void md_receive_msg_task(void) {
 
                 // raw data
                 if ((md_rev_payload[0] == MD_REV_CMD_RAW) && (md_rev_payload[1] == MD_REV_CMD_RAW_OUT)) {
+                    if (data > MD_RAW_SIZE) {
+                        data_count = 0;
+                        continue;
+                    }
                     md_rev_payload[data_count++] = data;
                     data_remain                  = data + 1;
                     continue;
                 }
             }
+                __attribute__((fallthrough));
             default: {
                 md_rev_payload[data_count++] = data;
                 data_remain--;
@@ -198,18 +214,24 @@ static void md_receive_msg_task(void) {
                     md_info.indicator = md_rev_payload[1];
                 } break;
                 case MD_REV_CMD_DEVCTRL: {
+                    // V15 accepts status only for a dispatched channel command.
+                    if (!status_context || status_context != selected_device) break;
                     switch (md_rev_payload[1]) {
                         case MD_REV_CMD_DEVCTRL_PAIRING: {
-                            md_info.state = MD_STATE_PAIRING;
+                            md_info.state           = MD_STATE_PAIRING;
+                            md_info.inhibit_reports = true;
                         } break;
                         case MD_REV_CMD_DEVCTRL_CONNECTED: {
-                            md_info.state = MD_STATE_CONNECTED;
+                            md_info.state           = MD_STATE_CONNECTED;
+                            md_info.inhibit_reports = false;
                         } break;
                         case MD_REV_CMD_DEVCTRL_DISCONNECTED: {
-                            md_info.state = MD_STATE_DISCONNECTED;
+                            md_info.state           = MD_STATE_DISCONNECTED;
+                            md_info.inhibit_reports = false;
                         } break;
                         case MD_REV_CMD_DEVCTRL_REJECT: {
-                            md_info.state = MD_STATE_REJECT;
+                            md_info.state           = MD_STATE_REJECT;
+                            md_info.inhibit_reports = false;
                         } break;
                         default:
                             break;
@@ -233,30 +255,37 @@ static void md_receive_msg_task(void) {
 }
 
 static void md_send_pkt_task(void) {
-    static uint32_t smsg_timer = 0x00;
-    static uint8_t  smsg_retry = 0;
-
     switch (smsg_get_state()) {
         case smsg_state_busy: {
             if (sync_timer_elapsed32(smsg_timer) > (MD_SNED_PKT_TIMEOUT)) {
-                smsg_retry = 0;
                 smsg_set_state(smsg_state_retry);
             }
         } break;
         case smsg_state_retry: {
-            if (++smsg_retry > MD_SEND_PKT_RETRY) {
+            if (++smsg_retry > smsg_limit) {
                 smsg_retry = 0;
                 smsg_pop();
             }
             smsg_set_state(smsg_state_free);
         } break;
         case smsg_state_replied: {
+            smsg_retry = 0;
             smsg_pop();
             smsg_set_state(smsg_state_free);
-        } // break;
+        }
+            __attribute__((fallthrough));
         case smsg_state_free: {
             uint32_t size = smsg_peek(md_pkt_payload);
             if (size) {
+                if (!smsg_retry) {
+                    smsg_limit = MD_SEND_PKT_RETRY;
+                    if (md_pkt_payload[0] == MD_SND_CMD_DEVCTRL) {
+                        const uint8_t command = md_pkt_payload[1];
+                        if ((command >= MD_SND_CMD_DEVCTRL_2G4 && command <= MD_SND_CMD_DEVCTRL_BT5) || command == MD_SND_CMD_DEVCTRL_PAIR || command == MD_SND_CMD_DEVCTRL_CLEAN) status_context = selected_device;
+                        if (command == MD_SND_CMD_DEVCTRL_PAIR) md_info.inhibit_reports = true;
+                        if (command == MD_SND_CMD_DEVCTRL_INQVOL) smsg_limit = 1;
+                    }
+                }
                 md_send_pkt(md_pkt_payload, size);
                 smsg_timer = sync_timer_read32();
                 smsg_set_state(smsg_state_busy);
@@ -267,11 +296,33 @@ static void md_send_pkt_task(void) {
     }
 }
 
+#ifdef GMK70_RADIO_THREAD
+static THD_WORKING_AREA(md_worker_stack, 1024);
+static bool md_worker_started;
+static THD_FUNCTION(md_worker, arg) {
+    (void)arg;
+    for (;;) {
+        md_main_task();
+        // V15 sleeps five ticks at 100 kHz; round up on a coarser QMK kernel.
+        chThdSleep(TIME_US2I(50));
+    }
+}
+#endif
+
 void md_init(void) {
     uart_init(MD_BAUD_RATE);
     smsg_init();
+    smsg_timer      = 0;
+    smsg_retry      = 0;
+    selected_device = status_context = 0;
 
     memset(md_pkt_payload, 0, sizeof(md_pkt_payload));
+#ifdef GMK70_RADIO_THREAD
+    if (!md_worker_started) {
+        md_worker_started = true;
+        chThdCreateStatic(md_worker_stack, sizeof(md_worker_stack), HIGHPRIO, md_worker, NULL);
+    }
+#endif
 }
 
 void md_main_task(void) {
@@ -295,13 +346,23 @@ uint8_t md_get_version(void) {
     return md_info.version;
 }
 
+bool md_reports_inhibited(void) {
+    return md_info.inhibit_reports;
+}
+
 void md_send_pkt(uint8_t *data, uint32_t len) {
     if (!data || !len) {
         return;
     }
 
     // send
+#ifdef GMK70_RADIO_THREAD
+    chMtxLock(&md_uart_mutex);
+#endif
     uart_transmit(data, len);
+#ifdef GMK70_RADIO_THREAD
+    chMtxUnlock(&md_uart_mutex);
+#endif
 }
 
 void md_send_kb(uint8_t *data) {
@@ -310,7 +371,7 @@ void md_send_kb(uint8_t *data) {
     sdata[0] = MD_SND_CMD_SEND_KB;
     memcpy(&sdata[1], data, sizeof(sdata) - 2);
     md_calc_check_sum(sdata, sizeof(sdata) - 1);
-    smsg_push(sdata, sizeof(sdata));
+    if (!md_reports_inhibited()) md_send_pkt(sdata, sizeof(sdata));
 }
 
 void md_send_nkro(uint8_t *data) {
@@ -319,7 +380,7 @@ void md_send_nkro(uint8_t *data) {
     sdata[0] = MD_SND_CMD_SEND_NKRO;
     memcpy(&sdata[1], data, sizeof(sdata) - 2);
     md_calc_check_sum(sdata, sizeof(sdata) - 1);
-    smsg_push(sdata, sizeof(sdata));
+    if (!md_reports_inhibited()) md_send_pkt(sdata, sizeof(sdata));
 }
 
 void md_send_consumer(uint8_t *data) {
@@ -328,7 +389,7 @@ void md_send_consumer(uint8_t *data) {
     sdata[0] = MD_SND_CMD_SEND_CONSUMER;
     memcpy(&sdata[1], data, sizeof(sdata) - 2);
     md_calc_check_sum(sdata, sizeof(sdata) - 1);
-    smsg_push(sdata, sizeof(sdata));
+    if (!md_reports_inhibited()) md_send_pkt(sdata, sizeof(sdata));
 }
 
 void md_send_system(uint8_t *data) {
@@ -337,7 +398,7 @@ void md_send_system(uint8_t *data) {
     sdata[0] = MD_SND_CMD_SEND_SYSTEM;
     memcpy(&sdata[1], data, sizeof(sdata) - 2);
     md_calc_check_sum(sdata, sizeof(sdata) - 1);
-    smsg_push(sdata, sizeof(sdata));
+    if (!md_reports_inhibited()) md_send_pkt(sdata, sizeof(sdata));
 }
 
 void md_send_fn(uint8_t *data) {
@@ -346,7 +407,7 @@ void md_send_fn(uint8_t *data) {
     sdata[0] = MD_SND_CMD_SEND_FN;
     memcpy(&sdata[1], data, sizeof(sdata) - 2);
     md_calc_check_sum(sdata, sizeof(sdata) - 1);
-    smsg_push(sdata, sizeof(sdata));
+    if (!md_reports_inhibited()) md_send_pkt(sdata, sizeof(sdata));
 }
 
 void md_send_mouse(uint8_t *data) {
@@ -355,7 +416,7 @@ void md_send_mouse(uint8_t *data) {
     sdata[0] = MD_SND_CMD_SEND_MOUSE;
     memcpy(&sdata[1], data, sizeof(sdata) - 2);
     md_calc_check_sum(sdata, sizeof(sdata) - 1);
-    smsg_push(sdata, sizeof(sdata));
+    if (!md_reports_inhibited()) md_send_pkt(sdata, sizeof(sdata));
 }
 
 void md_send_devinfo(const char *name) {
@@ -371,7 +432,7 @@ void md_send_devinfo(const char *name) {
 
     memcpy(&sdata[2], name, infolen);
     md_calc_check_sum(sdata, infolen + 2);
-    smsg_push(sdata, sizeof(sdata));
+    smsg_push(sdata, infolen + 3);
 }
 
 void md_send_devctrl(uint8_t cmd) {
@@ -440,6 +501,7 @@ void md_send_raw(uint8_t *data, uint8_t length) {
 
 void md_devs_change(uint8_t devs, bool reset) __attribute__((weak));
 void md_devs_change(uint8_t devs, bool reset) {
+    selected_device = devs;
     switch (devs) {
         case DEVS_USB: {
             md_send_devctrl(MD_SND_CMD_DEVCTRL_USB);

@@ -121,7 +121,7 @@ class UsbLink:
             for item in self._hid.enumerate(0x342D, 0xE491)
             if item["usage_page"] == 0xFF60
             and item["usage"] == 0x61
-            and item["manufacturer_string"] == "LEO"
+            and item["manufacturer_string"] in ("HS", "LEO")
         ]
         if len(candidates) != 1:
             raise RuntimeError(

@@ -8,7 +8,7 @@
 #include "transport.h"
 
 #ifndef USB_POWER_DOWN_DELAY
-#    define USB_POWER_DOWN_DELAY 3000
+#    define USB_POWER_DOWN_DELAY 7000
 #endif
 
 extern host_driver_t chibios_driver;

@@ -71,13 +71,7 @@ bool stock_battery_charging_requested(void) {
 // percentage supplied by 0x55 instead of the receiving half's local radio.
 void stock_battery_render(uint8_t percentage) {
     if (!level_requested) return;
-#ifdef RGBLIGHT_ENABLE
-    for (uint8_t i = 0; i < (RGB_MATRIX_LED_COUNT - RGBLED_NUM); i++) {
-        rgb_matrix_set_color(i, 0, 0, 0);
-    }
-#else
     rgb_matrix_set_color_all(0, 0, 0);
-#endif
     static const uint8_t indices[10] = RGB_MATRIX_BAT_INDEX_MAP;
     for (uint8_t i = 0; i < 10; ++i) {
         if (i < percentage / 10 || i == 0) {
