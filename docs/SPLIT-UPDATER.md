@@ -17,6 +17,11 @@ firmware. Only debug exposes the USB entry point; a release left half cannot
 initiate this procedure. The supplied host tool keeps the left on debug so it
 can verify completion and support future updates.
 
+These builds also provide [read-only EEPROM queries](EEPROM-QUERIES.md) for either
+half through the same USB bridge and RPC. Use `scripts/read-eeprom.sh` to capture
+stored mappings, macros and settings. The query extension requires both new
+applications but preserves the installed resident installer and update ABI.
+
 This is an application updater, not forwarding of the factory USB DFU protocol.
 It does not update the radio module, receiver dongle, factory ROM bootloader,
 external EEPROM, saved VIA maps, or resident installer. It accepts only packages

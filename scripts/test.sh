@@ -81,10 +81,12 @@ for profile in release debug; do
         -Wl,--wrap=raw_hid_send -o "artifacts/tests/qmk/usb-bootloader-$profile"
     "artifacts/tests/qmk/usb-bootloader-$profile"
     cc -Itests/qmk/update_stubs "${common_flags[@]}" -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs \
-        -DRAW_ENABLE -DGMK70_SPLIT_UPDATE "${profile_flags[@]}" tests/qmk/update_adapter_test.c \
+        -DRAW_ENABLE -DGMK70_SPLIT_UPDATE -DEEPROM_CUSTOM -DEEPROM_SIZE=4096 -Idependencies/qmk/platforms \
+        "${profile_flags[@]}" tests/qmk/update_adapter_test.c \
         firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
         firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
         firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
+        firmware/qmk-common/keyboards/zuoya/gmk70/update/eeprom_query.c \
         tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c firmware/qmk-common/drivers/wireless/md_raw.c \
         -Wl,--wrap=raw_hid_send -o "artifacts/tests/qmk/update-adapter-$profile"
     "artifacts/tests/qmk/update-adapter-$profile"

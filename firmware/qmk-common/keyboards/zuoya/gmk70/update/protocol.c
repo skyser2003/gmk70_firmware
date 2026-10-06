@@ -3,8 +3,17 @@
 #include <string.h>
 
 bool gmk_packet_valid(const uint8_t request[GMK_PACKET_SIZE]) {
-    if (request[0] != GMK_UPDATE_COMMAND || request[1] != 0x70 || request[2] != GMK_UPDATE_ABI || request[3] > 1 || request[4] < GMK_STATUS || request[4] > GMK_INFO || request[5] > GMK_DATA_SIZE || request[6] || request[7]) return false;
+    if (request[0] != GMK_UPDATE_COMMAND || request[1] != 0x70 || request[2] != GMK_UPDATE_ABI || request[3] > 1 || request[4] < GMK_STATUS || request[4] > GMK_EEPROM_READ || request[5] > GMK_DATA_SIZE || request[6] || request[7]) return false;
     uint8_t count = request[5];
+    if (request[4] == GMK_EEPROM_INFO || request[4] == GMK_EEPROM_READ) {
+        if (!gmk_read_u32(request + 8)) return false;
+        if (request[4] == GMK_EEPROM_INFO && (count || gmk_read_u32(request + 12))) return false;
+        if (request[4] == GMK_EEPROM_READ && !count) return false;
+        // READ's count describes the response; it carries no request payload.
+        for (unsigned i = 16; i < GMK_PACKET_SIZE; ++i)
+            if (request[i]) return false;
+        return true;
+    }
     if ((request[4] == GMK_BEGIN && count != 12) || (request[4] == GMK_DATA && count == 0) || (request[4] != GMK_BEGIN && request[4] != GMK_DATA && count != 0)) return false;
     for (unsigned i = 16 + count; i < GMK_PACKET_SIZE; ++i)
         if (request[i]) return false;
@@ -17,7 +26,8 @@ static gmk_update_result_t flash_failure(gmk_update_t *update) {
 }
 
 gmk_update_result_t gmk_update_process(gmk_update_t *update, const uint8_t request[GMK_PACKET_SIZE]) {
-    if (!gmk_packet_valid(request)) return GMK_BAD_REQUEST;
+    // EEPROM queries belong to the read-only QMK service, never the installer.
+    if (!gmk_packet_valid(request) || request[4] > GMK_INFO) return GMK_BAD_REQUEST;
     uint32_t session = gmk_read_u32(request + 8);
     uint32_t offset  = gmk_read_u32(request + 12);
     uint8_t  op      = request[4];

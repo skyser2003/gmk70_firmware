@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "qmk_update.h"
 #include "protocol.h"
+#include "eeprom_query.h"
 #include "quantum.h"
 #include "transactions.h"
 #include "wireless.h"
@@ -20,7 +21,7 @@ bool gmk_update_active(void) {
 }
 
 // The split transport calls this in its high-priority thread. Only copy RAM here;
-// flash programming and CRC checks run later in the normal housekeeping task.
+// flash programming, EEPROM reads and CRC checks run in normal housekeeping.
 static void receive(const uint8_t *request, uint8_t *response) {
     chSysLock();
     if (!gmk_packet_valid(request)) {
@@ -73,10 +74,16 @@ void gmk_update_task(void) {
     chSysLock();
     memcpy(request, queued, GMK_PACKET_SIZE);
     chSysUnlock();
-    gmk_update_result_t result = GMK_UNAVAILABLE;
-    if (wireless_get_current_devs() == DEVS_USB) result = gmk_update_process(&update, request);
-    uint8_t response[GMK_PACKET_SIZE];
-    gmk_update_response(&update, request, result, response);
+    bool                eeprom_query = request[4] == GMK_EEPROM_INFO || request[4] == GMK_EEPROM_READ;
+    gmk_update_result_t result       = GMK_UNAVAILABLE;
+    uint8_t             response[GMK_PACKET_SIZE];
+    if (eeprom_query) {
+        if (wireless_get_current_devs() == DEVS_USB) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
+        gmk_eeprom_query(request, result, response);
+    } else {
+        if (wireless_get_current_devs() == DEVS_USB) result = gmk_update_process(&update, request);
+        gmk_update_response(&update, request, result, response);
+    }
     response[7] = (is_keyboard_left() ? 1 : 0) | (is_keyboard_master() ? 2 : 0);
     if (request[4] == GMK_INFO && result == GMK_OK) {
         // Explicit INFO only; no periodic integrity scan or background traffic.
@@ -85,7 +92,8 @@ void gmk_update_task(void) {
         gmk_write_u32(response + 16, size);
         gmk_write_u32(response + 20, gmk_crc32(gmk_flash_view(GMK_APP_BASE), size));
     }
-    last_request = timer_read32();
+    // A rejected settings query must not keep an unfinished update alive.
+    if (!eeprom_query) last_request = timer_read32();
     if (update.state == GMK_COMMITTED) reset_at = last_request;
     chSysLock();
     memcpy(last_response, response, sizeof(response));

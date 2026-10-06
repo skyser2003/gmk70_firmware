@@ -11,7 +11,7 @@ LDFLAGS += -Wl,--wrap=nvm_eeconfig_read_rgb_matrix -Wl,--wrap=nvm_eeconfig_updat
 LDFLAGS += -Wl,--wrap=nvm_eeconfig_read_rgblight -Wl,--wrap=nvm_eeconfig_update_rgblight
 ifeq ($(strip $(GMK70_SPLIT_UPDATE)), yes)
     OPT_DEFS += -DGMK70_SPLIT_UPDATE
-    SRC += update/image.c update/protocol.c update/wb32_flash.c update/qmk_update.c
+    SRC += update/image.c update/protocol.c update/wb32_flash.c update/qmk_update.c update/eeprom_query.c
 endif
 ifeq ($(strip $(VIA_ENABLE)), yes)
     SRC += stock_via.c

@@ -143,6 +143,14 @@ static void test_rejections(void) {
         assert(gmk_update_process(&update, packet) != GMK_OK);
     }
     assert(writes == 0);
+    // Read requests are valid extension packets, but cannot reach flash work in
+    // the portable update state machine or resident installer.
+    request(packet, GMK_EEPROM_INFO, 123);
+    assert(gmk_packet_valid(packet) && gmk_update_process(&update, packet) == GMK_BAD_REQUEST);
+    request(packet, GMK_EEPROM_READ, 124);
+    packet[5] = 16;
+    gmk_write_u32(packet + 12, 774);
+    assert(gmk_packet_valid(packet) && gmk_update_process(&update, packet) == GMK_BAD_REQUEST && writes == 0);
     update    = stage_image();
     installer = true;
     flash_memory[GMK_STAGE_BASE - GMK_FLASH_BASE + 700] ^= 1;

@@ -26,6 +26,11 @@ An opt-in [left-USB split updater](docs/SPLIT-UPDATER.md) is available through
 256 KB half and remains experimental pending hardware validation. Normal
 `make build` packages retain the existing memory layout and behavior.
 
+Updater builds also support [read-only EEPROM backups](docs/EEPROM-QUERIES.md)
+from either half through left USB. After installing the query-enabled applications
+on both halves, run `bash scripts/read-eeprom.sh --target both --output both-eeprom.json`
+to save mappings, encoder assignments, macro bytes and stored settings.
+
 Use Linux x86_64 or WSL2 with Git, make, curl, tar, xz, a native C compiler with address/undefined-behavior sanitizers, and Python 3.12 or newer. For example, on Ubuntu the system prerequisites are `git make curl xz-utils build-essential python3`. Docker and a system-wide ARM compiler are not required.
 
 ```sh
