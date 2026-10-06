@@ -10,7 +10,7 @@ split_diag_sample_t split_diagnostics_sample(void) {
     extern bool lower_sleep;
     return (split_diag_sample_t){
         // Same role predicate as split_role.c, without its GPIO configuration write.
-        .status = lpwr_get_state() | (lpwr_get_timeout_manual() << 2) | (gpio_read_pin(A5) << 3) | (gpio_read_pin(A8) << 4) | (lower_sleep << 6) | ((gpio_read_pin(A7) || gpio_read_pin(B9)) << 7), .device = wireless_get_current_devs(), .radio = *md_getp_state(), .wake = lpwr_get_sleep_wakeupcd(), .pins = gpio_read_pin(A7) | (gpio_read_pin(A15) << 1) | (gpio_read_pin(C15) << 2) | (gpio_read_pin(C14) << 3) | (gpio_read_pin(B9) << 4), .left = is_keyboard_left(), .connected = is_transport_connected(),
+        .status = lpwr_get_state() | (lpwr_get_timeout_manual() << 2) | (gpio_read_pin(A5) << 3) | (gpio_read_pin(A8) << 4) | (lower_sleep << 6) | ((gpio_read_pin(A7) || gpio_read_pin(B9)) << 7), .device = wireless_get_current_devs(), .radio = *md_getp_state(), .wake = lpwr_get_sleep_wakeupcd(), .pins = gpio_read_pin(A7) | (gpio_read_pin(A15) << 1) | (gpio_read_pin(C15) << 2) | (gpio_read_pin(C14) << 3) | (gpio_read_pin(B9) << 4), .left = is_keyboard_left(), .connected = is_transport_connected(), .battery = *md_getp_bat(), .sleep_selector = gmk70_stock_sleep_get(), .timeout = lpwr_timeout_value_read(),
     };
 }
 

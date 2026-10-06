@@ -22,13 +22,13 @@
 #    define LPWR_WAKEUP_DELAY 200
 #endif
 
-static lpwr_state_t    lpwr_state         = LPWR_NORMAL;
-static lpwr_mode_t     lpwr_mode          = LPWR_MODE_TIMEOUT;
-static uint32_t        lpwr_timeout_value = LPWR_TIMEOUT;
-static uint32_t        lpwr_timestamp     = 0x00;
-static uint32_t        lpwr_activity_timestamp;
-static lpwr_wakeupcd_t lpwr_wakeupcd  = LPWR_WAKEUP_NONE;
-static bool            manual_timeout = false;
+static volatile lpwr_state_t    lpwr_state         = LPWR_NORMAL;
+static lpwr_mode_t              lpwr_mode          = LPWR_MODE_TIMEOUT;
+static uint32_t                 lpwr_timeout_value = LPWR_TIMEOUT;
+static uint32_t                 lpwr_timestamp     = 0x00;
+static uint32_t                 lpwr_activity_timestamp;
+static volatile lpwr_wakeupcd_t lpwr_wakeupcd  = LPWR_WAKEUP_NONE;
+static bool                     manual_timeout = false;
 
 static bool rgb_enable_bak = false;
 
@@ -40,6 +40,8 @@ void last_matrix_activity_trigger(void);
 void lpwr_clock_enable(void);
 void lpwr_enter_stop(void);
 void lpwr_exti_init(void);
+void lpwr_stop_prepare(void);
+bool lpwr_stop_pending(void);
 void mcu_stop_mode(void);
 
 extern void matrix_init_pins(void);
@@ -102,17 +104,33 @@ void lpwr_exti_init(void) {}
 void mcu_stop_mode(void) __attribute__((weak));
 void mcu_stop_mode(void) {}
 
+void lpwr_stop_prepare(void) __attribute__((weak));
+void lpwr_stop_prepare(void) {}
+
+bool lpwr_stop_pending(void) __attribute__((weak));
+bool lpwr_stop_pending(void) {
+    return lpwr_get_sleep_wakeupcd() != LPWR_WAKEUP_NONE;
+}
+
 void lpwr_enter_stop(void) {
     split_diagnostics_event(SPLIT_DIAG_STOP_ENTER, lpwr_state, manual_timeout, lpwr_wakeupcd);
+    split_diagnostics_checkpoint(1); // Persist before clocks/wake IRQs change.
     chSysLock();
+    // Clear stale IRQs before arming wake sources, never after a new edge.
+    lpwr_stop_prepare();
     lpwr_exti_init();
     chSysUnlock();
 
     chSysDisable();
-    mcu_stop_mode();
+    // An IRQ can run when the arm lock is released. WB32's callback disables
+    // EXTI after recording it; WFI then could sleep with no key/split wake IRQs.
+    // A radio worker can also deliver host resume in this window.
+    bool enter_stop = lpwr_get_state() == LPWR_STOP && !lpwr_stop_pending();
+    if (enter_stop) mcu_stop_mode();
     lpwr_clock_enable();
     matrix_init_pins();
     chSysEnable();
+    if (!enter_stop) split_diagnostics_event(SPLIT_DIAG_STOP_CANCEL, lpwr_state, manual_timeout, lpwr_wakeupcd);
     split_diagnostics_event(SPLIT_DIAG_STOP_EXIT, lpwr_state, manual_timeout, lpwr_wakeupcd);
 }
 
@@ -166,8 +184,7 @@ bool lpwr_is_allow_timeout(void) {
 
     if (manual_timeout || (timeout && (sync_timer_elapsed32(lpwr_activity_timestamp) >= timeout))) {
 #ifdef GMK70_SPLIT_DIAGNOSTICS
-        const uint32_t idle_seconds = sync_timer_elapsed32(lpwr_activity_timestamp) / 1000;
-        split_diagnostics_event(SPLIT_DIAG_TIMEOUT, manual_timeout, idle_seconds > UINT8_MAX ? UINT8_MAX : idle_seconds, wireless_get_current_devs());
+        split_diagnostics_sleep_accepted(manual_timeout, sync_timer_elapsed32(lpwr_activity_timestamp), wireless_get_current_devs());
 #endif
         manual_timeout = false;
         return true;
@@ -267,16 +284,19 @@ void lpwr_stop_cb(void) {
     lpwr_stop_hook_pre();
     lpwr_enter_stop();
 
-    switch (lpwr_get_sleep_wakeupcd()) {
-        // Stock V13/V15 keep STOP when no accepted wake source was recorded.
-        // A return from WFI alone must not restore RGB or reselect the radio.
-        case LPWR_WAKEUP_NONE:
-        case LPWR_WAKEUP_UART: {
-            lpwr_set_state(LPWR_STOP);
-        } break;
-        default: {
-            lpwr_set_state(LPWR_WAKEUP);
-        } break;
+    // Preserve a host resume delivered by the radio worker during STOP entry.
+    if (lpwr_get_state() == LPWR_STOP) {
+        switch (lpwr_get_sleep_wakeupcd()) {
+            // Stock V13/V15 keep STOP when no accepted wake source was recorded.
+            // A return from WFI alone must not restore RGB or reselect the radio.
+            case LPWR_WAKEUP_NONE:
+            case LPWR_WAKEUP_UART: {
+                lpwr_set_state(LPWR_STOP);
+            } break;
+            default: {
+                lpwr_set_state(LPWR_WAKEUP);
+            } break;
+        }
     }
 
     lpwr_stop_hook_post();
@@ -297,6 +317,8 @@ void lpwr_wakeup_cb(void) {
 
     suspend_wakeup_init();
     lpwr_wakeup_hook();
+
+    split_diagnostics_checkpoint(2); // Save recovery once, before NORMAL clears the reason.
 
     last_matrix_activity_trigger();
 }

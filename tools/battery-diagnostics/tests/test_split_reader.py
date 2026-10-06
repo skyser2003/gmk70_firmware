@@ -34,6 +34,23 @@ class SplitConnection:
 
 
 class SplitReaderTests(unittest.TestCase):
+    def test_decodes_cancelled_stop_entry_and_sleep_trigger(self) -> None:
+        def event(code: int, a: int, b: int, c: int) -> bytes:
+            return (1).to_bytes(4) + (1000).to_bytes(4) + bytes((code, a, b, c, 1))
+
+        self.assertIn(
+            "MCU STOP entry cancelled state=STOP manual=False wake=ONEKEY",
+            SplitReader.event(event(17, 2, 0, 5)),
+        )
+        self.assertIn(
+            "sleep requested: low battery, context=0",
+            SplitReader.event(event(7, 3, 0, 0)),
+        )
+        self.assertIn(
+            "sleep accepted: manual=False idle_seconds=60 device=1",
+            SplitReader.event(event(16, 0, 60, 1)),
+        )
+
     def test_only_fixed_getters_and_event_cursors(self) -> None:
         for page in range(3):
             self.assertEqual(

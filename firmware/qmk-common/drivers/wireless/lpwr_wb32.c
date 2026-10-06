@@ -157,11 +157,9 @@ void lpwr_clock_enable(void) {
     lpwr_clock_enable_user();
 }
 
-void wb32_stop_mode(void) {
-    SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;
-
-    /* Prevent the chip from being unable to enter stop mode due to pending interrupts */
-#if 1
+void lpwr_stop_prepare(void) {
+    // Called under the kernel lock BEFORE lpwr_exti_init arms the wake sources.
+    // Clearing these after arming can discard a real matrix/split wake edge.
     EXTI->PR = 0x7FFFF;
     for (uint8_t i = 0; i < 8; i++) {
         for (uint8_t j = 0; j < 32; j++) {
@@ -170,8 +168,22 @@ void wb32_stop_mode(void) {
             }
         }
     }
-    SCB->ICSR |= SCB_ICSR_PENDSTCLR_Msk; // Clear Systick IRQ Pending
-#endif
+}
+
+bool lpwr_stop_pending(void) {
+    // irqInit enables all EXTI vectors. palcallback disables all of them after
+    // recording a wake, even an ignored radio-UART wake. Do not enter WFI then.
+    // Checking the IRQ enable state also preserves critical-battery preparation,
+    // which sets the UART classification without having received an interrupt.
+    lpwr_wakeupcd_t cause = lpwr_get_sleep_wakeupcd();
+    return !NVIC_GetEnableIRQ(EXTI0_IRQn) || (cause != LPWR_WAKEUP_NONE && cause != LPWR_WAKEUP_UART);
+}
+
+void wb32_stop_mode(void) {
+    SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;
+    SCB->ICSR |= SCB_ICSR_PENDSTCLR_Msk;
+    // Keep EXTI/NVIC wake requests that arrived since arming. With PRIMASK set,
+    // a pending enabled IRQ still releases WFI and runs after chSysEnable.
 
     /* Clear all bits except DBP and FCLKSD bit */
     PWR->CR0 &= 0x09U;

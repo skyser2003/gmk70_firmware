@@ -70,10 +70,15 @@ artifacts/tests/qmk/stock-battery
 cc "${common_flags[@]}" tests/qmk/stock_via_test.c \
     tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/stock-via
 artifacts/tests/qmk/stock-via
-for profile in release debug; do
+for profile in release debug persistent; do
     profile_flags=()
-    if [[ "$profile" == debug ]]; then
+    if [[ "$profile" != release ]]; then
         profile_flags+=(-DGMK70_DEBUG_USB_BOOTLOADER)
+    fi
+    log_sources=()
+    if [[ "$profile" == persistent ]]; then
+        profile_flags+=(-DGMK70_PERSISTENT_DIAGNOSTICS)
+        log_sources+=(firmware/qmk-common/keyboards/zuoya/gmk70/update/sleep_log_query.c)
     fi
     cc "${common_flags[@]}" -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs \
         -DRAW_ENABLE "${profile_flags[@]}" tests/qmk/usb_bootloader_test.c \
@@ -87,6 +92,7 @@ for profile in release debug; do
         firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
         firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
         firmware/qmk-common/keyboards/zuoya/gmk70/update/eeprom_query.c \
+        "${log_sources[@]}" \
         tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c firmware/qmk-common/drivers/wireless/md_raw.c \
         -Wl,--wrap=raw_hid_send -o "artifacts/tests/qmk/update-adapter-$profile"
     "artifacts/tests/qmk/update-adapter-$profile"
@@ -97,6 +103,19 @@ cc "${common_flags[@]}" -Itests/qmk/split_diagnostic_stubs -DGMK70_SPLIT_DIAGNOS
     tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c \
     -o artifacts/tests/qmk/split-diagnostics
 artifacts/tests/qmk/split-diagnostics
+cc "${common_flags[@]}" -Itests/qmk/split_diagnostic_stubs -DGMK70_SPLIT_DIAGNOSTICS -DGMK70_PERSISTENT_DIAGNOSTICS \
+    tests/qmk/sleep_log_test.c firmware/qmk-common/keyboards/zuoya/gmk70/sleep_log.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/split_diagnostics.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/sleep_log_query.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c -o artifacts/tests/qmk/sleep-log
+artifacts/tests/qmk/sleep-log
+cc -Itests/qmk/sleep_log_stubs "${common_flags[@]}" -Idependencies/qmk/drivers/flash -Idependencies/qmk/drivers/wear_leveling \
+    -DEXTERNAL_FLASH_SPI_SLAVE_SELECT_PIN=12 \
+    tests/qmk/sleep_log_adapter_test.c tests/qmk/sleep_log_settings_fixture.c firmware/qmk-common/keyboards/zuoya/gmk70/sleep_log_qmk.c \
+    -Wl,--wrap=flash_read_range -Wl,--wrap=flash_write_range -Wl,--wrap=flash_erase_sector -Wl,--wrap=flash_erase_block \
+    -o artifacts/tests/qmk/sleep-log-adapter
+artifacts/tests/qmk/sleep-log-adapter
 cc -Itests/qmk/output_stubs -Idependencies/qmk/drivers/led "${common_flags[@]}" \
     -include stdint.h -include firmware/qmk-common/keyboards/zuoya/gmk70/config.h \
     -DWB32FQ95xx -DWS2812_DI_PIN=15 -DRGB_MATRIX_WS2812 -DRGB_MATRIX_LED_COUNT=77 \

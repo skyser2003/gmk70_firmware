@@ -20,6 +20,12 @@ typedef struct {
     bool            rgb_enabled;
     bool            duplicate_request;
     bool            held;
+    bool            exti_armed;
+    bool            wake_irqs_enabled;
+    bool            early_wake;
+    bool            early_resume;
+    bool            prepare_uart;
+    uint32_t        stop_prepare_calls;
     lpwr_wakeupcd_t wake_source;
 } sleep_fixture_t;
 
@@ -42,10 +48,37 @@ uint8_t wireless_get_current_devs(void) {
     return fixture.device;
 }
 void chSysLock(void) {}
-void chSysUnlock(void) {}
+void chSysUnlock(void) {
+    if (!fixture.exti_armed) return;
+    if (fixture.early_wake) {
+        fixture.early_wake = false;
+        // WB32's PAL callback records the event and disables every EXTI IRQ.
+        lpwr_set_sleep_wakeupcd(fixture.wake_source);
+        fixture.wake_irqs_enabled = false;
+    }
+    if (fixture.early_resume) {
+        fixture.early_resume = false;
+        md_receive_host_cb(true);
+    }
+}
 void chSysDisable(void) {}
 void chSysEnable(void) {}
 void matrix_init_pins(void) {}
+void lpwr_stop_prepare(void) {
+    assert(!fixture.exti_armed);
+    ++fixture.stop_prepare_calls;
+}
+void lpwr_exti_init(void) {
+    fixture.exti_armed        = true;
+    fixture.wake_irqs_enabled = true;
+}
+bool lpwr_stop_pending(void) {
+    lpwr_wakeupcd_t cause = lpwr_get_sleep_wakeupcd();
+    return !fixture.wake_irqs_enabled || (cause != LPWR_WAKEUP_NONE && cause != LPWR_WAKEUP_UART);
+}
+void lpwr_stop_hook_pre(void) {
+    if (fixture.prepare_uart) lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_UART);
+}
 void suspend_power_down(void) {
     ++fixture.power_down_calls;
 }
@@ -78,6 +111,9 @@ void mcu_stop_mode(void) {
     ++fixture.stop_calls;
     lpwr_set_sleep_wakeupcd(fixture.wake_source);
     if (fixture.duplicate_request) lpwr_set_timeout_manual(true);
+}
+void lpwr_clock_enable(void) {
+    fixture.exti_armed = false;
 }
 
 static void reset_fixture(uint8_t device, bool rgb_enabled) {
@@ -259,6 +295,50 @@ static void test_stock_activity_is_separate_from_matrix_release(void) {
     assert(lpwr_get_state() == LPWR_PRESLEEP);
 }
 
+static void test_wake_during_stop_entry(void) {
+    const lpwr_wakeupcd_t sources[] = {LPWR_WAKEUP_MATRIX, LPWR_WAKEUP_ONEKEY, LPWR_WAKEUP_UART, LPWR_WAKEUP_CABLE, LPWR_WAKEUP_SWITCH};
+    for (unsigned i = 0; i < sizeof(sources) / sizeof(sources[0]); ++i) {
+        reset_fixture(DEVS_BT1, true);
+        enter_stop();
+        fixture.early_wake  = true;
+        fixture.wake_source = sources[i];
+        tick(200);
+        // Going through WFI after the callback disabled EXTI can leave a half
+        // unresponsive even to subsequent keys, until its power is cycled.
+        assert(fixture.stop_calls == 0);
+        assert(fixture.stop_prepare_calls == 1);
+        assert(lpwr_get_state() == (sources[i] == LPWR_WAKEUP_UART ? LPWR_STOP : LPWR_WAKEUP));
+        if (sources[i] == LPWR_WAKEUP_UART) {
+            fixture.wake_source = LPWR_WAKEUP_MATRIX;
+            tick(200);
+            assert(lpwr_get_state() == LPWR_WAKEUP && fixture.stop_calls == 1);
+        }
+        tick(200);
+        assert(lpwr_get_state() == LPWR_NORMAL && fixture.rgb_enabled && fixture.wake_calls == 1);
+    }
+}
+
+static void test_host_resume_during_stop_entry(void) {
+    reset_fixture(DEVS_BT1, true);
+    enter_stop();
+    fixture.early_resume = true;
+    tick(200);
+    assert(fixture.stop_calls == 0 && lpwr_get_state() == LPWR_WAKEUP);
+    tick(200);
+    assert(lpwr_get_state() == LPWR_NORMAL && fixture.rgb_enabled);
+}
+
+static void test_prepared_uart_does_not_cancel_stop(void) {
+    reset_fixture(DEVS_BT1, true);
+    enter_stop();
+    // Critical-battery preparation sets UART without an actual wake interrupt.
+    fixture.prepare_uart = true;
+    fixture.wake_source  = LPWR_WAKEUP_UART;
+    tick(200);
+    assert(fixture.stop_calls == 1 && lpwr_get_state() == LPWR_STOP);
+    assert(!fixture.rgb_enabled);
+}
+
 typedef struct {
     const char *name;
     void (*run)(void);
@@ -266,7 +346,7 @@ typedef struct {
 
 int main(int argc, char **argv) {
     const sleep_test_t tests[] = {
-        {"held-preparation", test_preparation_waits_for_release}, {"unclassified-interrupt", test_unclassified_interrupt_stays_asleep}, {"radio-uart", test_radio_uart_stays_asleep}, {"real-wakes", test_real_wakes_restore_previous_lighting}, {"pending-request", test_pending_request_cleared_by_state_change}, {"uart-request", test_uart_wake_clears_pending_request}, {"usb-and-timeout", test_usb_and_timeout_unchanged}, {"resume-deadline", test_repeated_resume_keeps_wake_deadline}, {"activity-deadline", test_stock_activity_is_separate_from_matrix_release},
+        {"held-preparation", test_preparation_waits_for_release}, {"unclassified-interrupt", test_unclassified_interrupt_stays_asleep}, {"radio-uart", test_radio_uart_stays_asleep}, {"real-wakes", test_real_wakes_restore_previous_lighting}, {"pending-request", test_pending_request_cleared_by_state_change}, {"uart-request", test_uart_wake_clears_pending_request}, {"usb-and-timeout", test_usb_and_timeout_unchanged}, {"resume-deadline", test_repeated_resume_keeps_wake_deadline}, {"activity-deadline", test_stock_activity_is_separate_from_matrix_release}, {"wake-before-stop", test_wake_during_stop_entry}, {"host-before-stop", test_host_resume_during_stop_entry}, {"prepared-uart", test_prepared_uart_does_not_cancel_stop},
     };
     bool ran = false;
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {

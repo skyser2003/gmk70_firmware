@@ -8,6 +8,9 @@
 #include "process_rgb_matrix.h"
 #include "serial_usart.h"
 #include "split_diagnostics.h"
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+#    include "sleep_log.h"
+#endif
 #include "stock_battery.h"
 #include "stock_power.h"
 #include "stock_v15.h"
@@ -280,6 +283,9 @@ void keyboard_post_init_kb(void) {
     transaction_register_rpc(USER_SYNC_MMS, user_sync_mms_slave_handler);
 #ifdef GMK70_SPLIT_UPDATE
     gmk_update_init();
+#    ifdef GMK70_PERSISTENT_DIAGNOSTICS
+    sleep_log_init();
+#    endif
 #endif
 }
 

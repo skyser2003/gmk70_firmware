@@ -1,5 +1,7 @@
 import unittest
+from unittest.mock import Mock, patch
 
+import read_battery
 from read_battery import DiagnosticPage, DiagnosticReader
 
 
@@ -17,6 +19,58 @@ class FakeConnection:
 
 
 class ReaderTests(unittest.TestCase):
+    def test_usb_discovery_accepts_current_and_legacy_manufacturers(self) -> None:
+        for manufacturer in ("HS", "LEO"):
+            with self.subTest(manufacturer=manufacturer):
+                backend = Mock()
+                backend.enumerate.return_value = [
+                    {
+                        "usage_page": 0xFF60,
+                        "usage": 0x61,
+                        "manufacturer_string": manufacturer,
+                        "path": b"keyboard",
+                    },
+                    {
+                        "usage_page": 1,
+                        "usage": 6,
+                        "manufacturer_string": manufacturer,
+                        "path": b"keyboard-input",
+                    },
+                ]
+                with (
+                    patch.object(read_battery, "hid", backend),
+                    patch.object(DiagnosticReader, "report", return_value="report"),
+                ):
+                    self.assertEqual(DiagnosticReader.run(), "report")
+                backend.enumerate.assert_called_once_with(0x342D, 0xE491)
+                backend.device.return_value.open_path.assert_called_once_with(
+                    b"keyboard"
+                )
+                backend.device.return_value.close.assert_called_once_with()
+
+    def test_usb_discovery_rejects_unknown_and_multiple_devices(self) -> None:
+        def interface(manufacturer: str) -> dict[str, object]:
+            return {
+                "usage_page": 0xFF60,
+                "usage": 0x61,
+                "manufacturer_string": manufacturer,
+                "path": b"keyboard",
+            }
+
+        for interfaces in (
+            [],
+            [interface("unknown")],
+            [interface("HS"), interface("LEO")],
+        ):
+            backend = Mock()
+            backend.enumerate.return_value = interfaces
+            with (
+                patch.object(read_battery, "hid", backend),
+                self.assertRaises(RuntimeError),
+            ):
+                DiagnosticReader.run()
+            backend.device.assert_not_called()
+
     def test_complete_report_reads_only_three_pages(self) -> None:
         class ReportConnection(FakeConnection):
             def read(self, max_length: int, timeout_ms: int = 0) -> list[int]:

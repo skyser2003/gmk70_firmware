@@ -151,6 +151,12 @@ static void test_rejections(void) {
     packet[5] = 16;
     gmk_write_u32(packet + 12, 774);
     assert(gmk_packet_valid(packet) && gmk_update_process(&update, packet) == GMK_BAD_REQUEST && writes == 0);
+    request(packet, GMK_SLEEP_LOG_INFO, 125);
+    assert(gmk_packet_valid(packet) && gmk_update_process(&update, packet) == GMK_BAD_REQUEST);
+    request(packet, GMK_SLEEP_LOG_READ, 126);
+    packet[5] = 16;
+    gmk_write_u32(packet + 12, 8192 - 16);
+    assert(gmk_packet_valid(packet) && gmk_update_process(&update, packet) == GMK_BAD_REQUEST && writes == 0);
     update    = stage_image();
     installer = true;
     flash_memory[GMK_STAGE_BASE - GMK_FLASH_BASE + 700] ^= 1;

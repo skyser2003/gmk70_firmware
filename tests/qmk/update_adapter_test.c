@@ -20,7 +20,19 @@ static uint32_t         now;
 static slave_callback_t rpc;
 static uint8_t          memory[0x40000];
 static uint8_t          logical_eeprom[4096];
-test_usb_driver_t       USB_DRIVER;
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+static unsigned log_reads;
+uint32_t        sleep_log_status(void) {
+    return 0xC2201303;
+}
+bool sleep_log_read(uint32_t offset, void *data, size_t size) {
+    assert(!locks && offset < 8192 && size <= 8192 - offset);
+    ++log_reads;
+    memset(data, 0xFF, size);
+    return true;
+}
+#endif
+test_usb_driver_t USB_DRIVER;
 
 void eeprom_read_block(void *destination, const void *source, size_t count) {
     uintptr_t offset = (uintptr_t)source;
@@ -198,7 +210,7 @@ static void test_eeprom_validation(void) {
         if (field == 1) packet[1] = 0;
         if (field == 2) packet[2] = 2;
         if (field == 3) packet[3] = 2;
-        if (field == 4) packet[4] = 10;
+        if (field == 4) packet[4] = 255;
         if (field == 5) packet[5] = 0;
         if (field == 6) packet[5] = 17;
         if (field == 7) packet[6] = 1;
@@ -285,6 +297,45 @@ static void test_eeprom_usb(void) {
     assert(!flash_writes && !resets);
 }
 
+static void test_persistent_log_service(void) {
+    fixture();
+    left = master = false;
+    uint8_t packet[32], response[32];
+    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x70, 1, 1, GMK_STATUS};
+    query(packet, 1, GMK_SLEEP_LOG_INFO, 100, 0, 0);
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+    log_reads = 0;
+#endif
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_BUSY && !flash_writes);
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+    assert(!log_reads); // Callback only queues; NOR reads run in housekeeping.
+#endif
+    gmk_update_task();
+    rpc(32, status, 32, response);
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+    assert(response[5] == GMK_OK && log_reads == 512 && gmk_read_u32(response + 16) == 8192);
+    query(packet, 1, GMK_SLEEP_LOG_READ, 101, 8176, 16);
+    rpc(32, packet, 32, response);
+    assert(log_reads == 512);
+    gmk_update_task();
+    rpc(32, status, 32, response);
+    assert(response[5] == GMK_OK && response[6] == 16 && log_reads == 513);
+    mode = DEVS_BT1;
+    query(packet, 1, GMK_SLEEP_LOG_INFO, 102, 0, 0);
+    rpc(32, packet, 32, response);
+    gmk_update_task();
+    rpc(32, status, 32, response);
+    assert(response[5] == GMK_UNAVAILABLE && log_reads == 513);
+    for (unsigned i = 0; i < 1000; ++i)
+        gmk_update_task();
+    assert(log_reads == 513);
+#else
+    assert(response[5] == GMK_UNAVAILABLE);
+#endif
+    assert(!flash_writes && !resets && !eeprom_reads);
+}
+
 int main(void) {
     uint8_t packet[32], response[32];
     fixture();
@@ -357,5 +408,6 @@ int main(void) {
     test_eeprom_validation();
     test_eeprom_update_and_radio_gates();
     test_eeprom_usb();
+    test_persistent_log_service();
     puts("Updater adapter: USB/peer EEPROM reads, complete logical storage, CRC, bounds, stale-token echo, update/radio/role gates and no idle traffic passed");
 }

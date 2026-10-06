@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import IntEnum
 from pathlib import Path
+from typing import ClassVar
 
 from update import Link, Op, Updater, UsbLink
 
@@ -19,6 +20,8 @@ from update import Link, Op, Updater, UsbLink
 class QueryOp(IntEnum):
     INFO = 8
     READ = 9
+    LOG_INFO = 10
+    LOG_READ = 11
 
 
 @dataclass(frozen=True)
@@ -112,23 +115,35 @@ def decode_v15(data: bytes) -> dict[str, object]:
 
 
 class EepromReader:
+    info_op: ClassVar[QueryOp] = QueryOp.INFO
+    read_op: ClassVar[QueryOp] = QueryOp.READ
+    query_name: ClassVar[str] = "EEPROM"
+    required_firmware: ClassVar[str] = "EEPROM-query updater"
+    minimum_size: ClassVar[int] = 1
+    maximum_size: ClassVar[int] = 65536
+
     def __init__(self, link: Link) -> None:
         self._link = link
         self._token = secrets.randbelow(0xFFFFFFFF) + 1
 
-    @staticmethod
+    @classmethod
     def packet(
-        target: int, operation: QueryOp, token: int, offset: int = 0, count: int = 0
+        cls,
+        target: int,
+        operation: QueryOp,
+        token: int,
+        offset: int = 0,
+        count: int = 0,
     ) -> bytes:
         if (
             target not in (0, 1)
-            or operation not in (QueryOp.INFO, QueryOp.READ)
+            or operation not in (cls.info_op, cls.read_op)
             or not 1 <= token <= 0xFFFFFFFF
             or not 0 <= offset <= 0xFFFFFFFF
-            or (operation == QueryOp.INFO and (offset != 0 or count != 0))
-            or (operation == QueryOp.READ and not 1 <= count <= 16)
+            or (operation == cls.info_op and (offset != 0 or count != 0))
+            or (operation == cls.read_op and not 1 <= count <= 16)
         ):
-            raise ValueError("Invalid EEPROM query")
+            raise ValueError(f"Invalid {cls.query_name} query")
         return (
             bytes((0x7F, 0x70, 1, target, operation, count, 0, 0))
             + struct.pack("<II", token, offset)
@@ -152,7 +167,7 @@ class EepromReader:
                 continue
             if len(reply) != 32 or reply[:4] != original[:4]:
                 raise RuntimeError(
-                    "No matching EEPROM response; install EEPROM-query updater firmware on both halves"
+                    f"No matching {self.query_name} response; install {self.required_firmware} firmware on both halves"
                 )
             if reply[5] == 1:
                 packet = Updater.packet(target, Op.STATUS)
@@ -160,7 +175,7 @@ class EepromReader:
                 continue
             if reply[5] == 7:
                 raise RuntimeError(
-                    "EEPROM target unavailable; check wired mode, the split cable, and EEPROM-query support on both halves"
+                    f"{self.query_name} target unavailable; check wired mode, the split cable, and {self.required_firmware} support on both halves"
                 )
             if reply[4] != operation or struct.unpack_from("<II", reply, 8) != (
                 token,
@@ -173,32 +188,39 @@ class EepromReader:
                 continue
             if reply[5] == 2:
                 raise RuntimeError(
-                    "EEPROM queries are unsupported; install EEPROM-query updater firmware on both halves"
+                    f"{self.query_name} queries are unsupported; install {self.required_firmware} firmware on both halves"
                 )
             if reply[5] == 3:
                 raise RuntimeError(
-                    "A firmware update is active; wait for it to finish before reading EEPROM"
+                    f"A firmware update is active; wait for it to finish before reading {self.query_name}"
                 )
             if reply[5] != 0:
                 raise RuntimeError(
-                    f"Target {target}: EEPROM {operation.name} failed, code {reply[5]}"
+                    f"Target {target}: {self.query_name} {operation.name} failed, code {reply[5]}"
                 )
             if reply[7] != (0 if target else 3):
                 raise RuntimeError("Wrong half or master role in EEPROM response")
             if reply[6] != count or (
-                operation == QueryOp.READ and any(reply[16 + count :])
+                operation == self.read_op and any(reply[16 + count :])
             ):
-                raise RuntimeError("Invalid EEPROM response length or padding")
+                raise RuntimeError(
+                    f"Invalid {self.query_name} response length or padding"
+                )
             return reply
         raise TimeoutError(
-            "EEPROM query timed out; check the wired split connection and close other HID tools"
+            f"{self.query_name} query timed out; check the wired split connection and close other HID tools"
         )
 
     def inspect(self, target: int) -> Metadata:
-        reply = self.command(target, QueryOp.INFO)
+        reply = self.command(target, self.info_op)
         metadata = Metadata(*struct.unpack_from("<IIII", reply, 16))
-        if metadata.protocol != 1 or not 1 <= metadata.size <= 65536:
-            raise RuntimeError("Unsupported EEPROM protocol or logical size")
+        if (
+            metadata.protocol != 1
+            or not self.minimum_size <= metadata.size <= self.maximum_size
+        ):
+            raise RuntimeError(
+                f"Unsupported {self.query_name} protocol or logical size"
+            )
         return metadata
 
     def snapshot(self, target: int, attempts: int = 3) -> Snapshot:
@@ -209,13 +231,13 @@ class EepromReader:
             data = bytearray()
             for offset in range(0, before.size, 16):
                 count = min(16, before.size - offset)
-                reply = self.command(target, QueryOp.READ, offset, count)
+                reply = self.command(target, self.read_op, offset, count)
                 data.extend(reply[16 : 16 + count])
             after = self.inspect(target)
             if before == after and zlib.crc32(data) == before.crc32:
                 return Snapshot(target, before, bytes(data))
         raise RuntimeError(
-            "EEPROM changed during reading or CRC verification failed; stop changing settings and retry"
+            f"{self.query_name} changed during reading or CRC verification failed; stop changing settings and retry"
         )
 
 

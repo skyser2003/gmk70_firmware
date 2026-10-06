@@ -3,6 +3,9 @@
 #include "ch.h"
 #include "timer.h"
 #include <string.h>
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+#    include "sleep_log.h"
+#endif
 
 enum { EVENT_CAPACITY = 128, PEER_MAGIC = 0xD1, SLOW_MS = 256 };
 
@@ -22,6 +25,9 @@ static struct {
     uint8_t             peer[4];
     bool                loop_seen, rpc_active, rpc_seen, rpc_ok, peer_seen;
     split_diag_sample_t last_sample;
+    uint32_t            accepted_idle_ms;
+    uint8_t             sleep_reason, reason_context;
+    bool                accepted_manual, sleep_saved, failure_pending;
 } history;
 
 static void put_u32(uint8_t *data, uint32_t value) {
@@ -41,9 +47,87 @@ static void record_event(split_diag_event_t event, uint8_t a, uint8_t b, uint8_t
 
 void split_diagnostics_event(split_diag_event_t event, uint8_t a, uint8_t b, uint8_t c) {
     const syssts_t lock = chSysGetStatusAndLockX();
+    if (event == SPLIT_DIAG_SLEEP_REASON) {
+        history.sleep_reason   = a;
+        history.reason_context = b;
+    } else if (event == SPLIT_DIAG_HOST && !a) {
+        history.sleep_reason   = 4; // Radio host suspend.
+        history.reason_context = 0;
+    } else if (event == SPLIT_DIAG_STATE && b == 1) {
+        history.sleep_saved = false;
+    } else if (event == SPLIT_DIAG_STATE && b == 0) {
+        history.sleep_reason = history.reason_context = 0;
+    }
     record_event(event, a, b, c, timer_read32());
     chSysRestoreStatusX(lock);
 }
+
+void split_diagnostics_sleep_accepted(bool manual, uint32_t idle_ms, uint8_t device) {
+    const syssts_t lock      = chSysGetStatusAndLockX();
+    history.accepted_idle_ms = idle_ms;
+    history.accepted_manual  = manual;
+    if (!manual) history.sleep_reason = history.reason_context = 0;
+    uint32_t seconds = idle_ms / 1000;
+    record_event(SPLIT_DIAG_TIMEOUT, manual, seconds > UINT8_MAX ? UINT8_MAX : seconds, device, timer_read32());
+    chSysRestoreStatusX(lock);
+}
+
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+static void put_le32(uint8_t *p, uint32_t value) {
+    for (unsigned i = 0; i < 4; ++i)
+        p[i] = value >> (8 * i);
+}
+void split_diagnostics_checkpoint(uint8_t trigger) {
+    uint8_t page[SLEEP_LOG_PAGE];
+    memset(page, 0xFF, sizeof(page));
+    const syssts_t lock = chSysGetStatusAndLockX();
+    if ((trigger == SLEEP_LOG_BEFORE_STOP && history.sleep_saved) || (trigger == SLEEP_LOG_AFTER_WAKE && !history.sleep_saved)) {
+        chSysRestoreStatusX(lock);
+        return;
+    }
+    const split_diag_sample_t sample = split_diagnostics_sample();
+    if (trigger == SLEEP_LOG_BEFORE_STOP) history.sleep_saved = true;
+    if (trigger == SLEEP_LOG_AFTER_WAKE) history.sleep_saved = false;
+    put_le32(page + 12, timer_read32());
+    put_le32(page + 16, history.total);
+    put_le32(page + 20, sample.timeout);
+    put_le32(page + 24, history.accepted_idle_ms);
+    page[28] = sample.battery;
+    page[29] = sample.sleep_selector;
+    page[30] = sample.status;
+    page[31] = sample.device;
+    page[32] = sample.radio;
+    page[33] = sample.wake;
+    page[34] = sample.pins;
+    page[35] = sample.left;
+    page[36] = history.sleep_reason;
+    page[37] = trigger;
+    page[38] = history.total < SLEEP_LOG_EVENTS ? history.total : SLEEP_LOG_EVENTS;
+    page[39] = 12;
+    memcpy(page + 40, history.peer, 3);
+    page[43] = history.peer_seen;
+    put_le32(page + 44, history.rpc_attempts);
+    put_le32(page + 48, history.rpc_failures);
+    page[52] = history.reason_context;
+    page[53] = history.accepted_manual;
+    page[54] = sample.connected;
+    page[55] = 0;
+    for (unsigned i = 0; i < page[38]; ++i) {
+        uint32_t                   sequence = history.total - page[38] + 1 + i;
+        const split_diag_record_t *record   = &history.records[(sequence - 1) % EVENT_CAPACITY];
+        uint8_t                   *entry    = page + 56 + i * 12;
+        put_le32(entry, record->sequence);
+        put_le32(entry + 4, record->time);
+        entry[8]  = record->event;
+        entry[9]  = record->a;
+        entry[10] = record->b;
+        entry[11] = record->c;
+    }
+    chSysRestoreStatusX(lock);
+    // Never perform flash I/O in an IRQ, split callback, or recorder lock.
+    sleep_log_append(page);
+}
+#endif
 
 static uint8_t age_units(uint32_t age) {
     return age / 16 > UINT8_MAX ? UINT8_MAX : age / 16;
@@ -69,7 +153,14 @@ void split_diagnostics_loop(void) {
     history.last_sample = sample;
     history.loop_seen   = true;
     history.loop_at     = now;
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+    const bool save_failure = history.failure_pending && sample.device != 0;
+    if (save_failure) history.failure_pending = false;
+#endif
     chSysRestoreStatusX(lock);
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+    if (save_failure) split_diagnostics_checkpoint(SLEEP_LOG_PEER_FAILURE);
+#endif
 }
 
 void split_diagnostics_rpc_begin(uint8_t command) {
@@ -95,7 +186,9 @@ void split_diagnostics_rpc_end(uint8_t command, bool success, const uint8_t *pee
     // Repeated failed retries must not erase the event that led to the failure.
     if (!history.rpc_seen || history.rpc_ok != success) record_event(SPLIT_DIAG_RPC_RESULT, command, success, 0, now);
     history.rpc_seen = true;
-    history.rpc_ok   = success;
+    if (history.rpc_ok && !success) history.failure_pending = true;
+    if (success) history.failure_pending = false;
+    history.rpc_ok = success;
     if (success && peer != NULL && peer[0] == PEER_MAGIC) {
         // Record state changes or a stalled main loop, not every healthy sample.
         if (!history.peer_seen || peer[1] != history.peer[1] || (peer[2] >= SLOW_MS / 16) != (history.peer[2] >= SLOW_MS / 16)) {

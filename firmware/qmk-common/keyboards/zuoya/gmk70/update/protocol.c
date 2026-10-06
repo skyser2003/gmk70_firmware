@@ -3,12 +3,13 @@
 #include <string.h>
 
 bool gmk_packet_valid(const uint8_t request[GMK_PACKET_SIZE]) {
-    if (request[0] != GMK_UPDATE_COMMAND || request[1] != 0x70 || request[2] != GMK_UPDATE_ABI || request[3] > 1 || request[4] < GMK_STATUS || request[4] > GMK_EEPROM_READ || request[5] > GMK_DATA_SIZE || request[6] || request[7]) return false;
+    if (request[0] != GMK_UPDATE_COMMAND || request[1] != 0x70 || request[2] != GMK_UPDATE_ABI || request[3] > 1 || request[4] < GMK_STATUS || request[4] > GMK_SLEEP_LOG_READ || request[5] > GMK_DATA_SIZE || request[6] || request[7]) return false;
     uint8_t count = request[5];
-    if (request[4] == GMK_EEPROM_INFO || request[4] == GMK_EEPROM_READ) {
+    if (request[4] >= GMK_EEPROM_INFO) {
         if (!gmk_read_u32(request + 8)) return false;
-        if (request[4] == GMK_EEPROM_INFO && (count || gmk_read_u32(request + 12))) return false;
-        if (request[4] == GMK_EEPROM_READ && !count) return false;
+        bool info = request[4] == GMK_EEPROM_INFO || request[4] == GMK_SLEEP_LOG_INFO;
+        if (info && (count || gmk_read_u32(request + 12))) return false;
+        if (!info && !count) return false;
         // READ's count describes the response; it carries no request payload.
         for (unsigned i = 16; i < GMK_PACKET_SIZE; ++i)
             if (request[i]) return false;

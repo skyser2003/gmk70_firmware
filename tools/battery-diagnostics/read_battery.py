@@ -181,7 +181,7 @@ class DiagnosticReader:
             for info in hid.enumerate(0x342D, 0xE491)
             if info["usage_page"] == 0xFF60
             and info["usage"] == 0x61
-            and info["manufacturer_string"] == "LEO"
+            and info["manufacturer_string"] in ("HS", "LEO")
         ]
         if len(interfaces) != 1:
             raise RuntimeError(

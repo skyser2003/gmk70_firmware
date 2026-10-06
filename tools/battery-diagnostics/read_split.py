@@ -104,7 +104,7 @@ class SplitReader(DiagnosticReader):
             case 3:
                 detail = f"radio host resume={bool(a)}, state={cls._states[b & 3]}, pending_manual={bool(c)}"
             case 4 | 5:
-                detail = f"MCU STOP {'enter' if event == 4 else 'return'} state={cls._states[a & 3]} manual={bool(b)} wake={cls.wake(c)}"
+                detail = f"MCU STOP {'entry attempt' if event == 4 else 'path return'} state={cls._states[a & 3]} manual={bool(b)} wake={cls.wake(c)}"
             case 6:
                 detail = f"device {a} -> {b}, pairing_reset={bool(c)}"
             case 7:
@@ -135,6 +135,8 @@ class SplitReader(DiagnosticReader):
                 detail = f"main loop returned after {cls.age(a)} {cls.status(b, version)} wake={cls.wake(c)}"
             case 16:
                 detail = f"sleep accepted: manual={bool(a)} idle_seconds={'at least ' if b == 255 else ''}{b} device={c}"
+            case 17:
+                detail = f"MCU STOP entry cancelled state={cls._states[a & 3]} manual={bool(b)} wake={cls.wake(c)}"
             case _:
                 detail = f"unknown event {event}: {a}, {b}, {c}"
         return f"#{sequence} at {time}ms: {detail}"

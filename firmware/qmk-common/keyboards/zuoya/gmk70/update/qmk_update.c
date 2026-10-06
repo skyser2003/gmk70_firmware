@@ -2,6 +2,9 @@
 #include "qmk_update.h"
 #include "protocol.h"
 #include "eeprom_query.h"
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+#    include "sleep_log_query.h"
+#endif
 #include "quantum.h"
 #include "transactions.h"
 #include "wireless.h"
@@ -75,11 +78,22 @@ void gmk_update_task(void) {
     memcpy(request, queued, GMK_PACKET_SIZE);
     chSysUnlock();
     bool                eeprom_query = request[4] == GMK_EEPROM_INFO || request[4] == GMK_EEPROM_READ;
+    bool                log_query    = request[4] == GMK_SLEEP_LOG_INFO || request[4] == GMK_SLEEP_LOG_READ;
     gmk_update_result_t result       = GMK_UNAVAILABLE;
     uint8_t             response[GMK_PACKET_SIZE];
     if (eeprom_query) {
         if (wireless_get_current_devs() == DEVS_USB) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
         gmk_eeprom_query(request, result, response);
+    } else if (log_query) {
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+        if (wireless_get_current_devs() == DEVS_USB) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
+        gmk_sleep_log_query(request, result, response);
+#else
+        memset(response, 0, sizeof(response));
+        memcpy(response, request, 5);
+        memcpy(response + 8, request + 8, 8);
+        response[5] = GMK_UNAVAILABLE;
+#endif
     } else {
         if (wireless_get_current_devs() == DEVS_USB) result = gmk_update_process(&update, request);
         gmk_update_response(&update, request, result, response);
@@ -93,7 +107,7 @@ void gmk_update_task(void) {
         gmk_write_u32(response + 20, gmk_crc32(gmk_flash_view(GMK_APP_BASE), size));
     }
     // A rejected settings query must not keep an unfinished update alive.
-    if (!eeprom_query) last_request = timer_read32();
+    if (!eeprom_query && !log_query) last_request = timer_read32();
     if (update.state == GMK_COMMITTED) reset_at = last_request;
     chSysLock();
     memcpy(last_response, response, sizeof(response));

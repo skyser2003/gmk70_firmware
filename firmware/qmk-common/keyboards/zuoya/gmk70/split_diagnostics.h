@@ -20,6 +20,7 @@ typedef enum {
     SPLIT_DIAG_SPI_SLOW, // Reserved legacy event; protocol 2 has no SPI instrumentation.
     SPLIT_DIAG_LOOP_GAP,
     SPLIT_DIAG_TIMEOUT,
+    SPLIT_DIAG_STOP_CANCEL,
 } split_diag_event_t;
 
 typedef enum {
@@ -30,13 +31,15 @@ typedef enum {
 
 #ifdef GMK70_SPLIT_DIAGNOSTICS
 typedef struct {
-    uint8_t status; // state:0..1, manual:2, A5:3, A8:4, reserved:5, low battery sleep:6, master:7
-    uint8_t device;
-    uint8_t radio;
-    uint8_t wake;
-    uint8_t pins; // A7, A15, C15, C14, B9 in bits 0..4
-    bool    left;
-    bool    connected; // QMK's split connection flag, meaningful on master only
+    uint8_t  status; // state:0..1, manual:2, A5:3, A8:4, reserved:5, low battery sleep:6, master:7
+    uint8_t  device;
+    uint8_t  radio;
+    uint8_t  wake;
+    uint8_t  pins; // A7, A15, C15, C14, B9 in bits 0..4
+    bool     left;
+    bool     connected; // QMK's split connection flag, meaningful on master only
+    uint8_t  battery, sleep_selector;
+    uint32_t timeout;
 } split_diag_sample_t;
 
 // Platform snapshot must not block, acquire a split mutex, or write hardware.
@@ -48,6 +51,7 @@ bool                split_diagnostics_command(uint8_t *data, uint8_t length);
 void                split_diagnostics_event(split_diag_event_t event, uint8_t a, uint8_t b, uint8_t c);
 void                split_diagnostics_reply(uint8_t body[4]);
 void                split_diagnostics_received(uint8_t command);
+void                split_diagnostics_sleep_accepted(bool manual, uint32_t idle_ms, uint8_t device);
 #else
 static inline void split_diagnostics_loop(void) {}
 static inline void split_diagnostics_event(split_diag_event_t event, uint8_t a, uint8_t b, uint8_t c) {
@@ -61,5 +65,13 @@ static inline void split_diagnostics_reply(uint8_t body[4]) {
 }
 static inline void split_diagnostics_received(uint8_t command) {
     (void)command;
+}
+#endif
+
+#ifdef GMK70_PERSISTENT_DIAGNOSTICS
+void split_diagnostics_checkpoint(uint8_t trigger);
+#else
+static inline void split_diagnostics_checkpoint(uint8_t trigger) {
+    (void)trigger;
 }
 #endif

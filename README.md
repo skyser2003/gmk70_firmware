@@ -89,6 +89,15 @@ This builds the keyboard MCU application. The radio module and USB receiver keep
 
 Earlier repairs cover wireless host selection, raw-HID routing, rollover/key release, split isolation, USB sleep, stored board settings, mode-selector pins, and right-half USB master selection. See [mode-switch evidence](docs/STOCK-MODE-SWITCH.md), [right-half recovery](docs/RIGHT-HALF-RECOVERY.md), and [hardware acceptance tests](docs/HARDWARE-VALIDATION.md).
 
+The October 6 [sleep-entry correction](docs/SLEEP-WAKE-REGRESSION.md) preserves
+wake interrupts during STOP entry. Hardware confirmation and a capture of the
+reported one-minute Bluetooth sleep trigger are pending.
+
+Debug-updater builds also save [persistent sleep records](docs/PERSISTENT-SLEEP-LOG.md)
+on both halves. After recovering from a fault by power-cycling, select wired
+mode and run `python read_sleep_log.py --target both --output sleep-records.json`
+from the portable package directory to capture the prior sleep reason and timeout.
+
 The earlier role bug blocked standalone right-half key processing. It is fixed in the source. The user confirmed successful right-half recovery through the vendor hardware pad procedure on 2026-09-24; runtime bootloader entry in the latest build still needs a separate hardware check.
 
 ## Validation limits

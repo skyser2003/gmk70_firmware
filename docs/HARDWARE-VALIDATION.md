@@ -27,6 +27,17 @@ Record PCB revision, stock keyboard version, receiver version, host OS, and the 
 
 The original port reports a right-half idle problem. This fork fixes specific source defects in that path, including USB slave timeout, split pin shutdown before RPC completion, missing split-RX wake event, wrong sleep column pins on the right, an extra five zero-initialized row pins, and a pending-interrupt bitmask typo. Wake behavior on both halves still requires physical testing; it is not established by these changes.
 
+## October 6 Bluetooth wake failure
+
+After installing the recent V15 reconstruction, the user reported approximately
+one-minute idle RGB shutdown, followed by a left-only wake. The right half loses
+both typing and lighting and cannot wake from its own keys until repowered.
+No settings or runtime capture of this occurrence is available yet. A native
+regression reproduces a sleep-entry interrupt race in the preceding source;
+the correction and capture procedure are documented in
+[Sleep-entry wake regression](SLEEP-WAKE-REGRESSION.md). The one-minute sleep
+trigger and physical recovery with the correction remain unverified.
+
 ## October 3 captured false wake
 
 The user reported repeated LED-off, brief wireless-indicator flashing, then LED-on cycles in Bluetooth/2.4 GHz with debug firmware and USB power attached. A read-only capture from the directly connected left half is saved at `artifacts/tests/2026-10-03-idle-wake-initial.txt`. Both halves reported diagnostic protocol 2. No reset, flash or setting write was performed during capture.

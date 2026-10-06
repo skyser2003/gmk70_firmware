@@ -79,6 +79,9 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
     fi
     if [[ "$keymap" == debug ]]; then
         printf 'Debug features: split RAM logger; optional direct USB split updater\n'
+        if [[ "$mode" == updater ]]; then
+            printf 'Persistent sleep records: external SPI journal on both halves; read with read_sleep_log.py (see docs/PERSISTENT-SLEEP-LOG.md)\n'
+        fi
     else
         printf 'Debug features: disabled\n'
     fi
