@@ -18,7 +18,8 @@ REASONS = {
     1: "radio disconnected",
     2: "legacy radio idle",
     3: "critical battery",
-    4: "radio host suspend",
+    4: "host suspend",
+    5: "USB special sleep",
 }
 TRIGGERS = {1: "before STOP", 2: "after wake", 3: "peer communication failed"}
 STATES = ("NORMAL", "PRESLEEP", "STOP", "WAKEUP")

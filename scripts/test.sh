@@ -35,10 +35,20 @@ artifacts/tests/qmk/stock-eeprom
 cc "${settings_flags[@]}" "${common_flags[@]}" tests/qmk/stock_lighting_test.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/stock_lighting.c -o artifacts/tests/qmk/stock-lighting
 artifacts/tests/qmk/stock-lighting
-cc -Itests/qmk/lowpower_stubs "${common_flags[@]}" -DRGB_MATRIX_ENABLE \
+cc -Itests/qmk/wake_stubs -Itests/qmk/lowpower_stubs "${common_flags[@]}" -DRGB_MATRIX_ENABLE \
+    -D'QMK_KEYBOARD_H="quantum.h"' -ffunction-sections -fdata-sections -Wl,--gc-sections \
     tests/qmk/lowpower_test.c firmware/qmk-common/drivers/wireless/lowpower.c \
-    -o artifacts/tests/qmk/lowpower
+    firmware/qmk-common/keyboards/zuoya/gmk70/wls/wls.c -o artifacts/tests/qmk/lowpower
 artifacts/tests/qmk/lowpower
+cc -Itests/qmk/wake_stubs "${common_flags[@]}" -D'QMK_KEYBOARD_H="quantum.h"' \
+    -ffunction-sections -fdata-sections -Wl,--gc-sections \
+    tests/qmk/wake_test.c firmware/qmk-common/drivers/wireless/lpwr_wb32.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/wls/wls.c -o artifacts/tests/qmk/wake
+artifacts/tests/qmk/wake
+cc -Itests/qmk/transport_stubs "${common_flags[@]}" \
+    -DKEEP_USB_CONNECTION_IN_WIRELESS_MODE -DUSB_SUSPEND_WAKEUP_DELAY=1000 \
+    tests/qmk/transport_test.c firmware/qmk-common/drivers/wireless/transport.c -o artifacts/tests/qmk/transport
+artifacts/tests/qmk/transport
 cc "${common_flags[@]}" -Ifirmware/qmk-common/keyboards/zuoya/gmk70/wls \
     tests/qmk/wireless_mode_test.c -o artifacts/tests/qmk/wireless-mode
 artifacts/tests/qmk/wireless-mode

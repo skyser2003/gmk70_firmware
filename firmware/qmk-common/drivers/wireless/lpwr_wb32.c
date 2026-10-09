@@ -10,8 +10,8 @@
 #endif
 
 // MATRIX_ROWS includes both halves; infer the physical row count from the pins.
-static ioline_t row_pins[]            = MATRIX_ROW_PINS;
-static ioline_t col_pins[MATRIX_COLS] = MATRIX_COL_PINS;
+static ioline_t       row_pins[]                 = MATRIX_ROW_PINS;
+static const ioline_t left_col_pins[MATRIX_COLS] = MATRIX_COL_PINS;
 #ifdef MATRIX_COL_PINS_RIGHT
 static const ioline_t right_col_pins[MATRIX_COLS] = MATRIX_COL_PINS_RIGHT;
 #endif
@@ -26,10 +26,10 @@ static const ioline_t right_col_pins[MATRIX_COLS] = MATRIX_COL_PINS_RIGHT;
 
 // clang-format off
 static const uint32_t pre_lp_code[] = {553863175u, 554459777u, 1208378049u, 4026624001u, 688390415u, 554227969u, 3204472833u, 1198571264u, 1073807360u, 1073808388u};
-#define PRE_LP() ((void (*)(void))((unsigned int)(pre_lp_code) | 0x01))()
+#define PRE_LP() ((void (*)(void))((uintptr_t)(pre_lp_code) | 0x01))()
 
 static const uint32_t post_lp_code[] = {553863177u, 554459777u, 1208509121u, 51443856u, 4026550535u, 1745485839u, 3489677954u, 536895496u, 673389632u, 1198578684u, 1073807360u, 536866816u, 1073808388u};
-#define POST_LP() ((void (*)(void))((unsigned int)(post_lp_code) | 0x01))()
+#define POST_LP() ((void (*)(void))((uintptr_t)(post_lp_code) | 0x01))()
 // clang-format on
 
 extern void __early_init(void);
@@ -38,8 +38,11 @@ extern void matrix_init_pins(void);
 void palcallback_cb(uint8_t line) __attribute__((weak));
 void palcallback_cb(uint8_t line) {}
 
+static volatile bool wake_event_serviced;
+
 void palcallback(void *arg) {
-    uint8_t line = (uint32_t)arg & 0xFF;
+    uint8_t line        = (uintptr_t)arg & 0xFF;
+    wake_event_serviced = true;
 
     switch (line) {
 #ifndef LPWR_UART_WAKEUP_DISABLE
@@ -54,56 +57,110 @@ void palcallback(void *arg) {
 
     palcallback_cb(line);
 
-    irqDeinit();
-    EXTI->PR = 0xFFFFFFFF;
+    // V15 disables only the group that fired. Leave independent wake groups
+    // enabled and preserve their pending edges until their handlers run.
+    if (line <= 4) {
+        nvicDisableVector(EXTI0_IRQn + line);
+        EXTI->PR = 1u << line;
+    } else if (line <= 9) {
+        nvicDisableVector(EXTI9_5_IRQn);
+        EXTI->PR = 0x3E0;
+    } else {
+        nvicDisableVector(EXTI15_10_IRQn);
+        EXTI->PR = 0xFC00;
+    }
 }
 
 void pal_events_init(void) {
     for (uint8_t i = 0; i < 16; i++) {
         _pal_events[i].cb  = palcallback;
-        _pal_events[i].arg = (void *)(uint32_t)i;
+        _pal_events[i].arg = (void *)(uintptr_t)i;
     }
 }
 
 void lpwr_exti_init_hook(void) __attribute__((weak));
 void lpwr_exti_init_hook(void) {}
 
+void lpwr_exti_init_post_hook(void) __attribute__((weak));
+void lpwr_exti_init_post_hook(void) {}
+
+bool lpwr_matrix_wake_allowed_hook(void) __attribute__((weak));
+bool lpwr_matrix_wake_allowed_hook(void) {
+    return true;
+}
+
+bool lpwr_matrix_pin_wake_allowed_hook(uint32_t pin) __attribute__((weak));
+bool lpwr_matrix_pin_wake_allowed_hook(uint32_t pin) {
+    return true;
+}
+
+void lpwr_enable_wake_line(uint32_t pin, uint32_t edges) {
+    uint8_t line = PAL_PAD(pin);
+    // A prior STOP may leave this PAL event configured. Reconfigure only this
+    // line, including its callback, and enable only its stock EXTI group.
+    // The caller holds the kernel lock; I-class calls preserve it while arming.
+    palDisableLineEventI(pin);
+    _pal_events[line].cb  = palcallback;
+    _pal_events[line].arg = (void *)(uintptr_t)line;
+    palEnableLineEventI(pin, edges);
+    if (line <= 4) {
+        static const uint8_t priority[] = {WB32_IRQ_EXTI0_PRIORITY, WB32_IRQ_EXTI1_PRIORITY, WB32_IRQ_EXTI2_PRIORITY, WB32_IRQ_EXTI3_PRIORITY, WB32_IRQ_EXTI4_PRIORITY};
+        nvicEnableVector(EXTI0_IRQn + line, priority[line]);
+    } else if (line <= 9) {
+        nvicEnableVector(EXTI9_5_IRQn, WB32_IRQ_EXTI5_9_PRIORITY);
+    } else {
+        nvicEnableVector(EXTI15_10_IRQn, WB32_IRQ_EXTI10_15_PRIORITY);
+    }
+}
+
 void lpwr_exti_init(void) {
     pal_events_init();
+    lpwr_exti_init_hook();
+    const ioline_t *col_pins = left_col_pins;
 #ifdef MATRIX_COL_PINS_RIGHT
-    if (!is_keyboard_left()) {
-        memcpy(col_pins, right_col_pins, sizeof(col_pins));
-    }
+    // V15 uses its master predicate (USB present OR left-side signal).
+    if (!is_keyboard_master()) col_pins = right_col_pins;
 #endif
 
+    bool matrix_wake = lpwr_matrix_wake_allowed_hook();
 #if DIODE_DIRECTION == ROW2COL
-    for (uint8_t i = 0; i < ARRAY_SIZE(col_pins); i++) {
-        if (col_pins[i] != NO_PIN) {
+    for (uint8_t i = 0; i < MATRIX_COLS; i++) {
+        if (col_pins[i] == NO_PIN) continue;
+        if (matrix_wake && lpwr_matrix_pin_wake_allowed_hook(left_col_pins[i])) {
             gpio_set_pin_output_open_drain(col_pins[i]);
             gpio_write_pin_low(col_pins[i]);
+        } else {
+            gpio_set_pin_input_high(col_pins[i]);
         }
     }
-
     for (uint8_t i = 0; i < ARRAY_SIZE(row_pins); i++) {
-        if (row_pins[i] != NO_PIN) {
+        if (row_pins[i] == NO_PIN) continue;
+        if (matrix_wake && lpwr_matrix_pin_wake_allowed_hook(row_pins[i])) {
             gpio_set_pin_input_high(row_pins[i]);
             waitInputPinDelay();
-            palEnableLineEvent(row_pins[i], PAL_EVENT_MODE_BOTH_EDGES);
+            lpwr_enable_wake_line(row_pins[i], PAL_EVENT_MODE_BOTH_EDGES);
+        } else {
+            gpio_set_pin_input_low(row_pins[i]);
         }
     }
 #elif DIODE_DIRECTION == COL2ROW
     for (uint8_t i = 0; i < ARRAY_SIZE(row_pins); i++) {
-        if (row_pins[i] != NO_PIN) {
+        if (row_pins[i] == NO_PIN) continue;
+        if (matrix_wake && lpwr_matrix_pin_wake_allowed_hook(row_pins[i])) {
             gpio_set_pin_output_open_drain(row_pins[i]);
             gpio_write_pin_low(row_pins[i]);
+        } else {
+            gpio_set_pin_input_high(row_pins[i]);
         }
     }
-
-    for (uint8_t i = 0; i < ARRAY_SIZE(col_pins); i++) {
-        if (col_pins[i] != NO_PIN) {
+    for (uint8_t i = 0; i < MATRIX_COLS; i++) {
+        if (col_pins[i] == NO_PIN) continue;
+        if (matrix_wake && lpwr_matrix_pin_wake_allowed_hook(left_col_pins[i])) {
             gpio_set_pin_input_high(col_pins[i]);
             waitInputPinDelay();
-            palEnableLineEvent(col_pins[i], PAL_EVENT_MODE_BOTH_EDGES);
+            lpwr_enable_wake_line(col_pins[i], PAL_EVENT_MODE_BOTH_EDGES);
+        } else {
+            gpio_set_pin_input_low(col_pins[i]);
         }
     }
 #endif
@@ -111,13 +168,10 @@ void lpwr_exti_init(void) {
 #ifndef LPWR_UART_WAKEUP_DISABLE
     gpio_set_pin_input(UART_RX_PIN);
     waitInputPinDelay();
-    palEnableLineEvent(UART_RX_PIN, PAL_EVENT_MODE_BOTH_EDGES);
+    lpwr_enable_wake_line(UART_RX_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
 
-    lpwr_exti_init_hook();
-
-    /* IRQ subsystem initialization.*/
-    irqInit();
+    lpwr_exti_init_post_hook();
 }
 
 void lpwr_clock_enable_user(void) __attribute__((weak));
@@ -160,7 +214,8 @@ void lpwr_clock_enable(void) {
 void lpwr_stop_prepare(void) {
     // Called under the kernel lock BEFORE lpwr_exti_init arms the wake sources.
     // Clearing these after arming can discard a real matrix/split wake edge.
-    EXTI->PR = 0x7FFFF;
+    EXTI->PR            = 0x7FFFF;
+    wake_event_serviced = false;
     for (uint8_t i = 0; i < 8; i++) {
         for (uint8_t j = 0; j < 32; j++) {
             if (NVIC->ISPR[i] & (0x01UL << j)) {
@@ -171,12 +226,11 @@ void lpwr_stop_prepare(void) {
 }
 
 bool lpwr_stop_pending(void) {
-    // irqInit enables all EXTI vectors. palcallback disables all of them after
-    // recording a wake, even an ignored radio-UART wake. Do not enter WFI then.
-    // Checking the IRQ enable state also preserves critical-battery preparation,
-    // which sets the UART classification without having received an interrupt.
+    // A callback may run between arming and CPU masking. Do not sleep again
+    // after servicing it, including an ignored wake. A prior UART cause alone
+    // is not an accepted wake event.
     lpwr_wakeupcd_t cause = lpwr_get_sleep_wakeupcd();
-    return !NVIC_GetEnableIRQ(EXTI0_IRQn) || (cause != LPWR_WAKEUP_NONE && cause != LPWR_WAKEUP_UART);
+    return wake_event_serviced || (cause != LPWR_WAKEUP_NONE && cause != LPWR_WAKEUP_UART);
 }
 
 void wb32_stop_mode(void) {

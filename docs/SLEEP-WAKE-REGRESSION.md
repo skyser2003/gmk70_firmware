@@ -13,8 +13,8 @@ installation on both halves have not been captured.
 
 ## Reproduced source defect
 
-The WB32 PAL wake callback records a wake cause, then disables every EXTI wake
-interrupt. Previously, `lpwr_enter_stop()` armed those interrupts, released the
+The baseline WB32 PAL wake callback recorded a wake cause, then disabled every
+EXTI wake interrupt. Previously, `lpwr_enter_stop()` armed those interrupts, released the
 kernel lock, disabled CPU interrupts, and unconditionally entered MCU STOP.
 A key or split-line interrupt in the gap could therefore run the callback
 before STOP, leaving STOP with no enabled key/split wake interrupts. This can
@@ -32,8 +32,10 @@ arming remain pending so they can release WFI. State and wake-cause fields read
 across interrupt/thread boundaries are volatile. A host resume recorded during
 entry is preserved by the STOP return classifier.
 
-Ordinary NONE/UART returns still retain STOP. Critical-battery preparation's
-synthetic UART cause, without a wake interrupt, still allows STOP. Debug builds
+The [stock power follow-up](STOCK-SLEEP-WAKE-MATCH.md) now disables only the fired
+EXTI group and restores the split pins earlier. The entry guard remains and
+uses an explicit serviced-event flag. Ordinary NONE/UART returns still retain
+STOP; the former synthetic UART preparation workaround is removed. Debug builds
 record event 17, `MCU STOP entry cancelled`, when WFI is skipped. Events 4/5
 describe the entry attempt and path return, which alone do not prove WFI ran.
 
@@ -51,7 +53,7 @@ source. Other paths can still request sleep:
 | Path | Current behavior | Evidence to read |
 | --- | --- | --- |
 | Stored idle selector | Selector 1 is 60,000 ms. Default selector 7 is 300,000 ms. | EEPROM `decoded.radio.sleep_selector` and `idle_sleep_timeout_ms`; `sleep accepted: manual=False` |
-| Critical battery | Cached radio battery at 0%, without charging, can request sleep after 60 seconds. Its latch is sent to the peer and suppresses ordinary key/host wakes. | `sleep requested: low battery, context=0`; `low_battery_sleep=True` |
+| Critical battery | The two-second battery snapshot at 0%, with the cached cable flag clear, can request sleep after 60 seconds. Its local class suppresses ordinary wakes; the peer receives ordinary sleep and keeps its own battery flag. | `sleep requested: low battery, context=0`; `low_battery_sleep=True` |
 | Disconnected radio | A 30-second reconnect deadline requests sleep. | `sleep requested: radio disconnected timeout` |
 | Radio host suspend | The radio can request sleep through its host callback. | `radio host resume=False`, followed by state/manual events |
 

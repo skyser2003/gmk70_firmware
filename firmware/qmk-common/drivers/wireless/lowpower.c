@@ -22,13 +22,15 @@
 #    define LPWR_WAKEUP_DELAY 200
 #endif
 
-static volatile lpwr_state_t    lpwr_state         = LPWR_NORMAL;
-static lpwr_mode_t              lpwr_mode          = LPWR_MODE_TIMEOUT;
-static uint32_t                 lpwr_timeout_value = LPWR_TIMEOUT;
-static uint32_t                 lpwr_timestamp     = 0x00;
+static volatile lpwr_state_t    lpwr_state          = LPWR_NORMAL;
+static volatile lpwr_state_t    lpwr_previous_state = LPWR_NORMAL;
+static volatile lpwr_prepare_t  lpwr_preparation    = LPWR_PREPARE_ORDINARY;
+static lpwr_mode_t              lpwr_mode           = LPWR_MODE_TIMEOUT;
+static uint32_t                 lpwr_timeout_value  = LPWR_TIMEOUT;
+static uint32_t                 lpwr_timestamp      = 0x00;
 static uint32_t                 lpwr_activity_timestamp;
 static volatile lpwr_wakeupcd_t lpwr_wakeupcd  = LPWR_WAKEUP_NONE;
-static bool                     manual_timeout = false;
+static volatile bool            manual_timeout = false;
 
 static bool rgb_enable_bak = false;
 
@@ -50,10 +52,28 @@ lpwr_state_t lpwr_get_state(void) {
     return lpwr_state;
 }
 
+lpwr_state_t lpwr_get_previous_state(void) {
+    return lpwr_previous_state;
+}
+
+lpwr_prepare_t lpwr_get_prepare_class(void) {
+    return lpwr_preparation;
+}
+
+void lpwr_set_prepare_class(lpwr_prepare_t preparation) {
+    lpwr_preparation = preparation;
+}
+
+uint8_t lpwr_requested_classes_hook(void) __attribute__((weak));
+uint8_t lpwr_requested_classes_hook(void) {
+    return LPWR_PREPARE_ORDINARY;
+}
+
 void lpwr_set_state(lpwr_state_t state) {
     if (lpwr_state != state) split_diagnostics_event(SPLIT_DIAG_STATE, lpwr_state, state, manual_timeout);
-    lpwr_state     = state;
-    manual_timeout = false;
+    lpwr_previous_state = lpwr_state;
+    lpwr_state          = state;
+    manual_timeout      = false;
     lpwr_update_timestamp();
     lpwr_activity_trigger();
     lpwr_state_changed_hook();
@@ -76,11 +96,11 @@ uint32_t lpwr_timeout_value_read(void) {
 }
 
 void lpwr_update_timestamp(void) {
-    lpwr_timestamp = sync_timer_read32();
+    lpwr_timestamp = timer_read32();
 }
 
 void lpwr_activity_trigger(void) {
-    lpwr_activity_timestamp = sync_timer_read32();
+    lpwr_activity_timestamp = timer_read32();
 }
 
 uint32_t lpwr_timestamp_read(void) {
@@ -157,14 +177,18 @@ void md_receive_host_cb(bool resume) {
             lpwr_set_state(LPWR_WAKEUP);
         }
     } else {
-        if (lpwr_get_state() == LPWR_NORMAL) {
-            manual_timeout = true;
-        }
+        // V15 records suspend in every phase; the next state assignment clears it.
+        manual_timeout = true;
     }
 }
 
 bool lpwr_is_allow_timeout_hook(void) __attribute__((weak));
 bool lpwr_is_allow_timeout_hook(void) {
+    return true;
+}
+
+bool lpwr_timeout_accept_hook(void) __attribute__((weak));
+bool lpwr_timeout_accept_hook(void) {
     return true;
 }
 
@@ -177,16 +201,26 @@ bool lpwr_is_allow_timeout(void) {
         return false;
     }
 
-    if ((wireless_get_current_devs() == DEVS_USB) && (USB_DRIVER.state == USB_ACTIVE)) {
-        manual_timeout = false;
+    // V15 preserves a pending manual request while initializing this clock.
+    if (!lpwr_activity_timestamp) {
+        lpwr_activity_trigger();
         return false;
     }
 
-    if (manual_timeout || (timeout && (sync_timer_elapsed32(lpwr_activity_timestamp) >= timeout))) {
+    if ((wireless_get_current_devs() == DEVS_USB) && (USB_DRIVER.state == USB_ACTIVE)) {
+        // V15 refreshes ordinary USB activity; it still consumes manual requests.
+        lpwr_activity_trigger();
+    }
+
+    if (manual_timeout || (timeout && (timer_elapsed32(lpwr_activity_timestamp) >= timeout))) {
+        bool was_manual = manual_timeout;
+        manual_timeout  = false;
+        if (!lpwr_timeout_accept_hook()) return false;
 #ifdef GMK70_SPLIT_DIAGNOSTICS
-        split_diagnostics_sleep_accepted(manual_timeout, sync_timer_elapsed32(lpwr_activity_timestamp), wireless_get_current_devs());
+        split_diagnostics_sleep_accepted(was_manual, timer_elapsed32(lpwr_activity_timestamp), wireless_get_current_devs());
+#else
+        (void)was_manual;
 #endif
-        manual_timeout = false;
         return true;
     }
 
@@ -206,7 +240,7 @@ bool lpwr_is_allow_presleep(void) {
         return false;
     }
 
-    if (!delay || (sync_timer_elapsed32(lpwr_timestamp_read()) >= delay)) {
+    if (!delay || (timer_elapsed32(lpwr_timestamp_read()) >= delay)) {
         return true;
     }
 
@@ -218,15 +252,27 @@ bool lpwr_is_allow_stop_hook(void) {
     return true;
 }
 
+void lpwr_usb_prepare_hook(void) __attribute__((weak));
+void lpwr_usb_prepare_hook(void) {}
+
 bool lpwr_is_allow_stop(void) __attribute__((weak));
 bool lpwr_is_allow_stop(void) {
-    uint32_t delay = LPWR_STOP_DELAY;
+    uint32_t     delay    = LPWR_STOP_DELAY;
+    lpwr_state_t previous = lpwr_get_previous_state();
+    if (previous != LPWR_PRESLEEP && previous != LPWR_STOP) return false;
+
+    // V15's first USB-special STOP resets the matrix/key counter immediately.
+    // Repeated STOP returns retain the ordinary delay and class gate.
+    if (lpwr_get_prepare_class() == LPWR_PREPARE_USB && lpwr_get_previous_state() == LPWR_PRESLEEP) {
+        lpwr_usb_prepare_hook();
+        return true;
+    }
 
     if (lpwr_is_allow_stop_hook() != true) {
         return false;
     }
 
-    if (!delay || (sync_timer_elapsed32(lpwr_timestamp_read()) >= delay)) {
+    if (!delay || (timer_elapsed32(lpwr_timestamp_read()) >= delay)) {
         return true;
     }
 
@@ -246,7 +292,7 @@ bool lpwr_is_allow_wakeup(void) {
         return false;
     }
 
-    if (!delay || (sync_timer_elapsed32(lpwr_timestamp_read()) >= delay)) {
+    if (!delay || (timer_elapsed32(lpwr_timestamp_read()) >= delay)) {
         return true;
     }
 
@@ -255,6 +301,11 @@ bool lpwr_is_allow_wakeup(void) {
 
 void lpwr_presleep_hook(void) __attribute__((weak));
 void lpwr_presleep_hook(void) {}
+
+void lpwr_power_down_hook(void) __attribute__((weak));
+void lpwr_power_down_hook(void) {
+    suspend_power_down();
+}
 
 void lpwr_presleep_cb(void) __attribute__((weak));
 void lpwr_presleep_cb(void) {
@@ -267,7 +318,7 @@ void lpwr_presleep_cb(void) {
 #else
     rgb_enable_bak = false;
 #endif
-    suspend_power_down();
+    lpwr_power_down_hook();
     lpwr_presleep_hook();
 }
 
@@ -277,15 +328,20 @@ void lpwr_stop_hook_pre(void) {}
 void lpwr_stop_hook_post(void) __attribute__((weak));
 void lpwr_stop_hook_post(void) {}
 
+// V15 can remain in software STOP without entering MCU STOP after a mode change.
+bool lpwr_can_enter_stop_hook(void) __attribute__((weak));
+bool lpwr_can_enter_stop_hook(void) {
+    return true;
+}
+
 void lpwr_stop_cb(void) __attribute__((weak));
 void lpwr_stop_cb(void) {
-    lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_NONE);
-
     lpwr_stop_hook_pre();
-    lpwr_enter_stop();
+    lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_NONE);
+    if (lpwr_can_enter_stop_hook()) lpwr_enter_stop();
 
     // Preserve a host resume delivered by the radio worker during STOP entry.
-    if (lpwr_get_state() == LPWR_STOP) {
+    if (lpwr_get_state() == LPWR_STOP && lpwr_get_prepare_class() == LPWR_PREPARE_ORDINARY) {
         switch (lpwr_get_sleep_wakeupcd()) {
             // Stock V13/V15 keep STOP when no accepted wake source was recorded.
             // A return from WFI alone must not restore RGB or reselect the radio.
@@ -299,7 +355,7 @@ void lpwr_stop_cb(void) {
         }
     }
 
-    lpwr_stop_hook_post();
+    if (lpwr_get_state() == LPWR_STOP) lpwr_stop_hook_post();
 }
 
 void lpwr_wakeup_hook(void) __attribute__((weak));
@@ -323,13 +379,30 @@ void lpwr_wakeup_cb(void) {
     last_matrix_activity_trigger();
 }
 
+void lpwr_task_hook_pre(void) __attribute__((weak));
+void lpwr_task_hook_pre(void) {}
+
 void lpwr_task(void) __attribute__((weak));
 void lpwr_task(void) {
+    lpwr_task_hook_pre();
     switch (lpwr_get_state()) {
         case LPWR_NORMAL: {
-            if (lpwr_is_allow_timeout()) {
-                lpwr_update_timestamp();
+            bool timeout = lpwr_is_allow_timeout();
+            if (timeout) {
                 lpwr_set_state(LPWR_PRESLEEP);
+                lpwr_set_prepare_class(LPWR_PREPARE_ORDINARY);
+            }
+            // All three stock predicates are evaluated, even after an earlier
+            // request assigned PRE. Preserve their ordering and state hooks.
+            uint8_t              requests  = lpwr_requested_classes_hook();
+            const lpwr_prepare_t classes[] = {LPWR_PREPARE_CRITICAL, LPWR_PREPARE_USB};
+            for (uint8_t i = 0; i < sizeof(classes) / sizeof(classes[0]); ++i) {
+                if (!(requests & classes[i])) continue;
+#ifdef GMK70_SPLIT_DIAGNOSTICS
+                if (!timeout) split_diagnostics_sleep_accepted(true, timer_elapsed32(lpwr_activity_timestamp), wireless_get_current_devs());
+#endif
+                lpwr_set_state(LPWR_PRESLEEP);
+                lpwr_set_prepare_class(classes[i]);
             }
         } break;
         case LPWR_PRESLEEP: {

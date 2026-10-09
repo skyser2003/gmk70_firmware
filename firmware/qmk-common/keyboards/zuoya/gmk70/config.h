@@ -58,6 +58,9 @@
 #define UART_RX_PIN C11
 #define UART_TX_PAL_MODE 7
 #define UART_RX_PAL_MODE 7
+// V15 arms B6 as an ordinary wake input; UART RX C11 is not a wake source.
+#define LPWR_UART_WAKEUP_DISABLE
+#define LPWR_EXTRA_WAKE_PIN B6
 /*serial usart config for split communication*/
 #define SERIAL_USART_DRIVER SD1
 #define SERIAL_USART_TX_PIN A9

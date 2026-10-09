@@ -15,6 +15,10 @@ int main(void) {
     for (unsigned i = 0; i < 8; ++i)
         stock_power_key(false);
     assert(stock_power_prepare_allowed(false));
+    stock_power_key(true);
+    assert(!stock_power_prepare_allowed(false));
+    stock_power_reset_keys();
+    assert(stock_power_prepare_allowed(false));
     const uint32_t expected[] = {0, 60000, 180000, 300000, 600000, 1200000, 1800000, 300000};
     for (unsigned i = 0; i < 256; ++i)
         assert(stock_power_timeout(i) == expected[i & 7]);

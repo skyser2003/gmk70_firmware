@@ -7,5 +7,7 @@
 
 bool     is_keyboard_master(void);
 void     reset_keyboard(void);
+uint32_t timer_read32(void);
+uint32_t timer_elapsed32(uint32_t last);
 uint32_t sync_timer_read32(void);
 uint32_t sync_timer_elapsed32(uint32_t last);

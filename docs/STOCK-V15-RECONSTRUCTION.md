@@ -2,6 +2,12 @@
 
 This change reconstructs recovered behavior from the user's `ZUOYA GMK70_via_v15.hex` in the maintained QMK board/radio sources. It is **not a verified complete reproduction of stock**. The keyboard MCU image does not contain the separate Bluetooth/RF module, receiver firmware or ROM bootloader, and stock's complete framework and hardware behavior have not been recovered.
 
+The [2026-10-09 recheck](STOCK-V15-RECHECK.md) reproduced seven additional
+power/split mismatches in the current build, including peer PRE pin handling,
+clock corrections, mode-sync recovery and complete STOP dispatch. The earlier
+bounded comparisons still pass within their narrower scope. All seven recheck
+differences are corrected and separately validated in the 2026-10-09 follow-up.
+
 ## Public source search
 
 Public GitHub searches on 2026-10-05 found GMK70 sources, but no repository verified to contain the exact V15 application source:
@@ -34,7 +40,7 @@ Raw investigation artifacts are local under `artifacts/analysis/stock-v15-sleep`
 | Connection handling | Apply radio status only when its nonzero dispatched selection context matches the current channel. Pairing inhibits reports; basic wireless key events are rejected while disconnected, without reselecting the radio on each discarded report. Stock board gate: `0x08005420`. |
 | Radio identity/startup | BT names 1–3 are GMK70-1/2/3 and 4–5 are WB KB 4/5. Naming packets use their actual length, as captured from stock command dispatch. Startup waits two seconds and sends 55, 57, 70 in that order. |
 | Idle sleep | Remove the additional connected-wireless one-minute sleep request. Stock has eight selectors: disabled, 1, 3, 5, 10, 20, 30, 5 minutes; default 7 means five minutes. Track stock board activity separately from QMK's release activity. |
-| Sleep preparation | Ordinary PRE waits for the saturating four-key held counter to reach zero, then proceeds without a fixed 200 ms PRE delay. Send the peer preparation request once after the gate. Preserve the critical-battery bypass. Stock gates/counter: `0x08002838`, `0x08002864`, `0x080041BC`. |
+| Sleep preparation and split wake | Recovered ordinary/USB-special/critical classes, held-key gates, zero PRE delay, early split restoration, wake inputs and per-group interrupts. Always send ordinary peer AA with zero body and preserve the peer's own critical flag. See [the detailed power follow-up](STOCK-SLEEP-WAKE-MATCH.md). |
 | State assignment/wake | Clear pending manual requests and refresh activity/state timestamps on assignment; request voltage on assignment. Repeated host resumes while already waking leave the wake deadline unchanged. NONE/UART returns retain STOP; ordinary STOP/wake delays remain 200 ms. Stock assignment/host callback: `0x08002890`/`0x08002B2C`. |
 | Input defaults | One-ms global deferred debounce; exact stock four-layer keymap and four volume encoder assignments, with only the left encoder configured. Includes transparent Fn encoder press, reserved 7E19, hue/speed direction and legacy RGB keycode bytes. Tables: `0x080127A4` and `0x08012794`. |
 | LED output/geometry | Keep asynchronous SPI output; emit R,G,B. Match all 77 points/flags and the matrix lookup, including decorative LEDs and the five unwired zero slots. Stock SPI routines: `0x0800CCA4`/`0x0800CC98`; tables: `0x080133F0`, `0x0801344A`, `0x080134E4`. |
@@ -43,7 +49,7 @@ Raw investigation artifacts are local under `artifacts/analysis/stock-v15-sleep`
 | Indicators/split | Restore A6, AE/AF GUI lock, C1 enable/C2 disable send/receive behavior. Store flip/GUI flags in the stock user word. Caps/GUI and charging/full indicators use intensity 80. Draw the battery bar before overlays. Stock indicator/receiver: `0x08004F34`/`0x080051CC`. |
 | VIA/raw HID | Protocol 12, sleep channel 0/value 1, live NKRO command 21, activity refresh/wake prehook, deferred settings reset 0A and deferred bootloader request 0B. The 0B echo sets byte 1 to 1; it is supported in both distributions, including radio delivery. Stock entries: `0x0800306C`, `0x080032A0`, `0x08004964`. |
 | Persistence | Translate the QMK NVM interface to stock packing/offsets, fixed VIA marker and default maps. Do not reserve recorder storage. Runtime RGBLight speed is not persisted. Stock matrix write: `0x0800AF08`; key addressing: `0x0800DA14`; validity: `0x08007790`/`0x0800CEDC`. |
-| USB metadata | VID 342D, PID E491, manufacturer HS, product ZUOYA GMK70, bcdDevice 000F. `DEVICE_VER` supplies 000F because the pinned JSON schema cannot express decimal patch component 15. The USB suspend interval changes from three to seven seconds. Metadata alone does not reproduce the entire stock USB suspend implementation. |
+| USB metadata and suspend | VID 342D, PID E491, manufacturer HS, product ZUOYA GMK70, bcdDevice 000F. `DEVICE_VER` supplies 000F because the pinned JSON schema cannot express decimal patch component 15. Recovered seven-second ordinary host-suspend gate, separate special class and hidden 7E11–13 controls. Modern QMK still supplies the USB driver/event framework. |
 
 The original VIA definition remains unchanged. Standard QMK rendering/framework code is retained; restoring its tables, defaults and controls does not establish identical animation frames or framework semantics across QMK versions.
 
@@ -76,8 +82,8 @@ The official locked compiler download redirected to a host blocked by the cloud 
 Remaining equivalence gaps include:
 
 - The complete stock QMK version, HID descriptor/framework processing, every tap/hold/mouse-key/encoder sequence, animation math and timing have not been reconstructed.
-- Stock USB suspend has a separate preparation class and deep-stop path. The port retains its existing QMK USB suspend/wake integration, with the recovered seven-second interval; its full USB behavior is not equivalent yet.
-- The low-level pin/clock/IRQ sequence, USB and critical-battery preparation classes, precise charging/state transitions, and every overlapping channel/pairing/reset sequence need further differential and hardware tests. Ordinary PRE still goes through QMK's suspend callback, which can add platform work/delay absent from stock's inline routine.
+- The recovered power classes, board GPIO/IRQ contracts and USB request gates are implemented in the [power follow-up](STOCK-SLEEP-WAKE-MATCH.md). Physical STOP, electrical timing and the modern USB driver/event delivery still require hardware tests. Old private key-record buffer reset semantics in USB-special entry remain unreproduced.
+- Precise charging/state transitions and every overlapping channel/pairing/reset sequence need further differential and hardware tests.
 - Link-level interoperability with a stock half is unproven: stock registers custom transaction 15, while current QMK derives transaction IDs/layout from its enabled features. Installations need a consistent firmware pair, not an assumed mix-and-match split protocol.
 - Hidden manufacturing/test paths and all raw-HID commands are not comprehensively recovered. Reserved custom slots are not assigned speculative functions.
 - Debug diagnostics and the opt-in resident split updater are repository additions. The normal release contains no diagnostic recorder; the opt-in updater is not the supplied stock application layout.

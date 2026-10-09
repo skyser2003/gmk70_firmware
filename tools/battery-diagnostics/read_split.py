@@ -43,6 +43,8 @@ class SplitReader(DiagnosticReader):
         1: "radio disconnected timeout",
         2: "radio idle timeout",
         3: "low battery",
+        4: "host suspend",
+        5: "USB special sleep",
     }
     _commands: ClassVar[dict[int, str]] = {
         0x55: "mode",

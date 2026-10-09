@@ -1,9 +1,6 @@
 #include "wls.h"
 #include "split_diagnostics.h"
 
-static ioline_t col_pins[MATRIX_COLS]   = MATRIX_COL_PINS;
-static ioline_t col_pins_r[MATRIX_COLS] = MATRIX_COL_PINS_RIGHT;
-
 bool hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev) {
     static uint32_t scan_timer = 0x00;
 
@@ -113,53 +110,40 @@ bool hs_rgb_blink_hook() {
 }
 
 void lpwr_exti_init_hook(void) {
-    // Wake the sleeping half when its peer resumes split communication.
-    gpio_set_pin_input_high(SERIAL_USART_RX_PIN);
-    waitInputPinDelay();
-    palEnableLineEvent(SERIAL_USART_RX_PIN, PAL_EVENT_MODE_FALLING_EDGE);
+    // V15 retains the boot/encoder GPIO modes for these inputs.
+    lpwr_enable_wake_line(HS_BAT_CABLE_PIN, PAL_EVENT_MODE_RISING_EDGE);
+    if (lpwr_get_prepare_class() == LPWR_PREPARE_ORDINARY) {
+        lpwr_enable_wake_line(LPWR_EXTRA_WAKE_PIN, PAL_EVENT_MODE_BOTH_EDGES);
+    }
 #ifdef HS_BT_DEF_PIN
-    if (is_keyboard_master()) {
-        gpio_set_pin_input_high(HS_BT_DEF_PIN);
-        waitInputPinDelay();
-        palEnableLineEvent(HS_BT_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
-    }
+    if (is_keyboard_master()) lpwr_enable_wake_line(HS_BT_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
-
 #ifdef HS_2G4_DEF_PIN
-    if (is_keyboard_master()) {
-        gpio_set_pin_input_high(HS_2G4_DEF_PIN);
-        waitInputPinDelay();
-        palEnableLineEvent(HS_2G4_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
-    }
+    if (is_keyboard_master()) lpwr_enable_wake_line(HS_2G4_DEF_PIN, PAL_EVENT_MODE_BOTH_EDGES);
 #endif
+}
 
-    if (lower_sleep) {
-#if DIODE_DIRECTION == ROW2COL
-        for (uint8_t i = 0; i < ARRAY_SIZE(col_pins); i++) {
-            if (col_pins[i] != NO_PIN) {
-                gpio_set_pin_output(col_pins[i]);
-                gpio_write_pin_high(col_pins[i]);
-            }
-        }
-
-#    if defined(MATRIX_ROW_PINS_RIGHT) && defined(MATRIX_COL_PINS_RIGHT)
-        for (uint8_t i = 0; i < ARRAY_SIZE(col_pins_r); i++) {
-            if (col_pins_r[i] != NO_PIN) {
-                gpio_set_pin_output(col_pins_r[i]);
-                gpio_write_pin_high(col_pins_r[i]);
-            }
-        }
-#    endif
-#endif
-    }
-    gpio_set_pin_input(HS_BAT_CABLE_PIN);
+void lpwr_exti_init_post_hook(void) {
+    // Stock configures split RX last, as floating input on both edges.
+    gpio_set_pin_input(SERIAL_USART_RX_PIN);
     waitInputPinDelay();
-    palEnableLineEvent(HS_BAT_CABLE_PIN, PAL_EVENT_MODE_RISING_EDGE);
+    lpwr_enable_wake_line(SERIAL_USART_RX_PIN, PAL_EVENT_MODE_BOTH_EDGES);
+}
+
+bool lpwr_matrix_wake_allowed_hook(void) {
+    // Critical class arms no matrix IRQs. USB special retains one row/column.
+    return lpwr_get_prepare_class() != LPWR_PREPARE_CRITICAL;
+}
+
+bool lpwr_matrix_pin_wake_allowed_hook(uint32_t pin) {
+    // V15 tests its left pin table even when selecting the right column table.
+    // The C3 column index therefore selects C7 on a right-side non-master.
+    return lpwr_get_prepare_class() != LPWR_PREPARE_USB || pin == C3 || pin == C13;
 }
 
 void palcallback_cb(uint8_t line) {
     switch (line) {
-        case PAL_PAD(SERIAL_USART_RX_PIN): {
+        case PAL_PAD(C13): {
             lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_ONEKEY);
         } break;
         case PAL_PAD(HS_BAT_CABLE_PIN): {
@@ -183,26 +167,31 @@ void palcallback_cb(uint8_t line) {
 
 void lpwr_stop_hook_pre(void) {
     gpio_write_pin_low(LED_POWER_EN_PIN);
-    // Suspend split pins only after the sleep RPC and LED RPC have completed.
-    palSetLineMode(SERIAL_USART_RX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
-    palSetLineMode(SERIAL_USART_TX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
-    gpio_write_pin_low(A9);
-    // gpio_write_pin_low(HS_LED_BOOSTING_PIN);
-
-    if (lower_sleep) {
+    gpio_write_pin_low(LED_POWER_EN2_PIN);
+    // V15 leaves the radio alone in USB-with-cable mode. Otherwise it drains
+    // the USB-selection command before STOP, and waits 300 ms if disconnected.
+    if (wireless_get_current_devs() == DEVS_USB && gmk70_stock_cable_flag()) return;
+    bool special = lpwr_get_prepare_class() != LPWR_PREPARE_ORDINARY;
+    if ((special && lpwr_get_previous_state() != LPWR_STOP) || (!special && *md_getp_state() != MD_STATE_CONNECTED)) {
         md_send_devctrl(MD_SND_CMD_DEVCTRL_USB);
-        wait_ms(200);
-        lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_UART);
+        md_wait_for_commands();
+        if (!special) wait_ms(300);
     }
 }
 
 void lpwr_stop_hook_post(void) {
-    if (lower_sleep) {
+    lpwr_prepare_t preparation = lpwr_get_prepare_class();
+    if (preparation != LPWR_PREPARE_ORDINARY) {
         switch (lpwr_get_sleep_wakeupcd()) {
             case LPWR_WAKEUP_USB:
             case LPWR_WAKEUP_CABLE: {
-                lower_sleep = false;
+                // One state assignment, before clearing the raw request latch.
                 lpwr_set_state(LPWR_WAKEUP);
+                lpwr_set_prepare_class(LPWR_PREPARE_ORDINARY);
+                if (preparation == LPWR_PREPARE_CRITICAL)
+                    lower_sleep = false;
+                else
+                    gmk70_stock_usb_sleep_set(false);
             } break;
             default: {
                 lpwr_set_state(LPWR_STOP);

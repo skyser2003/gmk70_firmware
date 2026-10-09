@@ -133,10 +133,22 @@ static void test_pairing_name_packet(void) {
     assert(last_length == sizeof(expected));
     ack();
 }
+static void test_stop_command_drain(void) {
+    md_init();
+    md_send_devctrl(MD_SND_CMD_DEVCTRL_USB);
+    md_main_task();
+    assert(smsg_is_busy());
+    memcpy(receive, (uint8_t[]){0x61, 0x0D, 0x0A}, 3);
+    received = 3;
+    cursor   = 0;
+    md_wait_for_commands();
+    assert(!smsg_is_busy() && cursor == received);
+}
 int main(void) {
     test_direct_reports_and_expiry();
     test_context_and_pairing();
     test_stale_status_and_packet_bounds();
     test_pairing_name_packet();
+    test_stop_command_drain();
     puts("Radio: direct HID, finite command retries, battery retry limit, status context and pairing gates passed");
 }

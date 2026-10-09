@@ -105,6 +105,7 @@ enum {
 
 void     md_init(void);
 void     md_main_task(void);
+void     md_wait_for_commands(void);
 void     md_send_kb(uint8_t *data);
 void     md_send_devinfo(const char *name);
 void     md_send_nkro(uint8_t *data);

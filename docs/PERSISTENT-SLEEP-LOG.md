@@ -43,6 +43,17 @@ unrecognized data was found in the reserved region; it was not overwritten.
 error. These conditions are reported instead of assuming that a record was
 saved. No automatic settings reset or chip erase is attempted.
 
+The firmware accepts the observed Zbit `5E3213` ID (ZB25D40B, 512 KB).
+Earlier bundles reject it because manufacturer `5E` and type `32` were missing
+from the logger's allowlist; a successful MCU application update does not imply
+that external-flash logging is available. Install the corrected application on
+both halves, then check `storage_ready=true`, `region_owned=true` and
+`write_io_error=false`. Other unrecognized Zbit IDs still fail the check.
+The [public flash configuration](https://github.com/9names/bflb-mcu-tool/blob/d65ac5afe5a51c82d67fef3eb834619cee402844/bflb_mcu_tool/utils/flash/bl602/ZB25D40B_5e3213.conf)
+confirms the existing driver's write-enable/status/page-program/sector-erase
+commands, 256-byte pages and 4 KB sectors. The capacity and journal ownership
+checks remain in force; the fix does not erase existing storage or settings.
+
 ## What is saved
 
 A checkpoint contains the latest 16 significant events, the configured sleep
@@ -69,8 +80,11 @@ For example, a left record with `configured_timeout_ms=300000`,
 `accepted_manual=true`, `sleep_reason="critical battery"`, `battery_percent=0`
 shows a forced request despite a five-minute configured timeout. The inherited
 critical-battery branch requests sleep after 60 seconds at its stop threshold;
-it was not replaced by the ordinary idle deadline. A right record can show the
-critical-battery latch received from the left rather than a local low reading.
+it was not replaced by the ordinary idle deadline. The stock power follow-up
+keeps that latch local and sends ordinary peer sleep. Older firmware's right
+records can still show an inherited latch; the reader preserves that legacy
+interpretation. Reason 4 means host suspend (radio or USB), and reason 5 means
+the hidden USB special request. See [the power follow-up](STOCK-SLEEP-WAKE-MATCH.md).
 
 The physical one-minute trigger has not yet been captured. This implementation
 does not overwrite a stored one-minute selector or disable battery protection.

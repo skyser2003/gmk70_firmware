@@ -52,7 +52,10 @@ bool sleep_log_storage_init(void) {
     // All accepted manufacturers use the existing driver's 0x20 sector erase.
     bool known = manufacturer == 0xC2 || manufacturer == 0xEF || manufacturer == 0xC8 || manufacturer == 0x85 || manufacturer == 0x1C || manufacturer == 0x20 || manufacturer == 0x9D;
     bool nor   = type == 0x20 || type == 0x40 || type == 0x60 || type == 0x30;
-    return ok && known && nor && density >= 17 && density <= 24 && (1UL << density) > SLEEP_LOG_BASE + SLEEP_LOG_SIZE;
+    // Zbit ZB25D40B (5E3213): 512 KB, 256-byte pages, 4 KB 0x20 erase.
+    // Accept this observed model without admitting unknown 5E/type-32 parts.
+    bool supported = (known && nor) || jedec == 0x5E3213;
+    return ok && supported && density >= 17 && density <= 24 && (1UL << density) > SLEEP_LOG_BASE + SLEEP_LOG_SIZE;
 }
 uint32_t sleep_log_storage_id(void) {
     return jedec;

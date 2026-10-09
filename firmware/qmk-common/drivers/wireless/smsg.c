@@ -121,9 +121,12 @@ void smsg_set_state(smsg_states_t state) {
 }
 
 bool smsg_is_busy(void) {
-    if (smsg_instance.out_ptr != smsg_instance.in_ptr) {
-        return true;
-    }
-
-    return false;
+#ifdef GMK70_RADIO_THREAD
+    chSysLock();
+#endif
+    bool busy = smsg_instance.out_ptr != smsg_instance.in_ptr;
+#ifdef GMK70_RADIO_THREAD
+    chSysUnlock();
+#endif
+    return busy;
 }

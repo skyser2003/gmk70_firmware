@@ -160,6 +160,13 @@ void wireless_devs_change(uint8_t old_devs, uint8_t new_devs, bool reset) {
         *md_getp_indicator() = 0;
     }
 
+    // V15 wakes PRE/STOP even when the peer reselects the same device.
+    // The independent USB/critical request latches are retained.
+    if (lpwr_get_state() == LPWR_PRESLEEP || lpwr_get_state() == LPWR_STOP) {
+        lpwr_set_state(LPWR_WAKEUP);
+        lpwr_set_prepare_class(LPWR_PREPARE_ORDINARY);
+    }
+
     wls_devs = new_devs;
     last_matrix_activity_trigger();
     lpwr_activity_trigger();

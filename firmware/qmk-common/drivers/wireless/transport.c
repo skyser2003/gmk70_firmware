@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "quantum.h"
-#include "module.h"
+#include "wireless.h"
 #include "usb_main.h"
 #include "usb_device_state.h"
 #include "transport.h"
+#include "split_diagnostics.h"
 
 #ifndef USB_POWER_DOWN_DELAY
 #    define USB_POWER_DOWN_DELAY 7000
 #endif
+
+static bool     usb_suspend_requested;
+static uint32_t usb_suspend_timer;
 
 extern host_driver_t chibios_driver;
 extern host_driver_t wireless_driver;
@@ -115,24 +119,37 @@ void usb_remote_wakeup(void) {
         /* Woken up */
     }
 #else
-    static uint32_t suspend_timer = 0x00;
-
-    if ((USB_DRIVER.state == USB_SUSPENDED)) {
-        if (!suspend_timer) suspend_timer = sync_timer_read32();
-        if (sync_timer_elapsed32(suspend_timer) >= USB_POWER_DOWN_DELAY) {
-            suspend_timer = 0x00;
-            suspend_power_down();
+    // V15 0x080032F0: USB READY/SUSPENDED plus cable, then ordinary manual sleep.
+    bool usb       = wireless_get_current_devs() == DEVS_USB;
+    bool suspended = USB_DRIVER.state == USB_SUSPENDED || USB_DRIVER.state == USB_READY;
+    if (usb && suspended && gpio_read_pin(HS_BAT_CABLE_PIN)) {
+        if (!usb_suspend_timer) usb_suspend_timer = sync_timer_read32();
+        if (sync_timer_elapsed32(usb_suspend_timer) >= USB_POWER_DOWN_DELAY) {
+            usb_suspend_timer     = sync_timer_read32();
+            usb_suspend_requested = true;
+            split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_HOST_SUSPEND, 0, 0);
+            lpwr_set_timeout_manual(true);
         }
     } else {
-        suspend_timer = 0x00;
+        usb_suspend_timer = sync_timer_read32();
+        if (usb && !suspended) usb_suspend_requested = false;
     }
 #endif
 }
 
 #ifndef USB_REMOTE_USE_QMK
 void usb_remote_host(void) {
+    if (wireless_get_current_devs() != DEVS_USB) return;
+    // V15's wired key hook wakes PRE/STOP and resets the active class before
+    // deciding whether a suspended host can receive a remote-wake request.
+    if (lpwr_get_state() == LPWR_PRESLEEP || lpwr_get_state() == LPWR_STOP) {
+        lpwr_set_state(LPWR_WAKEUP);
+        lpwr_set_prepare_class(LPWR_PREPARE_ORDINARY);
+    }
     if (USB_DRIVER.state == USB_SUSPENDED) {
-        if ((USB_DRIVER.status & 2U) && suspend_wakeup_condition()) {
+        if ((USB_DRIVER.status & 2U) && usb_suspend_requested && lpwr_get_state() <= LPWR_WAKEUP) {
+            usb_suspend_requested = false;
+            usb_suspend_timer     = sync_timer_read32();
             usbWakeupHost(&USB_DRIVER);
 #    if USB_SUSPEND_WAKEUP_DELAY > 0
             // Some hubs, kvm switches, and monitors do
@@ -144,18 +161,7 @@ void usb_remote_host(void) {
             wait_ms(USB_SUSPEND_WAKEUP_DELAY);
 #    endif
         }
-#    if !defined(USB_REMOTE_USE_QMK) && USB_POWER_DOWN_DELAY
-        suspend_wakeup_init();
-#    endif
     }
 }
 
-bool process_action_kb(keyrecord_t *record) {
-    (void)record;
-    if (get_transport() == TRANSPORT_USB) {
-        usb_remote_host();
-    }
-
-    return true;
-}
 #endif

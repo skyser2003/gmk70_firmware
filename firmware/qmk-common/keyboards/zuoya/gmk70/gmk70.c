@@ -101,12 +101,15 @@ static bool     stock_reset_pending;
 static bool     stock_bootloader_pending;
 bool            test_white_light_flag = false;
 bool            lower_sleep           = false;
+static bool     stock_usb_sleep_requested;
 uint8_t         pov;
 uint8_t         buff[] = {14, 8, 2, 1, 1, 1, 1, 1, 1, 1, 0};
 
+bool gmk70_stock_cable_flag(void) {
+    return confinfo.flag;
+}
+
 void usart_init(void) {
-    uprintf("UART INIT START\n");
-    // palSetLineMode(SERIAL_USART_TX_PIN, PAL_MODE_ALTERNATE(SERIAL_USART_TX_PAL_MODE) | PAL_OUTPUT_TYPE_OPENDRAIN);
     palSetLineMode(SERIAL_USART_TX_PIN, PAL_MODE_ALTERNATE(SERIAL_USART_TX_PAL_MODE) | PAL_OUTPUT_TYPE_PUSHPULL | PAL_OUTPUT_SPEED_HIGHEST);
     palSetLineMode(SERIAL_USART_RX_PIN, PAL_MODE_ALTERNATE(SERIAL_USART_RX_PAL_MODE) | PAL_OUTPUT_TYPE_PUSHPULL | PAL_OUTPUT_SPEED_HIGHEST);
 }
@@ -238,13 +241,13 @@ void keyboard_post_init_kb(void) {
 
 #ifdef LED_POWER_EN_PIN
     gpio_set_pin_output(LED_POWER_EN_PIN);
-    if (rgb_matrix_get_val() != 0) gpio_write_pin_high(LED_POWER_EN_PIN);
+    if (rgb_matrix_is_enabled()) gpio_write_pin_high(LED_POWER_EN_PIN);
 
 #endif
 
 #ifdef LED_POWER_EN2_PIN
     gpio_set_pin_output(LED_POWER_EN2_PIN);
-    if (rgb_matrix_get_val() != 0) gpio_write_pin_high(LED_POWER_EN2_PIN);
+    if (rgb_matrix_is_enabled()) gpio_write_pin_high(LED_POWER_EN2_PIN);
 #endif
 
 #ifdef HS_BT_DEF_PIN
@@ -316,12 +319,21 @@ void suspend_power_down_kb(void) {
 }
 
 void suspend_wakeup_init_kb(void) {
+    // ChibiOS dispatches physical USB resume through this callback, after its
+    // IRQ has returned. Feed the accepted USB cause into the stock class gate.
+    if (USB_DRIVER.state == USB_ACTIVE && (lpwr_get_state() == LPWR_PRESLEEP || lpwr_get_state() == LPWR_STOP)) {
+        lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_USB);
+        if (lpwr_get_prepare_class() == LPWR_PREPARE_ORDINARY)
+            lpwr_set_state(LPWR_WAKEUP);
+        else
+            lpwr_stop_hook_post();
+    }
 #    ifdef LED_POWER_EN_PIN
-    if (rgb_matrix_get_val() != 0) gpio_write_pin_high(LED_POWER_EN_PIN);
+    if (rgb_matrix_is_enabled()) gpio_write_pin_high(LED_POWER_EN_PIN);
 #    endif
 
 #    ifdef LED_POWER_EN2_PIN
-    if (rgb_matrix_get_val() != 0) gpio_write_pin_high(LED_POWER_EN2_PIN);
+    if (rgb_matrix_is_enabled()) gpio_write_pin_high(LED_POWER_EN2_PIN);
 #    endif
 
     wireless_devs_change(wireless_get_current_devs(), wireless_get_current_devs(), false);
@@ -331,19 +343,7 @@ void suspend_wakeup_init_kb(void) {
 
 void suspend_wakeup_init_user(void) {
     usart_init();
-    if (!is_keyboard_master()) {
-        return;
-    }
-    master_to_slave_t m2s = {0};
-    slave_to_master_t s2m = {0};
-    m2s.cmd               = 0xCC;
-    if (transaction_rpc_exec(USER_SYNC_MMS, sizeof(m2s), &m2s, sizeof(s2m), &s2m)) {
-        if (s2m.resp == 0x00) {
-        }
-        dprintf("Slave Sleep OK\n");
-    } else {
-        dprint("Slave sync failed!\n");
-    }
+    // Stock wakes the peer by restoring the split line, not by sending CC.
 }
 
 void suspend_power_down_user(void) {
@@ -367,30 +367,83 @@ bool lpwr_is_allow_timeout_hook(void) {
 #    ifdef GMK70_SPLIT_UPDATE
     if (gmk_update_active()) return false;
 #    endif
-    // Neither half may stop its split UART while operating over USB.
-    if (wireless_get_current_devs() == DEVS_USB && (USB_DRIVER.state == USB_ACTIVE || !lpwr_get_timeout_manual())) {
-        return false;
-    }
-
     return true;
 }
 
+bool lpwr_timeout_accept_hook(void) {
+    // V15 0x08002BD4: capture cable on master, force it on for the peer.
+    bool master   = is_keyboard_master();
+    confinfo.flag = master ? gpio_read_pin(HS_BAT_CABLE_PIN) : true;
+    return confinfo.devs != DEVS_USB || USB_DRIVER.state != USB_ACTIVE;
+}
+
+uint8_t lpwr_requested_classes_hook(void) {
+#    ifdef GMK70_SPLIT_UPDATE
+    if (gmk_update_active()) return LPWR_PREPARE_ORDINARY;
+#    endif
+    // Bit mask of the two independent special requests; USB is applied last.
+    return (stock_usb_sleep_requested ? LPWR_PREPARE_USB : 0) | (lower_sleep ? LPWR_PREPARE_CRITICAL : 0);
+}
+
+void gmk70_stock_usb_sleep_set(bool requested) {
+    stock_usb_sleep_requested = requested;
+    if (requested) split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_USB_SPECIAL, 0, 0);
+    // V15 0x08003CBC: cancellation wakes NORMAL/PRE/STOP and clears the class.
+    if (!requested && lpwr_get_state() <= LPWR_STOP) {
+        lpwr_set_state(LPWR_WAKEUP);
+        lpwr_set_prepare_class(LPWR_PREPARE_ORDINARY);
+    }
+}
+
 bool lpwr_is_allow_presleep_hook(void) {
-    return stock_power_prepare_allowed(lower_sleep);
+    return stock_power_prepare_allowed(lpwr_get_prepare_class() != LPWR_PREPARE_ORDINARY);
+}
+
+bool lpwr_is_allow_stop_hook(void) {
+    lpwr_prepare_t preparation = lpwr_get_prepare_class();
+    bool           bypass      = preparation == LPWR_PREPARE_CRITICAL || (preparation == LPWR_PREPARE_USB && lpwr_get_previous_state() == LPWR_PRESLEEP);
+    return stock_power_prepare_allowed(bypass);
+}
+
+void lpwr_usb_prepare_hook(void) {
+    // V15 0x08003D58 resets the matrix and its held-key counter once.
+    // Its old internal key-record buffers have no public reset in modern QMK.
+    matrix_init();
+    stock_power_reset_keys();
+}
+
+void lpwr_power_down_hook(void) {
+    // Stock prepares inline. Avoid ChibiOS suspend_power_down's extra 17 ms.
+    suspend_power_down_kb();
+}
+
+void lpwr_clock_enable_user(void) {
+    // V15 restores A9/A10 before re-enabling interrupts, even on rejected wakes.
+    usart_init();
 }
 
 bool lpwr_host_resume_allowed_hook(void) {
-    return !lower_sleep;
+    return lpwr_get_prepare_class() == LPWR_PREPARE_ORDINARY;
+}
+
+static uint8_t stock_presleep_device;
+
+bool lpwr_can_enter_stop_hook(void) {
+    return wireless_get_current_devs() == stock_presleep_device && !(stock_presleep_device == DEVS_USB && confinfo.flag);
+}
+
+void lpwr_task_hook_pre(void) {
+    // V15 refreshes this runtime bit on every master power-task pass.
+    if (is_keyboard_master()) confinfo.flag = gpio_read_pin(HS_BAT_CABLE_PIN);
 }
 
 void lpwr_presleep_hook(void) {
-    extern bool charging_state;
-
     if (is_keyboard_master()) {
         master_to_slave_t m2s = {0};
         slave_to_master_t s2m = {0};
         m2s.cmd               = 0xAA;
-        m2s.body[0]           = lower_sleep;
+        // V15 sends an ordinary peer request in every local preparation class.
+        // A peer must retain its own battery protection, not inherit ours.
         if (transaction_rpc_exec(USER_SYNC_MMS, sizeof(m2s), &m2s, sizeof(s2m), &s2m)) {
             if (s2m.resp == 0x00) {
             }
@@ -398,9 +451,15 @@ void lpwr_presleep_hook(void) {
         } else {
             dprint("Slave sync failed!\n");
         }
+        if (wireless_get_current_devs() != DEVS_USB) {
+            // Only a wireless master changes the split pins after sending AA.
+            palSetLineMode(SERIAL_USART_RX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
+            palSetLineMode(SERIAL_USART_TX_PIN, PAL_OUTPUT_TYPE_OPENDRAIN);
+        }
     }
+    stock_presleep_device = wireless_get_current_devs();
 
-    if ((wireless_get_current_devs() == DEVS_USB) && (!charging_state)) {
+    if ((wireless_get_current_devs() == DEVS_USB) && (!confinfo.flag)) {
         if (USB_DRIVER.state != USB_STOP) {
             usb_power_disconnect();
             usbDisconnectBus(&USBD1);
@@ -925,6 +984,14 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             stock_battery_key(keycode, record->event.pressed, confinfo.devs != DEVS_USB);
             return false;
 
+        case STOCK_USB_SLEEP_OFF:
+        case STOCK_USB_SLEEP_ON:
+        case STOCK_USB_SLEEP_TOGGLE:
+            if (record->event.pressed) {
+                gmk70_stock_usb_sleep_set(keycode == STOCK_USB_SLEEP_TOGGLE ? !stock_usb_sleep_requested : keycode == STOCK_USB_SLEEP_ON);
+            }
+            return false;
+
         case NK_TOGG: {
             if (record->event.pressed) {
                 rgb_matrix_hs_indicator_set(0xFF, (RGB){0x00, 0x6E, 0x00}, 250, 1);
@@ -1053,8 +1120,14 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
 // Saved maps from pre-0.28 QMK used underglow codes for matrix lighting.
 // Pass their translated value through both the board hooks and upstream handler.
 bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+    // Modern QMK has no process_action_kb callback. Invoke wired wake here
+    // before filtering a suspended-host record.
+    if (confinfo.devs == DEVS_USB) usb_remote_host();
     if (record->event.pressed) lpwr_activity_trigger();
     stock_power_key(record->event.pressed);
+    // V15's wired key hook suppresses basic keys while the host is suspended.
+    // The wired hook already requested remote wake before this gate.
+    if (confinfo.devs == DEVS_USB && USB_DRIVER.state == USB_SUSPENDED && keycode <= 0xFF) return false;
     // V15 board gate 0x08005420 runs before ordinary key processing. Special
     // controls remain available for reconnecting; report delivery is not gated.
     if (confinfo.devs != DEVS_USB && *md_getp_state() != MD_STATE_CONNECTED && keycode >= 4 && keycode <= 0xA4) return false;
@@ -1087,9 +1160,9 @@ void housekeeping_task_user(void) { // loop
 
     bat_full_flag = gpio_read_pin(BAT_FULL_PIN);
 
-    if (charging_state && (bat_full_flag)) {
+    if (confinfo.flag && (bat_full_flag)) {
         hs_now_mode = MD_SND_CMD_DEVCTRL_CHARGING_DONE;
-    } else if (charging_state) {
+    } else if (confinfo.flag) {
         hs_now_mode = MD_SND_CMD_DEVCTRL_CHARGING;
     } else {
         hs_now_mode = MD_SND_CMD_DEVCTRL_CHARGING_STOP;
@@ -1270,16 +1343,16 @@ void bat_indicators(void) {
         return;
     }
 
-    if (charging_state && (bat_full_flag)) {
+    if (confinfo.flag && (bat_full_flag)) {
         battery_process_time = 0;
         if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0x00, 80, 0x00);
-    } else if (charging_state) {
+    } else if (confinfo.flag) {
         battery_process_time = 0;
         if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 80, 0x00, 0x00);
-    } else if (*md_getp_bat() <= BATTERY_CAPACITY_LOW) {
+    } else if (pov <= BATTERY_CAPACITY_LOW) {
         rgb_matrix_hs_bat_set(HS_MATRIX_BLINK_INDEX_BAT, (RGB){0xFF, 0x00, 0x00}, 250, 1);
 
-        if (*md_getp_bat() <= BATTERY_CAPACITY_STOP) {
+        if (pov <= BATTERY_CAPACITY_STOP) {
             if (!battery_process_time) {
                 battery_process_time = timer_read32();
             }
@@ -1287,8 +1360,7 @@ void bat_indicators(void) {
             if (battery_process_time && timer_elapsed32(battery_process_time) > 60000) {
                 battery_process_time = 0;
                 lower_sleep          = true;
-                split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_LOW_BATTERY, *md_getp_bat(), 0);
-                lpwr_set_timeout_manual(true);
+                split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_LOW_BATTERY, pov, 0);
             }
         }
     } else {
@@ -1488,7 +1560,7 @@ void lpwr_wakeup_hook(void) {
         hs_mode_scan(false, confinfo.devs, confinfo.last_btdevs);
     }
 
-    if (rgb_matrix_get_val() != 0) {
+    if (rgb_matrix_is_enabled()) {
         gpio_write_pin_high(LED_POWER_EN_PIN);
         gpio_write_pin_high(LED_POWER_EN2_PIN);
     } else {
@@ -1514,8 +1586,8 @@ void user_sync_mms_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t
             split_diagnostics_reply(s2m->body);
             break;
         case 0xAA:
-            s2m->resp   = 0x00;
-            lower_sleep = m2s->body[0];
+            s2m->resp = 0x00;
+            // V15 ignores all AA body bytes; its local critical flag is separate.
             lpwr_set_timeout_manual(true);
             break;
         case 0xBB:

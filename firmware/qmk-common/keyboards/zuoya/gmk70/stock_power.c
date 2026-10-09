@@ -3,6 +3,10 @@
 
 static uint8_t held_keys;
 
+void stock_power_reset_keys(void) {
+    held_keys = 0;
+}
+
 void stock_power_key(bool pressed) {
     // V15 0x080041BC: saturating four-key counter, including non-basic keys.
     if (pressed) {

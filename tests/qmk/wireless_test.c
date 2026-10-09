@@ -111,7 +111,25 @@ static void test_raw_hid_routing(void) {
     assert(radio_fixture.receive_raw_count == 1);
 }
 
+static void test_mode_sync_wakes_sleeping_peer(void) {
+    for (lpwr_state_t state = LPWR_NORMAL; state <= LPWR_WAKEUP; ++state) {
+        for (lpwr_prepare_t cls = LPWR_PREPARE_ORDINARY; cls <= LPWR_PREPARE_CRITICAL; ++cls) {
+            lpwr_set_state(state);
+            lpwr_set_prepare_class(cls);
+            radio_fixture.master = false;
+            wireless_devs_change(DEVS_BT1, DEVS_BT1, false);
+            bool asleep = state == LPWR_PRESLEEP || state == LPWR_STOP;
+            assert(lpwr_get_state() == (asleep ? LPWR_WAKEUP : state));
+            assert(lpwr_get_prepare_class() == (asleep ? LPWR_PREPARE_ORDINARY : cls));
+        }
+    }
+    lpwr_set_state(LPWR_NORMAL);
+    lpwr_set_prepare_class(LPWR_PREPARE_ORDINARY);
+    radio_fixture.master = true;
+}
+
 int main(void) {
+    test_mode_sync_wakes_sleeping_peer();
     test_transport_selection();
     test_rollover_and_release();
     test_keyboard_report();

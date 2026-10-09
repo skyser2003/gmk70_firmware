@@ -330,6 +330,17 @@ void md_main_task(void) {
     md_receive_msg_task();
 }
 
+void md_wait_for_commands(void) {
+    // V15 0x08002EDE/0x08002F2E waits for the existing ACK queue to drain.
+    while (smsg_is_busy()) {
+#ifdef GMK70_RADIO_THREAD
+        chThdSleep(TIME_US2I(50));
+#else
+        md_main_task();
+#endif
+    }
+}
+
 uint8_t *md_getp_state(void) {
     return &md_info.state;
 }

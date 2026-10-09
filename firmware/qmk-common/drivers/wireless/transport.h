@@ -16,3 +16,4 @@ transport_t get_transport(void);
 void        usb_power_connect(void);
 void        usb_power_disconnect(void);
 void        usb_remote_wakeup(void);
+void        usb_remote_host(void);

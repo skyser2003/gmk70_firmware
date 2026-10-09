@@ -67,8 +67,8 @@ flash_status_t flash_erase_block(uint32_t address) {
     return 0;
 }
 int main(void) {
-    const uint32_t accepted[] = {0xC22013, 0xEF4013, 0xC84017, 0x856018};
-    const uint32_t rejected[] = {0, 0xFFFFFF, 0xEF4010, 0xEFAA21, 0xC22019, 0x014013};
+    const uint32_t accepted[] = {0xC22013, 0xEF4013, 0xC84017, 0x856018, 0x5E3213};
+    const uint32_t rejected[] = {0, 0xFFFFFF, 0xEF4010, 0xEFAA21, 0xC22019, 0x014013, 0x5E3210, 0x5E3212, 0x5E3214, 0x5E4013, 0x5E6013, 0xC23213};
     for (unsigned i = 0; i < sizeof(accepted) / sizeof(*accepted); ++i) {
         id = accepted[i];
         assert(sleep_log_storage_init() && sleep_log_storage_id() == id);

@@ -56,14 +56,25 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
     (void)length;
     radio_fixture.receive_raw_count++;
 }
-void         last_matrix_activity_trigger(void) {}
-void         md_init(void) {}
-void         md_main_task(void) {}
-void         lpwr_task(void) {}
-void         lpwr_activity_trigger(void) {}
-void         usb_remote_wakeup(void) {}
-lpwr_state_t lpwr_get_state(void) {
-    return LPWR_NORMAL;
+void                  last_matrix_activity_trigger(void) {}
+void                  md_init(void) {}
+void                  md_main_task(void) {}
+void                  lpwr_task(void) {}
+void                  lpwr_activity_trigger(void) {}
+void                  usb_remote_wakeup(void) {}
+static lpwr_state_t   power_state;
+static lpwr_prepare_t power_class;
+lpwr_state_t          lpwr_get_state(void) {
+    return power_state;
+}
+void lpwr_set_state(lpwr_state_t value) {
+    power_state = value;
+}
+lpwr_prepare_t lpwr_get_prepare_class(void) {
+    return power_class;
+}
+void lpwr_set_prepare_class(lpwr_prepare_t value) {
+    power_class = value;
 }
 bool md_inquire_bat(void) {
     return true;
