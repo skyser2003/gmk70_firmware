@@ -14,5 +14,17 @@
     "version": "14.2.rel1",
     "url": "https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz",
     "sha256": "62a63b981fe391a9cbad7ef51b17e49aeaa3e7b0d029b36ca1e9c3b2a9b78823"
+  },
+  "vial": {
+    "repository": "https://github.com/vial-kb/vial-qmk.git",
+    "tag": "",
+    "commit": "dd43959ae5c08d8a28d38a1acf7b04e86b14a344",
+    "source_ref": "vial (2026-07-26 snapshot; exact commit is authoritative)",
+    "libraries": {
+      "lib/chibios": "8bd61b804303f1614d574546c2dd735eeabb09f5",
+      "lib/chibios-contrib": "3ac181e4ca5cafddaf8b472baa1d09c2b24c77b6",
+      "lib/printf": "c2e3b4e10d281e7f0f694d3ecbd9f320977288cc",
+      "lib/lufa": "549b97320d515bfca2f95c145a67bd13be968faa"
+    }
   }
 }

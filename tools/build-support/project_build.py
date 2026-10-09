@@ -24,9 +24,9 @@ class QmkPin(TypedDict):
     libraries: dict[str, str]
 
 
-def pin(root: Path) -> QmkPin:
+def pin(root: Path, platform: str = "qmk") -> QmkPin:
     data = json.loads((root / "dependencies/sources.lock.json").read_text())
-    return cast(QmkPin, data["qmk"])
+    return cast(QmkPin, data[platform])
 
 
 def git(directory: Path, *args: str) -> str:
@@ -49,9 +49,13 @@ def source_files(directory: Path, excluded: set[Path] | None = None) -> list[Pat
     return result
 
 
-def unused_modules(root: Path) -> set[Path]:
-    qmk = root / "dependencies/qmk"
-    selected = {qmk / path for path in pin(root)["libraries"]}
+def framework_path(root: Path, platform: str) -> Path:
+    return root / "dependencies" / ("vial-qmk" if platform == "vial" else "qmk")
+
+
+def unused_modules(root: Path, platform: str = "qmk") -> set[Path]:
+    qmk = framework_path(root, platform)
+    selected = {qmk / path for path in pin(root, platform)["libraries"]}
     excluded: set[Path] = set()
     for directory in (qmk, *selected):
         modules = configparser.ConfigParser()
@@ -62,28 +66,38 @@ def unused_modules(root: Path) -> set[Path]:
     return excluded - selected
 
 
-def dependency_hashes(root: Path) -> dict[str, str]:
+def dependency_hashes(root: Path, platform: str = "qmk") -> dict[str, str]:
     return {
         path.relative_to(root / "dependencies").as_posix(): hashlib.sha256(
             path.read_bytes()
         ).hexdigest()
-        for path in source_files(root / "dependencies/qmk", unused_modules(root))
+        for path in source_files(
+            framework_path(root, platform), unused_modules(root, platform)
+        )
     }
 
 
-def verify(root: Path) -> None:
-    locked = pin(root)
-    qmk = root / "dependencies/qmk"
+def verify(root: Path, platform: str = "qmk") -> None:
+    locked = pin(root, platform)
+    qmk = framework_path(root, platform)
+    setup_target = "setup-vial" if platform == "vial" else "setup"
+    framework_name = "Vial" if platform == "vial" else "QMK"
     if not (qmk / "quantum/quantum.c").is_file():
-        raise ValueError("QMK sources are missing; run make setup")
+        raise ValueError(
+            f"{framework_name} sources are missing; run make {setup_target}"
+        )
     if (qmk / ".git").exists():
+        if platform == "qmk" and not locked["tag"]:
+            raise ValueError("Official QMK requires a pinned release tag")
         for relative, revision in {
             ".": locked["commit"],
             **locked["libraries"],
         }.items():
             directory = qmk / relative
             if not (directory / ".git").exists():
-                raise ValueError(f"Uninitialized dependency {relative}; run make setup")
+                raise ValueError(
+                    f"Uninitialized dependency {relative}; run make {setup_target}"
+                )
             if git(directory, "rev-parse", "HEAD") != revision:
                 raise ValueError(
                     f"Dependency {relative} does not match sources.lock.json"
@@ -98,7 +112,7 @@ def verify(root: Path) -> None:
                 raise ValueError(
                     f"Dependency {relative} has local changes; keep edits in firmware/"
                 )
-        if (
+        if locked["tag"] and (
             git(qmk, "rev-parse", f"refs/tags/{locked['tag']}^{{commit}}")
             != locked["commit"]
         ):
@@ -112,7 +126,7 @@ def verify(root: Path) -> None:
         manifest = root / "dependencies/source-files.json"
         if not manifest.is_file() or json.loads(
             manifest.read_text()
-        ) != dependency_hashes(root):
+        ) != dependency_hashes(root, platform):
             raise ValueError("Exported dependency sources failed their integrity check")
 
 
@@ -132,17 +146,34 @@ def clean(root: Path) -> None:
             if child.name not in (*VARIANTS, *LEGACY_VARIANTS) or child.is_symlink():
                 raise ValueError(f"Refusing to clean unexpected build path: {child}")
         shutil.rmtree(directory)
+    vial_directory = generated_path(root, "vial")
+    if vial_directory.exists():
+        for child in vial_directory.iterdir():
+            if child.name != "vial" or child.is_symlink():
+                raise ValueError(f"Refusing to clean unexpected build path: {child}")
+        shutil.rmtree(vial_directory)
 
 
 def compose(root: Path, variant: str) -> Path:
     if variant not in VARIANTS:
         raise ValueError(f"Unsupported QMK keymap: {variant}")
-    verify(root)
-    source = root / "dependencies/qmk"
-    destination = generated_path(root, "qmk", variant)
+    return compose_framework(root, variant, "qmk")
+
+
+def compose_vial(root: Path) -> Path:
+    return compose_framework(root, "vial", "vial")
+
+
+def compose_framework(root: Path, variant: str, platform: str) -> Path:
+    if platform == "qmk":
+        verify(root)
+    else:
+        verify(root, platform)
+    source = framework_path(root, platform)
+    destination = generated_path(root, platform, variant)
     if destination.exists():
         shutil.rmtree(destination)
-    unused = unused_modules(root)
+    unused = unused_modules(root, platform)
 
     def ignore(directory: str, names: list[str]) -> set[str]:
         excluded = IGNORED.intersection(names)
@@ -156,10 +187,13 @@ def compose(root: Path, variant: str) -> Path:
     overlays = (
         (root / "firmware/qmk-common", destination),
         (
-            root / "firmware/qmk-via/keymaps",
+            root / f"firmware/qmk-{'vial' if platform == 'vial' else 'via'}/keymaps",
             destination / "keyboards/zuoya/gmk70/keymaps",
         ),
-        (root / "firmware/qmk-via/compat", destination / "keyboards/zuoya/gmk70"),
+        (
+            root / f"firmware/qmk-{'vial' if platform == 'vial' else 'via'}/compat",
+            destination / "keyboards/zuoya/gmk70",
+        ),
     )
     for overlay, target in overlays:
         if not overlay.exists():
@@ -181,9 +215,9 @@ def compose(root: Path, variant: str) -> Path:
     return destination
 
 
-def export_sources(root: Path, output: Path) -> None:
-    verify(root)
-    manifest = (json.dumps(dependency_hashes(root), indent=2) + "\n").encode()
+def export_sources(root: Path, output: Path, platform: str = "qmk") -> None:
+    verify(root, platform)
+    manifest = (json.dumps(dependency_hashes(root, platform), indent=2) + "\n").encode()
     roots = (
         "firmware",
         "dependencies",
@@ -206,7 +240,13 @@ def export_sources(root: Path, output: Path) -> None:
         for name in roots:
             path = root / name
             files = (
-                source_files(path, unused_modules(root)) if path.is_dir() else [path]
+                source_files(
+                    path,
+                    unused_modules(root, platform)
+                    | {framework_path(root, "qmk" if platform == "vial" else "vial")},
+                )
+                if path.is_dir()
+                else [path]
             )
             for file in files:
                 relative = file.relative_to(root).as_posix()
@@ -219,17 +259,36 @@ def export_sources(root: Path, output: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("verify", "compose", "clean", "export"))
+    parser.add_argument(
+        "command",
+        choices=(
+            "verify",
+            "compose",
+            "clean",
+            "export",
+            "verify-vial",
+            "compose-vial",
+            "export-vial",
+        ),
+    )
     parser.add_argument("argument", nargs="?")
     args = parser.parse_args()
     try:
         match args.command:
             case "verify":
                 verify(ROOT)
+            case "verify-vial":
+                verify(ROOT, "vial")
+            case "compose-vial":
+                print(compose_vial(ROOT))
             case "compose":
                 print(compose(ROOT, args.argument or "release"))
             case "clean":
                 clean(ROOT)
+            case "export-vial":
+                if not args.argument:
+                    raise ValueError("export-vial requires an output archive path")
+                export_sources(ROOT, Path(args.argument), "vial")
             case "export":
                 if not args.argument:
                     raise ValueError("export requires an output archive path")

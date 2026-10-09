@@ -1120,11 +1120,13 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
 // Saved maps from pre-0.28 QMK used underglow codes for matrix lighting.
 // Pass their translated value through both the board hooks and upstream handler.
 bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+#ifndef VIAL_ENABLE
     // Modern QMK has no process_action_kb callback. Invoke wired wake here
     // before filtering a suspended-host record.
     if (confinfo.devs == DEVS_USB) usb_remote_host();
     if (record->event.pressed) lpwr_activity_trigger();
     stock_power_key(record->event.pressed);
+#endif
     // V15's wired key hook suppresses basic keys while the host is suspended.
     // The wired hook already requested remote wake before this gate.
     if (confinfo.devs == DEVS_USB && USB_DRIVER.state == USB_SUSPENDED && keycode <= 0xFF) return false;

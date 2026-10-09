@@ -10,7 +10,7 @@ case "$mode" in
 esac
 case "$platform" in
     qmk) ;;
-    vial) printf 'Vial is not implemented yet; see firmware/qmk-vial/README.md\n' >&2; exit 2 ;;
+    vial) exec bash ./scripts/build_vial.sh "${2:-vial}" "$mode" ;;
     zmk) printf 'ZMK is not implemented yet; see firmware/zmk/README.md\n' >&2; exit 2 ;;
     *) printf 'Unknown platform: %s\n' "$platform" >&2; exit 2 ;;
 esac

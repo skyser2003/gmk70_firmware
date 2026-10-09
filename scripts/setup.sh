@@ -9,7 +9,12 @@ if [[ ! -f dependencies/source-files.json ]]; then
     fi
     git -C "$qmk_root" submodule update --init --depth 1 -- lib/chibios lib/chibios-contrib lib/printf lib/lufa
 fi
-python3 tools/build-support/project_build.py verify
+if [[ -f dependencies/source-files.json && ! -f "$qmk_root/quantum/quantum.c" ]]; then
+    # A Vial source distribution includes only its selected framework.
+    python3 tools/build-support/project_build.py verify-vial
+else
+    python3 tools/build-support/project_build.py verify
+fi
 if [[ "$(uname -s)/$(uname -m)" != Linux/x86_64 ]]; then
     printf 'Automatic toolchain setup supports Linux x86_64 (including WSL). Install ARM GCC and uv manually on this host.\n' >&2
     exit 2

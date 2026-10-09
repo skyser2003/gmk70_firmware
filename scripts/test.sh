@@ -77,6 +77,11 @@ cc "${common_flags[@]}" -Itests/qmk/stock_battery_stubs \
     tests/qmk/stock_battery_test.c firmware/qmk-common/keyboards/zuoya/gmk70/stock_battery.c \
     -o artifacts/tests/qmk/stock-battery
 artifacts/tests/qmk/stock-battery
+cc -Itests/qmk/vial_stubs "${common_flags[@]}" -DEEPROM_TEST_HARNESS -Idependencies/qmk/platforms \
+    -DCOMBO_ENABLE -DREPEAT_KEY_ENABLE -DMATRIX_ROWS=10 -DMATRIX_COLS=9 tests/qmk/vial_adapter_test.c \
+    tests/qmk/stock_v15_fixture.c firmware/qmk-vial/compat/vial_adapter.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/stock_power.c -o artifacts/tests/qmk/vial-adapter
+artifacts/tests/qmk/vial-adapter
 cc "${common_flags[@]}" tests/qmk/stock_via_test.c \
     tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/stock-via
 artifacts/tests/qmk/stock-via

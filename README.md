@@ -1,16 +1,17 @@
 # GMK70 firmware
 
-This repository maintains the GMK70 board and radio integration. It builds against the unmodified official [QMK release tag 0.34.4](https://github.com/qmk/qmk_firmware/tree/0.34.4), pinned as a Git submodule. The folder structure also reserves independent Vial and ZMK/Studio ports; see [the architecture](docs/FIRMWARE-ARCHITECTURE.md).
+This repository maintains the GMK70 board and radio integration. It builds against the unmodified official [QMK release tag 0.34.4](https://github.com/qmk/qmk_firmware/tree/0.34.4), pinned as a Git submodule. An experimental [Vial port](docs/VIAL-PORT.md), with all advanced configuration features enabled, builds from an independently pinned fork; ZMK/Studio remains a future port. See [the architecture](docs/FIRMWARE-ARCHITECTURE.md).
 
 ## Sources
 
 | Folder | Purpose |
 | --- | --- |
 | `dependencies/qmk/` | Official QMK submodule, including its pinned libraries |
+| `dependencies/vial-qmk/` | Independent Vial fork and its own pinned libraries |
 | `dependencies/sources.lock.json` | Release tag, exact commits, ARM toolchain version and checksum |
 | `firmware/qmk-common/` | Authoritative GMK70 board, default layout, radio and power code |
 | `firmware/qmk-via/` | VIA keymap and official-QMK/VIA compatibility additions |
-| `firmware/qmk-vial/` | Future Vial integration using its own QMK fork |
+| `firmware/qmk-vial/` | Experimental Vial integration using its own pinned fork |
 | `firmware/zmk/` | Future ZMK hardware port and default/Studio configurations |
 | `definitions/via/` | Unchanged original ZUOYA VIA definition |
 | `tools/`, `tests/` | Build support, offline keymap migration and regression tests |
@@ -45,7 +46,7 @@ make build-debug       # stock behavior with split/sleep logging
 
 `make setup` initializes QMK and only the four libraries required by this target: ChibiOS, ChibiOS-Contrib, LUFA and printf. It installs checksum-verified ARM GNU Toolchain 14.2.Rel1 and uv 0.8.22 under `.work/toolchains/`, and synchronizes the committed Python lockfiles. Compilation uses these prepared dependencies without downloading sources. Setup may need network access; subsequent builds do not. A complete `source.tar.gz` also works without Git metadata: it includes dependency sources and their integrity manifest, but still needs the compiler and Python packages provisioned.
 
-Scripts load the root `.env`, or `.envrc` if `.env` is absent, through `scripts/project.sh`. They set QMK's source and configuration paths locally. Default parallelism is `JOBS=8`. `make build-vial` and `make build-zmk` fail clearly until implemented. No build, setup, test, or migration command accesses the keyboard.
+Scripts load the root `.env`, or `.envrc` if `.env` is absent, through `scripts/project.sh`. They set QMK's source and configuration paths locally. Default parallelism is `JOBS=8`. `make setup-vial` initializes Vial sources; `make build-vial` builds the experimental normal Vial image. Vial updater/debug modes and `make build-zmk` fail clearly until implemented. No build, setup, test, or migration command accesses the keyboard.
 
 `GMK70_SOURCE_PYTHON` optionally selects a Python-compatible launcher for source preparation and export (default: `python3`). A WSL launcher using native Windows Python must translate the returned build directory into a WSL path. Source manifests and archive member names use portable forward slashes on either host; dependency verification remains mandatory.
 
@@ -57,7 +58,7 @@ Both VIA distributions implement stock's deferred `0x0B` bootloader request. Deb
 
 Debug peer status uses unused bytes in the existing two-second mode reply, with no extra transactions. It no longer exposes battery/LED-buffer probes or measures SPI duration. [Diagnostic instructions](docs/BATTERY-DIAGNOSTICS.md) describe protocol 2 and the reader's compatibility with archived protocol 1 builds. The diagnostic reader remains getter-only and does not invoke the bootloader command.
 
-`make clean` removes generated QMK trees while preserving maintained sources, dependency checkouts, installed tools and published artifacts. Each variant is built from a fresh composition, so edits and build flags cannot leak between variants. Dependencies with local modifications or incorrect revisions are rejected. `make format` formats project-owned sources and tooling.
+`make clean` removes generated QMK and Vial trees while preserving maintained sources, dependency checkouts, installed tools and published artifacts. Each variant is built from a fresh composition, so edits and build flags cannot leak between variants. Dependencies with local modifications or incorrect revisions are rejected. `make format` formats project-owned sources and tooling.
 
 QMK 0.34.4 changes EEPROM layout and its validity marker. Back up VIA mappings before any future firmware update; old on-device EEPROM data is not preserved across this upgrade. The firmware translates legacy RGB keycodes in imported maps to the new RGB Matrix keycodes. The vendor custom-key numbers and JSON remain unchanged. See [migration notes](docs/QMK-0.34-MIGRATION.md) for API and validation details.
 
@@ -104,4 +105,4 @@ The earlier role bug blocked standalone right-half key processing. It is fixed i
 
 Native tests cover transport/report handling, all physical selector states, both halves' master selection, the stock custom-key contract, shortcut translation, and lighting packet routing. Migration tests exercise saved layers/encoders, metadata preservation, and input/output protection. Both QMK variants must compile; their HEX and BIN must contain the same application payload.
 
-Compilation and tests do not prove full factory behavior on hardware. Wireless pairing, BT4/5 support in the installed radio, sleep/wake, RGB appearance, charging, and the latest recovery behavior require physical validation. Vial and ZMK support are future work, not delivered firmware.
+Compilation and tests do not prove full factory behavior on hardware. Wireless pairing, BT4/5 support in the installed radio, sleep/wake, RGB appearance, charging, and the latest recovery behavior require physical validation. The initial Vial application compiles with software checks; its hardware validation and updater integration remain pending. ZMK support is future work.

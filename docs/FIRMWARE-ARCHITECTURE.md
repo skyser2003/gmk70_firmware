@@ -1,6 +1,8 @@
 # Firmware dependency and source layout
 
-Status: QMK migration implemented, 2026-09-24. Vial and ZMK/Studio remain future ports.
+Status: QMK migration implemented; experimental Vial port builds with advanced
+configuration features enabled, 2026-10-09.
+See [the Vial port report](VIAL-PORT.md). ZMK/Studio remains a future port.
 This document incorporates the requested official-QMK submodule, latest QMK
 release tag, future Vial fork, and future ZMK/Studio port. It supersedes the
 old-revision recommendation in the earlier [upstream comparison](QMK-UPSTREAM-COMPARISON.md).
@@ -10,7 +12,7 @@ old-revision recommendation in the earlier [upstream comparison](QMK-UPSTREAM-CO
 | Build | Upstream source | Owner of dependency revisions | Selected version |
 | --- | --- | --- | --- |
 | QMK default / VIA | `qmk/qmk_firmware` | Git submodule at `dependencies/qmk` | `0.34.4`, commit `08c662f286ddfd12a985f57b584b02eca5af0ae6` |
-| Vial | `vial-kb/vial-qmk` | Separate Git submodule at `dependencies/vial-qmk` | Select and validate when implementing the port; no firmware tags were advertised when checked |
+| Vial | `vial-kb/vial-qmk` | Separate Git submodule at `dependencies/vial-qmk` | `dd43959ae5c08d8a28d38a1acf7b04e86b14a344`; its own library pins; no firmware tags advertised |
 | ZMK default / Studio | `zmkfirmware/zmk`, its Zephyr version and modules | West manifest and frozen revisions under `firmware/zmk` | Latest tagged release observed: `v0.3.0`, commit `edf5c0814fd3ea202e43aad2d68fd32e882a518c`; recheck when implementing the port |
 
 QMK's latest numeric tag was checked directly using `git ls-remote --tags --refs
@@ -29,8 +31,8 @@ reruns validation. CI verifies that the checkout and metadata agree.
 The official [Vial firmware repository](https://github.com/vial-kb/vial-qmk)
 currently advertises no Git tags (`git ls-remote --tags --refs` returned none).
 Its GUI application's release number must not be treated as a firmware tag.
-When that port begins, use a suitable firmware release tag if available;
-otherwise record a tested exact Vial commit. Never silently follow the `vial`
+The initial port records the exact tested 2026-07-26 snapshot in the lockfile.
+If a suitable firmware release tag becomes available, select it deliberately. Never silently follow the `vial`
 branch or substitute official QMK for Vial.
 
 ZMK uses [West](https://zmk.dev/docs/development/local-toolchain/setup/native)
@@ -52,7 +54,7 @@ not populated with placeholder firmware.
 ```text
 dependencies/
   qmk/                         official QMK submodule
-  vial-qmk/                    independent Vial submodule (future)
+  vial-qmk/                    independent pinned Vial submodule
   sources.lock.json            upstream URLs, release labels, exact commits
 
 firmware/
@@ -67,8 +69,8 @@ firmware/
     keymaps/debug/             same layout plus logging and USB bootloader command
     compat/                    adaptations for the selected official QMK release
   qmk-vial/
-    keymaps/vial/              keymap.c, rules.mk, config.h, vial.json (future)
-    compat/                    adaptations for the selected Vial fork (future)
+    keymaps/vial/              keymap.c, rules.mk, config.h, vial.json
+    compat/                    adaptations for the selected Vial fork
   zmk/                         local Zephyr/ZMK module and user config (future)
     west.yml                   authored dependency manifest
     west.lock.yml              frozen dependency graph used for builds
@@ -99,7 +101,7 @@ tools/                         project tooling, including offline keymap migrati
 artifacts/
   qmk/{release,debug}/         the two VIA distributions
   qmk/default/                 optional fixed-keymap development baseline
-  vial/vial/                   future
+  vial/vial/                   experimental normal Vial distribution
   zmk/{default,studio}/        future; separate half outputs below each variant
 ```
 
@@ -193,4 +195,4 @@ The source layout makes room for that work without claiming the port is ready.
 7. Add and validate the independent Vial pin and port later. Then implement the
    ZMK hardware port; Studio follows as a tested variant of that port.
 
-The QMK migration is implemented by `scripts/setup.sh`, `scripts/build.sh` and `tools/build-support/project_build.py`. Current compatibility work and validation are recorded in [the migration notes](QMK-0.34-MIGRATION.md). Vial and ZMK/Studio remain separate future implementations.
+The QMK migration is implemented by `scripts/setup.sh`, `scripts/build.sh` and `tools/build-support/project_build.py`. Current compatibility work and validation are recorded in [the migration notes](QMK-0.34-MIGRATION.md). The experimental Vial port is described in [its port report](VIAL-PORT.md); ZMK/Studio remains future work.

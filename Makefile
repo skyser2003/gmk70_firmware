@@ -33,3 +33,7 @@ setup:
 check-tools:
 	bash ./scripts/check-tools.sh
 .PHONY: setup check-tools
+
+setup-vial:
+	bash ./scripts/setup_vial.sh
+.PHONY: setup-vial
