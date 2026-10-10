@@ -15,7 +15,13 @@ UART cable. The host checks both halves, installs and verifies the right first,
 then installs the left. The right-side receiver also exists in release updater
 firmware. Only debug exposes the USB entry point; a release left half cannot
 initiate this procedure. The supplied host tool keeps the left on debug so it
-can verify completion and support future updates.
+can verify completion and support future updates. The separate
+[`make build-vial-updater`](VIAL-PORT.md#vial-split-updater) target also provides
+the USB entry point and peer receiver, with the same resident binary and ABI.
+It supports replacing both applications with Vial; after migration, unlock in
+the Vial GUI (Escape + left Shift) and close the GUI before subsequent writes.
+INFO/STATUS remain available while locked. The Vial package excludes EEPROM
+queries and diagnostics; the read-only query description below applies to QMK.
 
 These builds also provide [read-only EEPROM queries](EEPROM-QUERIES.md) for either
 half through the same USB bridge and RPC. Use `scripts/read-eeprom.sh` to capture

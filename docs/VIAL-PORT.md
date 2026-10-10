@@ -2,9 +2,9 @@
 
 The first GMK70 Vial application builds from the shared board/radio sources.
 This is an initial port with software validation; it has not been installed or
-validated on a keyboard. The supported target is `make build-vial`, which
-produces normal images under `artifacts/vial/vial/`. It does **not** produce an
-application for the existing resident split updater.
+validated on a keyboard. `make build-vial` produces normal images under
+`artifacts/vial/vial/`; `make build-vial-updater` produces an application for
+the existing resident split updater under `artifacts/vial/vial-updater/`.
 
 ## Source and protocol boundaries
 
@@ -25,7 +25,8 @@ The application uses the fork's VIA protocol 9 and Vial protocol 6 handlers,
 including native unlock checks, keymap/macros/encoder commands and VialRGB.
 It does not advertise stock VIA protocol 12 or use the stock VIA adapter.
 The small wrapper records board activity and retains stock sleep-selector and
-NKRO controls; all other messages reach the native Vial handler.
+NKRO controls. Updater builds additionally handle the custom `0x7F` updater
+command; all other messages reach the native Vial handler.
 
 Project UID: `b691d7277fc88251`, generated once for this port. Physical unlock
 requires holding **Escape + left Shift**, matrix positions `(0,1)` and `(3,1)`,
@@ -83,6 +84,7 @@ or test writes, resets or flashes a physical keyboard.
 make setup        # existing compiler and Python tools, official QMK sources
 make setup-vial   # explicitly initialize the independently pinned Vial sources
 make build-vial   # normal Vial image; no keyboard access
+make build-vial-updater # resident-compatible Vial application; no keyboard access
 make test
 make check-tools
 ```
@@ -94,7 +96,7 @@ framework and libraries. An exported Vial source archive verifies its own
 source manifest without Git metadata; `make setup` recognizes its selected
 framework before installing build tools. `make clean` removes generated QMK and
 Vial trees while preserving maintained sources, dependencies and artifacts.
-Vial updater/debug modes fail explicitly until implemented.
+Vial debug/diagnostic builds are not implemented.
 
 Software validation passed the native suite, Ruff, strict mypy and repository/
 tooling tests. New regressions cover dependency isolation, shared composition,
@@ -120,7 +122,7 @@ with simulated EEPROM/clock/USB, not an official or complete device emulator.
 
 ## Next port work
 
-- Add resident-updater, read-only settings/log relay and persistent diagnostics
+- Add read-only settings/log relay and persistent diagnostics
   with Vial-aware EEPROM decoding and explicit migration from the stock layout.
 - Validate physical USB/Vial GUI identification, unlock, mapping/macros, encoder,
   VialRGB, Bluetooth/2.4 GHz reports, split roles and idle/wake recovery on both
@@ -130,3 +132,57 @@ with simulated EEPROM/clock/USB, not an official or complete device emulator.
 The stock fixes pushed in `9d8b07e` and their debug-updater package are separate
 from this Vial port. Full stock equivalence and hardware recovery remain
 unverified on either framework.
+
+## Vial split updater
+
+The updater uses the shared ABI 1 image receiver and resident installer. Connect
+only the left USB half in wired mode and keep the right powered and linked.
+The host checks both halves, installs and verifies right, then installs left.
+The Vial resident binary is byte-identical to the existing QMK debug updater's
+resident binary, with padded boot CRC `0x698B3EC1`. Compiled split transaction
+IDs, shared-memory size/offsets and RPC buffers also match the QMK updater:
+19 transactions, `USER_SYNC_MMS=17`, `GMK_UPDATE_RPC=18`, 32-byte RPC buffers.
+This supports the protocol transition during an update; physical QMK-to-Vial
+relay installation is still unverified. Both halves must end on Vial updater.
+
+`gmk70-vial-updater.zip` contains `application.bin/.hex` at `0x08002000`,
+`update.json`, the matching `resident.bin`, initial `install.bin/.hex`, Vial's
+definition, a standalone host script, dependency requirements and checksums.
+Use `application.bin` for an existing compatible resident updater. Initial
+`install.*` installation requires separate direct access to each 256 KB half;
+see [the updater guide](SPLIT-UPDATER.md). The normal Vial image is not an updater
+application. Vial normal/updater builds share schema `0x564D4702`; migrating from
+stock/VIA still resets settings and requires a backup before installation.
+The unmodified Vial fork also generates a random `BUILD_ID` for each build and
+uses it as its VIA storage magic. An independently rebuilt image therefore
+resets dynamic mappings and macros, even with the same schema. Export your
+configuration in Vial before updating; preserving maps across builds is not
+part of this updater-only change.
+
+On Vial, INFO/STATUS are available while locked. Firmware writes require native
+Vial unlock: open the Vial GUI, hold **Escape + left Shift** when prompted, then
+close Vial without unplugging or resetting. Authorization is checked on the left
+USB master before local staging or peer relay; the right inherits it over the
+split link. Wireless-delivered updater requests and USB requests with the mode
+switch in wireless mode are rejected. No insecure-unlock build option is used.
+
+```sh
+bash scripts/update-device.sh artifacts/vial/vial-updater --target both --inspect
+# Explicit device operation, after unlocking Vial and closing the GUI:
+bash scripts/update-device.sh artifacts/vial/vial-updater --target both --install
+```
+
+Only the updater is added. EEPROM fetching/backups, RAM diagnostics and persistent
+logging are excluded. Settings/log query operations return unavailable, and no
+query handler is linked. No updater traffic or flash writes occur while idle.
+Native sanitizer tests cover locked access, local/peer transfers through
+seal/commit and delayed reset, wired/radio/role gates, unavailable queries and
+no idle traffic. Host regressions cover Vial packages, unlock errors, resident
+checks, right-first ordering and stopping before left if right restart
+verification fails. Compilation and simulated tests do not validate flash
+programming on hardware. The application is under 91 KB within the 120 KB partition.
+Bounded execution of the compiled ARM image also passed the real Vial timed
+physical-unlock handshake, locked local/peer writes, wired-mode rejection,
+unavailable queries, local staging/seal/commit and delayed reset. EEPROM,
+matrix/clock and flash hardware were simulated; large INFO CRCs were calculated
+by the host. Evidence is under `artifacts/analysis/vial-updater-2026-10-09/`.

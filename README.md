@@ -23,7 +23,7 @@ Only the GMK70 integration is maintained here. Dependencies retain their source 
 ## Build
 
 An opt-in [left-USB split updater](docs/SPLIT-UPDATER.md) is available through
-`make build-updater`. It requires a one-time direct USB installation on each
+`make build-updater` (QMK/VIA) and `make build-vial-updater` (Vial). It requires a one-time direct USB installation on each
 256 KB half and remains experimental pending hardware validation. Normal
 `make build` packages retain the existing memory layout and behavior.
 
@@ -46,7 +46,7 @@ make build-debug       # stock behavior with split/sleep logging
 
 `make setup` initializes QMK and only the four libraries required by this target: ChibiOS, ChibiOS-Contrib, LUFA and printf. It installs checksum-verified ARM GNU Toolchain 14.2.Rel1 and uv 0.8.22 under `.work/toolchains/`, and synchronizes the committed Python lockfiles. Compilation uses these prepared dependencies without downloading sources. Setup may need network access; subsequent builds do not. A complete `source.tar.gz` also works without Git metadata: it includes dependency sources and their integrity manifest, but still needs the compiler and Python packages provisioned.
 
-Scripts load the root `.env`, or `.envrc` if `.env` is absent, through `scripts/project.sh`. They set QMK's source and configuration paths locally. Default parallelism is `JOBS=8`. `make setup-vial` initializes Vial sources; `make build-vial` builds the experimental normal Vial image. Vial updater/debug modes and `make build-zmk` fail clearly until implemented. No build, setup, test, or migration command accesses the keyboard.
+Scripts load the root `.env`, or `.envrc` if `.env` is absent, through `scripts/project.sh`. They set QMK's source and configuration paths locally. Default parallelism is `JOBS=8`. `make setup-vial` initializes Vial sources; `make build-vial` builds the experimental normal Vial image and `make build-vial-updater` builds the resident-compatible Vial updater. Vial updater writes require native physical unlock; EEPROM queries and diagnostics are excluded. Vial debug mode and `make build-zmk` are not implemented. No build, setup, test, or migration command accesses the keyboard.
 
 `GMK70_SOURCE_PYTHON` optionally selects a Python-compatible launcher for source preparation and export (default: `python3`). A WSL launcher using native Windows Python must translate the returned build directory into a WSL path. Source manifests and archive member names use portable forward slashes on either host; dependency verification remains mandatory.
 
@@ -105,4 +105,4 @@ The earlier role bug blocked standalone right-half key processing. It is fixed i
 
 Native tests cover transport/report handling, all physical selector states, both halves' master selection, the stock custom-key contract, shortcut translation, and lighting packet routing. Migration tests exercise saved layers/encoders, metadata preservation, and input/output protection. Both QMK variants must compile; their HEX and BIN must contain the same application payload.
 
-Compilation and tests do not prove full factory behavior on hardware. Wireless pairing, BT4/5 support in the installed radio, sleep/wake, RGB appearance, charging, and the latest recovery behavior require physical validation. The initial Vial application compiles with software checks; its hardware validation and updater integration remain pending. ZMK support is future work.
+Compilation and tests do not prove full factory behavior on hardware. Wireless pairing, BT4/5 support in the installed radio, sleep/wake, RGB appearance, charging, and the latest recovery behavior require physical validation. The Vial application and resident-compatible updater compile with software checks; their hardware validation remains pending. ZMK support is future work.
