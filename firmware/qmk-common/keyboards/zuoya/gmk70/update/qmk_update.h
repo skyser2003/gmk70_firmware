@@ -7,4 +7,7 @@ void gmk_update_init(void);
 void gmk_update_task(void);
 bool gmk_update_active(void);
 bool gmk_update_usb(uint8_t *data, uint8_t length);
+#    ifdef GMK70_VIAL_UPDATE
+bool gmk_update_usb_authorized(uint8_t operation);
+#    endif
 #endif

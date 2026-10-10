@@ -13,7 +13,10 @@ LDFLAGS += -Wl,--wrap=nvm_eeconfig_read_rgblight -Wl,--wrap=nvm_eeconfig_update_
 endif
 ifeq ($(strip $(GMK70_SPLIT_UPDATE)), yes)
     OPT_DEFS += -DGMK70_SPLIT_UPDATE
-    SRC += update/image.c update/protocol.c update/wb32_flash.c update/qmk_update.c update/eeprom_query.c
+    SRC += update/image.c update/protocol.c update/wb32_flash.c update/qmk_update.c
+    ifneq ($(strip $(VIAL_ENABLE)), yes)
+        SRC += update/eeprom_query.c
+    endif
 endif
 ifeq ($(strip $(VIAL_ENABLE)), yes)
     SRC += vial_adapter.c

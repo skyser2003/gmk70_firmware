@@ -6,6 +6,17 @@
 #include "raw_hid.h"
 #include "wireless.h"
 #include "stock_power.h"
+#ifdef GMK70_VIAL_UPDATE
+#    include "vial.h"
+#    include "update/qmk_update.h"
+#    include "update/protocol.h"
+
+bool gmk_update_usb_authorized(uint8_t operation) {
+    // Authorize at the USB master. The slave inherits that authorization over
+    // the split link; it cannot perform Vial's USB unlock handshake itself.
+    return operation == GMK_INFO || operation == GMK_STATUS || vial_unlocked;
+}
+#endif
 
 #define GMK70_VIAL_SCHEMA_ADDR ((void *)0xFFC)
 #define GMK70_VIAL_SCHEMA_MAGIC 0x564D4702u
@@ -38,6 +49,12 @@ void __wrap_nvm_eeconfig_enable(void) {
 void __wrap_raw_hid_receive(uint8_t *data, uint8_t length) {
     if (length != RAW_EPSIZE) return;
     gmk70_stock_activity();
+#ifdef GMK70_VIAL_UPDATE
+    if (gmk_update_usb(data, length)) {
+        raw_hid_send(data, length);
+        return;
+    }
+#endif
     // Retain board controls without replacing Vial's identification, unlock,
     // keymap, macro or bootloader handlers with the stock VIA parser.
     if (data[0] == 0x21) {

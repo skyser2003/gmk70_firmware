@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "qmk_update.h"
 #include "protocol.h"
-#include "eeprom_query.h"
+#ifndef GMK70_VIAL_UPDATE
+#    include "eeprom_query.h"
+#endif
 #ifdef GMK70_PERSISTENT_DIAGNOSTICS
 #    include "sleep_log_query.h"
 #endif
@@ -82,8 +84,15 @@ void gmk_update_task(void) {
     gmk_update_result_t result       = GMK_UNAVAILABLE;
     uint8_t             response[GMK_PACKET_SIZE];
     if (eeprom_query) {
+#ifndef GMK70_VIAL_UPDATE
         if (wireless_get_current_devs() == DEVS_USB) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
         gmk_eeprom_query(request, result, response);
+#else
+        memset(response, 0, sizeof(response));
+        memcpy(response, request, 5);
+        memcpy(response + 8, request + 8, 8);
+        response[5] = GMK_UNAVAILABLE;
+#endif
     } else if (log_query) {
 #ifdef GMK70_PERSISTENT_DIAGNOSTICS
         if (wireless_get_current_devs() == DEVS_USB) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
@@ -115,13 +124,22 @@ void gmk_update_task(void) {
     chSysUnlock();
 }
 
-#ifdef GMK70_DEBUG_USB_BOOTLOADER
+#if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
 bool gmk_update_usb(uint8_t *data, uint8_t length) {
     if (length != GMK_PACKET_SIZE || data[0] != GMK_UPDATE_COMMAND) return false;
     uint8_t response[GMK_PACKET_SIZE];
     memcpy(response, data, sizeof(response));
     response[5] = GMK_UNAVAILABLE;
     if (gmk_packet_valid(data) && is_keyboard_left() && is_keyboard_master() && get_transport() == TRANSPORT_USB && USB_DRIVER.state == USB_ACTIVE) {
+#    ifdef GMK70_VIAL_UPDATE
+        // USB enumeration alone does not mean the mode switch is wired.
+        bool wired = wireless_get_current_devs() == DEVS_USB;
+        if (!wired || !gmk_update_usb_authorized(data[4])) {
+            response[5] = wired ? GMK_LOCKED : GMK_UNAVAILABLE;
+            memcpy(data, response, sizeof(response));
+            return true;
+        }
+#    endif
         if (data[3] == 0) {
             receive(data, response);
         } else if (!transaction_rpc_exec(GMK_UPDATE_RPC, GMK_PACKET_SIZE, data, GMK_PACKET_SIZE, response)) {

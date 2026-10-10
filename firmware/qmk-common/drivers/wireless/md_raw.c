@@ -8,7 +8,7 @@
 #    include "usb_endpoints.h"
 #    include "raw_hid.h"
 #    include "md_raw.h"
-#    ifdef GMK70_DEBUG_USB_BOOTLOADER
+#    if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
 #        include "via.h"
 #    endif
 
@@ -26,7 +26,7 @@ void __wrap_raw_hid_send(uint8_t *data, uint8_t length) {
 
 void md_receive_raw_cb(uint8_t *data, uint8_t length) {
     if (length == RAW_EPSIZE) {
-#    ifdef GMK70_DEBUG_USB_BOOTLOADER
+#    if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
         // The optional split updater retains its direct-USB gate. Ordinary
         // stock VIA commands, including 0x0B, share the normal radio parser.
 #        ifdef GMK70_SPLIT_UPDATE

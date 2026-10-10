@@ -82,6 +82,18 @@ cc -Itests/qmk/vial_stubs "${common_flags[@]}" -DEEPROM_TEST_HARNESS -Idependenc
     tests/qmk/stock_v15_fixture.c firmware/qmk-vial/compat/vial_adapter.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/stock_power.c -o artifacts/tests/qmk/vial-adapter
 artifacts/tests/qmk/vial-adapter
+cc -Itests/qmk/vial_stubs -Itests/qmk/update_stubs "${common_flags[@]}" \
+    -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs -Idependencies/qmk/platforms \
+    -DRAW_ENABLE -DGMK70_SPLIT_UPDATE -DGMK70_VIAL_UPDATE -DEEPROM_TEST_HARNESS \
+    -DCOMBO_ENABLE -DREPEAT_KEY_ENABLE -DMATRIX_ROWS=10 -DMATRIX_COLS=9 \
+    -ffunction-sections -fdata-sections -Wl,--gc-sections \
+    tests/qmk/update_adapter_test.c tests/qmk/stock_v15_fixture.c \
+    firmware/qmk-vial/compat/vial_adapter.c firmware/qmk-common/drivers/wireless/md_raw.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
+    -Wl,--wrap=raw_hid_send -o artifacts/tests/qmk/vial-updater
+artifacts/tests/qmk/vial-updater
 cc "${common_flags[@]}" tests/qmk/stock_via_test.c \
     tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/stock-via
 artifacts/tests/qmk/stock-via

@@ -11,3 +11,6 @@ CAPS_WORD_ENABLE = yes
 LAYER_LOCK_ENABLE = yes
 # Also enables Vial's dynamic alternate-repeat rules.
 REPEAT_KEY_ENABLE = yes
+ifeq ($(strip $(GMK70_SPLIT_UPDATE)), yes)
+    OPT_DEFS += -DGMK70_VIAL_UPDATE
+endif

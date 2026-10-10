@@ -6,7 +6,17 @@
 #include "via.h"
 #include "update/qmk_update.h"
 #include "update/protocol.h"
-#include "update/eeprom_query.h"
+#ifndef GMK70_VIAL_UPDATE
+#    include "update/eeprom_query.h"
+#else
+#    include "vial.h"
+int  vial_unlocked;
+void __wrap_raw_hid_receive(uint8_t *data, uint8_t length);
+bool via_command_kb(uint8_t *data, uint8_t length) {
+    __wrap_raw_hid_receive(data, length);
+    return true;
+}
+#endif
 #include <assert.h>
 #include <stdio.h>
 
@@ -114,8 +124,15 @@ void md_send_raw(uint8_t *data, uint8_t length) {
     ++radio_calls;
 }
 void raw_hid_receive(uint8_t *data, uint8_t length) {
+#ifdef GMK70_VIAL_UPDATE
+    __wrap_raw_hid_receive(data, length);
+}
+void __real_raw_hid_receive(uint8_t *data, uint8_t length) {
+    ++forwarded;
+#else
     ++forwarded;
     assert(!via_command_kb(data, length));
+#endif
 }
 void via_qmk_rgb_matrix_command(uint8_t *data, uint8_t length) {
     assert(false);
@@ -131,6 +148,9 @@ static void fixture(void) {
     flash_writes = rpc_calls = usb_calls = radio_calls = forwarded = locks = resets = 0;
     eeprom_reads                                                                    = 0;
     relay                                                                           = false;
+#ifdef GMK70_VIAL_UPDATE
+    vial_unlocked = true;
+#endif
     for (unsigned i = 0; i < sizeof(logical_eeprom); ++i)
         logical_eeprom[i] = (uint8_t)(i * 13 + i / 256);
     gmk_update_init();
@@ -161,6 +181,7 @@ static void query(uint8_t packet[32], uint8_t target, uint8_t op, uint32_t token
     gmk_write_u32(packet + 12, offset);
 }
 
+#ifndef GMK70_VIAL_UPDATE
 static void test_eeprom_peer(void) {
     fixture();
     left = master = false;
@@ -262,16 +283,16 @@ static void test_eeprom_update_and_radio_gates(void) {
     md_receive_raw_cb(packet, 32);
     gmk_update_task();
     assert(!eeprom_reads && !flash_writes && !rpc_calls);
-#ifdef GMK70_DEBUG_USB_BOOTLOADER
+#    ifdef GMK70_DEBUG_USB_BOOTLOADER
     assert(!forwarded && radio_calls == 1);
-#endif
+#    endif
 }
 
 static void test_eeprom_usb(void) {
     fixture();
     uint8_t packet[32];
     query(packet, 0, GMK_EEPROM_READ, 50, 38, 16);
-#ifdef GMK70_DEBUG_USB_BOOTLOADER
+#    ifdef GMK70_DEBUG_USB_BOOTLOADER
     assert(via_command_kb(packet, 32) && packet[5] == GMK_BUSY && !eeprom_reads);
     gmk_update_task();
     query(packet, 0, GMK_STATUS, 0, 0, 0);
@@ -289,13 +310,15 @@ static void test_eeprom_usb(void) {
     query(packet, 1, GMK_STATUS, 0, 0, 0);
     assert(via_command_kb(packet, 32) && packet[5] == GMK_OK && packet[7] == 0);
     assert(gmk_read_u32(packet + 8) == 52 && memcmp(packet + 16, logical_eeprom + 4080, 16) == 0);
-#else
+#    else
     assert(!via_command_kb(packet, 32));
     gmk_update_task();
     assert(!eeprom_reads && !rpc_calls);
-#endif
+#    endif
     assert(!flash_writes && !resets);
 }
+
+#endif
 
 static void test_persistent_log_service(void) {
     fixture();
@@ -336,6 +359,111 @@ static void test_persistent_log_service(void) {
     assert(!flash_writes && !resets && !eeprom_reads);
 }
 
+#ifdef GMK70_VIAL_UPDATE
+static void test_vial_unlock_and_unavailable_queries(void) {
+    uint8_t packet[32];
+    for (uint8_t target = 0; target < 2; ++target) {
+        // Locked INFO/STATUS work on both halves without any flash writes.
+        fixture();
+        relay         = true;
+        vial_unlocked = false;
+        query(packet, target, GMK_INFO, 0, 0, 0);
+        raw_hid_receive(packet, 32);
+        assert(packet[5] == GMK_BUSY && !flash_writes);
+        left = master = !target;
+        gmk_update_task();
+        left = master = true;
+        query(packet, target, GMK_STATUS, 0, 0, 0);
+        raw_hid_receive(packet, 32);
+        assert(packet[4] == GMK_INFO && packet[5] == GMK_OK && packet[7] == (target ? 0 : 3));
+        assert(!flash_writes && !resets && !eeprom_reads);
+        for (uint8_t op = GMK_BEGIN; op <= GMK_ABORT; ++op) {
+            fixture();
+            relay         = true;
+            vial_unlocked = false;
+            if (op == GMK_BEGIN)
+                begin(packet, target);
+            else
+                query(packet, target, op, 42, 0, op == GMK_DATA ? 16 : 0);
+            assert(gmk_packet_valid(packet));
+            raw_hid_receive(packet, 32);
+            assert(packet[5] == GMK_LOCKED);
+            gmk_update_task();
+            assert(!rpc_calls && !flash_writes && !gmk_update_active());
+        }
+        // Vial queries cannot expose the stock EEPROM schema or logs.
+        for (uint8_t op = GMK_EEPROM_INFO; op <= GMK_SLEEP_LOG_READ; ++op) {
+            fixture();
+            relay = true;
+            query(packet, target, op, 99, 0, op == GMK_EEPROM_READ || op == GMK_SLEEP_LOG_READ ? 16 : 0);
+            raw_hid_receive(packet, 32);
+            assert(packet[5] == GMK_BUSY);
+            left = master = !target;
+            gmk_update_task();
+            left = master = true;
+            query(packet, target, GMK_STATUS, 0, 0, 0);
+            raw_hid_receive(packet, 32);
+            assert(packet[5] == GMK_UNAVAILABLE && gmk_read_u32(packet + 8) == 99);
+            for (unsigned i = 16; i < 32; ++i)
+                assert(!packet[i]);
+            assert(!eeprom_reads && !flash_writes && !resets && !gmk_update_active());
+        }
+    }
+    fixture();
+    uint8_t native[32] = {0xFE, 5};
+    raw_hid_receive(native, 32);
+    assert(forwarded == 1 && !rpc_calls && !flash_writes);
+}
+
+static void vial_exchange(uint8_t packet[32], uint8_t target) {
+    raw_hid_receive(packet, 32);
+    assert(packet[5] == GMK_BUSY);
+    left = master = !target;
+    // Slave stays locked; authorization belongs to the left USB master.
+    vial_unlocked = !target;
+    gmk_update_task();
+    left = master = true;
+    vial_unlocked = true;
+    query(packet, target, GMK_STATUS, 0, 0, 0);
+    raw_hid_receive(packet, 32);
+    assert(packet[5] == GMK_OK && !locks);
+}
+
+static void test_vial_install(void) {
+    uint8_t image[1024] = {0};
+    gmk_write_u32(image, GMK_RAM_END - 8);
+    gmk_write_u32(image + 4, GMK_APP_BASE + 0x201);
+    for (uint8_t target = 0; target < 2; ++target) {
+        fixture();
+        memset(memory, 0xFF, sizeof(memory));
+        relay = true;
+        uint8_t packet[32];
+        begin(packet, target);
+        gmk_write_u32(packet + 20, gmk_crc32(image, sizeof(image)));
+        vial_exchange(packet, target);
+        for (unsigned offset = 0; offset < sizeof(image); offset += 16) {
+            query(packet, target, GMK_DATA, 42, offset, 16);
+            memcpy(packet + 16, image + offset, 16);
+            vial_exchange(packet, target);
+            assert(gmk_read_u32(packet + 12) == offset + 16);
+        }
+        assert(!memcmp(gmk_flash_view(GMK_STAGE_BASE), image, sizeof(image)));
+        query(packet, target, GMK_SEAL, 42, 0, 0);
+        vial_exchange(packet, target);
+        assert(packet[6] == GMK_SEALED);
+        query(packet, target, GMK_INSTALL, 42, 0, 0);
+        vial_exchange(packet, target);
+        assert(packet[6] == GMK_COMMITTED && !resets);
+        now += 299;
+        gmk_update_task();
+        assert(!resets);
+        now += 1;
+        gmk_update_task();
+        assert(resets == 1 && !eeprom_reads);
+    }
+}
+#endif
+
 int main(void) {
     uint8_t packet[32], response[32];
     fixture();
@@ -352,7 +480,7 @@ int main(void) {
         if (invalid == 3) USB_DRIVER.state = 0;
         if (invalid == 4) mode = DEVS_BT1;
         begin(packet, 0);
-#ifdef GMK70_DEBUG_USB_BOOTLOADER
+#if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
         assert(via_command_kb(packet, 32));
 #else
         assert(!via_command_kb(packet, 32));
@@ -362,7 +490,7 @@ int main(void) {
     }
     fixture();
     begin(packet, 0);
-#ifdef GMK70_DEBUG_USB_BOOTLOADER
+#if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
     assert(via_command_kb(packet, 32));
     assert(packet[5] == GMK_BUSY && !flash_writes && gmk_update_active());
     gmk_update_task();
@@ -377,7 +505,7 @@ int main(void) {
     begin(packet, 0);
     md_receive_raw_cb(packet, 32);
     gmk_update_task();
-#ifdef GMK70_DEBUG_USB_BOOTLOADER
+#if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
     assert(radio_calls == 1 && !forwarded);
 #else
     assert(forwarded == 1 && !radio_calls);
@@ -404,10 +532,15 @@ int main(void) {
         gmk_update_task();
         assert(response[5] == GMK_UNAVAILABLE && !flash_writes);
     }
+#ifdef GMK70_VIAL_UPDATE
+    test_vial_unlock_and_unavailable_queries();
+    test_vial_install();
+#else
     test_eeprom_peer();
     test_eeprom_validation();
     test_eeprom_update_and_radio_gates();
     test_eeprom_usb();
+#endif
     test_persistent_log_service();
-    puts("Updater adapter: USB/peer EEPROM reads, complete logical storage, CRC, bounds, stale-token echo, update/radio/role gates and no idle traffic passed");
+    puts("Updater adapter: USB/peer staging, role/radio gates, service boundaries and no idle traffic passed");
 }

@@ -16,6 +16,8 @@ build-qmk-default:
 	bash ./scripts/build.sh qmk default
 build-vial:
 	bash ./scripts/build.sh vial
+build-vial-updater:
+	bash ./scripts/build.sh vial vial updater
 build-zmk:
 	bash ./scripts/build.sh zmk
 clean:
@@ -26,7 +28,7 @@ format:
 	bash ./scripts/format.sh
 test:
 	bash ./scripts/test.sh
-.PHONY: build build-release build-debug build-qmk-via build-diagnostic build-default build-qmk-default build-vial build-zmk clean rebuild format test
+.PHONY: build build-release build-debug build-qmk-via build-diagnostic build-default build-qmk-default build-vial build-vial-updater build-zmk clean rebuild format test
 
 setup:
 	bash ./scripts/setup.sh
