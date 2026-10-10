@@ -42,7 +42,7 @@ class Package:
             manifest["format"] != 1
             or manifest["board"] != "zuoya/gmk70"
             or manifest["mcu"] != "WB32FQ95-256K"
-            or manifest["profile"] not in ("debug", "release")
+            or manifest["profile"] not in ("debug", "release", "vial")
             or manifest["app_address"] != 0x08002000
             or not 1024 <= len(image) <= 0x1E000
             or len(image) % 4
@@ -196,6 +196,11 @@ class Updater:
                 packet = original
                 continue
             if reply.result != 0:
+                if reply.result == 8:
+                    raise RuntimeError(
+                        "Vial is locked: unlock in the Vial GUI by holding Escape + left Shift, "
+                        "then close Vial and retry the updater"
+                    )
                 raise RuntimeError(
                     f"Target {target}: operation {operation.name} failed, code {reply.result}, state {reply.state}"
                 )
@@ -284,9 +289,9 @@ class Updater:
         )
 
     def install_both(self, package: Package) -> None:
-        if package.manifest["profile"] != "debug":
+        if package.manifest["profile"] not in ("debug", "vial"):
             raise ValueError(
-                "The left half must retain debug USB update support; use a debug package for --target both"
+                "The left half must retain USB update support; use a debug or Vial updater package for --target both"
             )
         # Check both before the first write; install/verify right before left.
         self.inspect(0, package)
@@ -316,10 +321,10 @@ def main() -> None:
     if (
         not args.inspect
         and args.target != "right"
-        and package.manifest["profile"] != "debug"
+        and package.manifest["profile"] not in ("debug", "vial")
     ):
         parser.error(
-            "Left updates require debug so completion can be verified over USB"
+            "Left updates require debug or Vial updater firmware so completion can be verified over USB"
         )
     link = UsbLink()
     try:

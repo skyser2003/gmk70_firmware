@@ -136,7 +136,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("build_root", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("profile", choices=("release", "debug"))
+    parser.add_argument("profile", choices=("release", "debug", "vial"))
     args = parser.parse_args()
     build(args.build_root.resolve(), args.output, args.profile)
 

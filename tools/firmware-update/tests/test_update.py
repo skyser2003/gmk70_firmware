@@ -43,11 +43,14 @@ class FakeLink:
         self.bad_session = False
         self.drop_data_ack = False
         self.pending: bytes | None = None
+        self.locked = False
 
     def exchange(self, packet: bytes) -> bytes:
         target, op = packet[3], packet[4]
         session, offset = struct.unpack_from("<II", packet, 8)
         self.operations.append((target, op))
+        if self.locked and op not in (Op.INFO, Op.STATUS):
+            return bytes((0x7F, 0x70, 1, target, op, 8)) + bytes(26)
         if op == Op.STATUS:
             assert self.pending is not None
             return self.pending
@@ -172,6 +175,19 @@ class PackageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Updater.packet(2, Op.INFO)
 
+    def test_vial_package_and_unsupported_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            value = package("vial")
+            (root / "update.json").write_text(json.dumps(value.manifest))
+            (root / "application.bin").write_bytes(value.image)
+            (root / "resident.bin").write_bytes(bytes(64))
+            self.assertEqual(Package.load(root), value)
+            value.manifest["profile"] = "unknown"
+            (root / "update.json").write_text(json.dumps(value.manifest))
+            with self.assertRaises(ValueError):
+                Package.load(root)
+
 
 class UpdaterTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -187,6 +203,36 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(installs, [1, 0])
         self.assertEqual(bytes(link.data[0]), package().image)
         self.assertEqual(bytes(link.data[1]), package().image)
+
+    def test_vial_retains_usb_updater_on_both_halves(self) -> None:
+        link = FakeLink()
+        Updater(link).install_both(package("vial"))
+        self.assertEqual(
+            [target for target, op in link.operations if op == Op.INSTALL], [1, 0]
+        )
+
+    def test_locked_vial_reports_unlock_without_staging(self) -> None:
+        link = FakeLink()
+        link.locked = True
+        Updater(link).inspect(0, package("vial"))
+        Updater(link).inspect(1, package("vial"))
+        with self.assertRaisesRegex(RuntimeError, "Escape.*Shift"):
+            Updater(link).install_both(package("vial"))
+        self.assertEqual(link.data, [bytearray(), bytearray()])
+        self.assertFalse(any(op in (Op.DATA, Op.INSTALL) for _, op in link.operations))
+
+    def test_right_restart_must_be_verified_before_left_is_started(self) -> None:
+        link = FakeLink()
+        updater = Updater(link)
+        with (
+            patch.object(updater, "verify_restart", side_effect=TimeoutError),
+            self.assertRaises(TimeoutError),
+        ):
+            updater.install_both(package("vial"))
+        self.assertNotIn((0, Op.BEGIN), link.operations)
+        self.assertEqual(
+            [target for target, op in link.operations if op == Op.INSTALL], [1]
+        )
 
     def test_failed_transfer_aborts_without_installing_either_half(self) -> None:
         link = FakeLink()
