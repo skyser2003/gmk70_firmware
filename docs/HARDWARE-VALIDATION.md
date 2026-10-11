@@ -27,6 +27,24 @@ Record PCB revision, stock keyboard version, receiver version, host OS, and the 
 
 The original port reports a right-half idle problem. This fork fixes specific source defects in that path, including USB slave timeout, split pin shutdown before RPC completion, missing split-RX wake event, wrong sleep column pins on the right, an extra five zero-initialized row pins, and a pending-interrupt bitmask typo. Wake behavior on both halves still requires physical testing; it is not established by these changes.
 
+## October 11 intermittent wired key pauses
+
+The user reports pauses of one second or less affecting typing from both halves
+over USB while RGB animations continue, including with the Vial app closed.
+The recurrence interval and USB driver state during a pause have not been captured.
+
+Native execution reproduced a 200 ms main-loop delay every 30 seconds when USB
+is active but the radio remains DISCONNECTED after a mode change. The board's
+radio recovery hook now skips USB and clears its reconnect timer. Regression
+tests cover 90 seconds of active wired typing, unchanged Bluetooth/2.4 GHz
+disconnected deadlines, and restarting the wireless deadline after leaving USB.
+The wired test fails against the preceding source and passes with the guard.
+
+This establishes removal of that software stall, not resolution of the physical
+symptom. A brief USB suspension can also reject typing while RGB continues;
+split-link retries can stall the shared scan loop. Neither has been captured
+during the reported pauses. Hardware validation of this correction is pending.
+
 ## October 6 Bluetooth wake failure
 
 After installing the recent V15 reconstruction, the user reported approximately

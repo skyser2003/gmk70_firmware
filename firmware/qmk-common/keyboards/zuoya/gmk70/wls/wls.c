@@ -77,6 +77,13 @@ bool hs_rgb_blink_hook() {
         return false;
     }
 
+    // Mode changes can leave the radio DISCONNECTED while USB is active.
+    // Its reconnect delay must not block wired matrix scanning or reports.
+    if (wireless_get_current_devs() == DEVS_USB) {
+        hs_rgb_blink_set_timer(0x00);
+        return false;
+    }
+
     if (last_status != *md_getp_state()) {
         last_status = *md_getp_state();
         hs_rgb_blink_set_timer(0x00);

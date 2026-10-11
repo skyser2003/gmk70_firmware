@@ -7,6 +7,7 @@
 #include "quantum.h"
 #include "usb_main.h"
 #include "wireless.h"
+#include "wls/wls.h"
 void md_receive_host_cb(bool resume);
 
 typedef struct {
@@ -92,12 +93,19 @@ bool lower_sleep;
 bool gmk70_stock_cable_flag(void) {
     return fixture.device == DEVS_USB;
 }
-void           gpio_write_pin_low(ioline_t pin) {}
-static uint8_t radio_state = MD_STATE_CONNECTED;
-uint8_t       *md_getp_state(void) {
+void            gpio_write_pin_low(ioline_t pin) {}
+static uint8_t  radio_state = MD_STATE_CONNECTED;
+static unsigned radio_commands;
+uint8_t        *md_getp_state(void) {
     return &radio_state;
 }
-void md_send_devctrl(uint8_t command) {}
+void md_send_devctrl(uint8_t command) {
+    ++radio_commands;
+}
+bool is_keyboard_master(void) {
+    return true;
+}
+void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) {}
 void md_wait_for_commands(void) {}
 void wait_ms(unsigned ms) {
     fixture.now += ms;
@@ -514,6 +522,73 @@ static void test_skipped_mcu_stop_does_not_arm_wake_irqs(void) {
     assert(fixture.stop_calls == 1 && lpwr_get_state() == LPWR_WAKEUP);
 }
 
+static void test_wired_disconnected_radio_does_not_block(void) {
+    reset_fixture(DEVS_USB, true);
+    USB_DRIVER.state = USB_ACTIVE;
+    radio_state      = MD_STATE_DISCONNECTED;
+    radio_commands   = 0;
+    fixture.held     = true;
+    hs_rgb_blink_set_timer(0);
+    hs_rgb_blink_hook();
+    for (unsigned second = 0; second < 90; ++second) {
+        fixture.now += 1000;
+        last_matrix_activity_trigger();
+        lpwr_activity_trigger();
+        uint32_t before = fixture.now;
+        hs_rgb_blink_hook();
+        assert(fixture.now == before);
+        assert(!lpwr_get_timeout_manual() && radio_commands == 0);
+        lpwr_task();
+        assert(lpwr_get_state() == LPWR_NORMAL && fixture.rgb_enabled);
+    }
+}
+
+static void test_wireless_disconnected_radio_keeps_deadline(void) {
+    const uint8_t devices[] = {DEVS_BT1, DEVS_BT2, DEVS_BT3, DEVS_2G4};
+    for (unsigned i = 0; i < sizeof(devices) / sizeof(devices[0]); ++i) {
+        reset_fixture(devices[i], true);
+        radio_state    = MD_STATE_DISCONNECTED;
+        radio_commands = 0;
+        hs_rgb_blink_set_timer(0);
+        hs_rgb_blink_hook();
+        fixture.now += HS_LBACK_TIMEOUT - 1;
+        hs_rgb_blink_hook();
+        assert(!lpwr_get_timeout_manual() && radio_commands == 0);
+        ++fixture.now;
+        uint32_t before = fixture.now;
+        hs_rgb_blink_hook();
+        assert(fixture.now == before + 200);
+        assert(lpwr_get_timeout_manual() && radio_commands == 1);
+        lpwr_task();
+        assert(lpwr_get_state() == LPWR_PRESLEEP);
+    }
+}
+
+static void test_usb_cancels_wireless_recovery_deadline(void) {
+    reset_fixture(DEVS_BT1, true);
+    radio_state    = MD_STATE_DISCONNECTED;
+    radio_commands = 0;
+    hs_rgb_blink_set_timer(0);
+    hs_rgb_blink_hook();
+    fixture.now += 15000;
+    hs_rgb_blink_hook();
+    fixture.device = DEVS_USB;
+    hs_rgb_blink_hook();
+    fixture.now += 45000;
+    uint32_t before = fixture.now;
+    hs_rgb_blink_hook();
+    assert(fixture.now == before && !lpwr_get_timeout_manual());
+    fixture.device = DEVS_BT1;
+    hs_rgb_blink_hook();
+    assert(fixture.now == before && radio_commands == 0);
+    fixture.now += HS_LBACK_TIMEOUT - 1;
+    hs_rgb_blink_hook();
+    assert(!lpwr_get_timeout_manual());
+    ++fixture.now;
+    hs_rgb_blink_hook();
+    assert(lpwr_get_timeout_manual() && radio_commands == 1);
+}
+
 typedef struct {
     const char *name;
     void (*run)(void);
@@ -547,6 +622,9 @@ int main(int argc, char **argv) {
         {"wake-before-stop", test_wake_during_stop_entry},
         {"host-before-stop", test_host_resume_during_stop_entry},
         {"prepared-uart", test_uart_does_not_cancel_stop},
+        {"wired-radio-backoff", test_wired_disconnected_radio_does_not_block},
+        {"wireless-radio-backoff", test_wireless_disconnected_radio_keeps_deadline},
+        {"radio-backoff-mode-change", test_usb_cancels_wireless_recovery_deadline},
     };
     bool ran = false;
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
