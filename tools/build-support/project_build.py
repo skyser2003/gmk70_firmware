@@ -1,4 +1,4 @@
-"""Validate pinned dependencies and compose disposable GMK70 build trees."""
+"""Validate pinned dependencies and prepare output-only GMK70 build directories."""
 
 import argparse
 import configparser
@@ -154,45 +154,38 @@ def clean(root: Path) -> None:
         shutil.rmtree(vial_directory)
 
 
-def compose(root: Path, variant: str) -> Path:
+def prepare(root: Path, variant: str, mode: str = "normal") -> Path:
     if variant not in VARIANTS:
         raise ValueError(f"Unsupported QMK keymap: {variant}")
-    return compose_framework(root, variant, "qmk")
+    return prepare_framework(root, variant, "qmk", mode)
 
 
-def compose_vial(root: Path) -> Path:
-    return compose_framework(root, "vial", "vial")
+def prepare_vial(root: Path, mode: str = "normal") -> Path:
+    return prepare_framework(root, "vial", "vial", mode)
 
 
-def compose_framework(root: Path, variant: str, platform: str) -> Path:
+def prepare_framework(root: Path, variant: str, platform: str, mode: str) -> Path:
+    if mode not in ("normal", "updater"):
+        raise ValueError(f"Unsupported build mode: {mode}")
+    if variant == "default" and mode == "updater":
+        raise ValueError("Updater supports release/debug/vial only")
     if platform == "qmk":
         verify(root)
     else:
         verify(root, platform)
     source = framework_path(root, platform)
-    destination = generated_path(root, platform, variant)
-    if destination.exists():
-        shutil.rmtree(destination)
-    unused = unused_modules(root, platform)
-
-    def ignore(directory: str, names: list[str]) -> set[str]:
-        excluded = IGNORED.intersection(names)
-        if Path(directory) == source:
-            excluded.update({"keyboards", ".github"})
-        excluded.update(name for name in names if Path(directory) / name in unused)
-        return excluded
-
-    shutil.copytree(source, destination, ignore=ignore)
+    destination = generated_path(root, platform, variant, mode)
+    generated_path(root, platform, variant, mode, ".build")
     origins: dict[str, str] = {}
     overlays = (
-        (root / "firmware/qmk-common", destination),
+        (root / "firmware/qmk-common", Path(".")),
         (
             root / f"firmware/qmk-{'vial' if platform == 'vial' else 'via'}/keymaps",
-            destination / "keyboards/zuoya/gmk70/keymaps",
+            Path("keyboards/zuoya/gmk70/keymaps"),
         ),
         (
             root / f"firmware/qmk-{'vial' if platform == 'vial' else 'via'}/compat",
-            destination / "keyboards/zuoya/gmk70",
+            Path("keyboards/zuoya/gmk70"),
         ),
     )
     for overlay, target in overlays:
@@ -200,18 +193,19 @@ def compose_framework(root: Path, variant: str, platform: str) -> Path:
             continue
         for path in source_files(overlay):
             output = target / path.relative_to(overlay)
-            if output.exists():
+            relative = output.as_posix()
+            if relative in origins or (source / output).exists():
                 raise ValueError(
                     f"Overlay would overwrite an existing source: {output}"
                 )
-            output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, output)
-            origins[output.relative_to(destination).as_posix()] = path.relative_to(
-                root
-            ).as_posix()
-    (destination / "gmk70-source-origins.json").write_text(
-        json.dumps(origins, indent=2) + "\n"
-    )
+            origins[relative] = path.relative_to(root).as_posix()
+    destination.mkdir(parents=True, exist_ok=True)
+    manifest = destination / "gmk70-source-origins.json"
+    if manifest.is_symlink():
+        raise ValueError(f"Refusing to use redirected source manifest: {manifest}")
+    content = json.dumps(origins, indent=2) + "\n"
+    if not manifest.exists() or manifest.read_text() != content:
+        manifest.write_text(content)
     return destination
 
 
@@ -263,15 +257,16 @@ def main() -> None:
         "command",
         choices=(
             "verify",
-            "compose",
+            "prepare",
             "clean",
             "export",
             "verify-vial",
-            "compose-vial",
+            "prepare-vial",
             "export-vial",
         ),
     )
     parser.add_argument("argument", nargs="?")
+    parser.add_argument("--mode", choices=("normal", "updater"), default="normal")
     args = parser.parse_args()
     try:
         match args.command:
@@ -279,10 +274,10 @@ def main() -> None:
                 verify(ROOT)
             case "verify-vial":
                 verify(ROOT, "vial")
-            case "compose-vial":
-                print(compose_vial(ROOT))
-            case "compose":
-                print(compose(ROOT, args.argument or "release"))
+            case "prepare-vial":
+                print(prepare_vial(ROOT, args.mode))
+            case "prepare":
+                print(prepare(ROOT, args.argument or "release", args.mode))
             case "clean":
                 clean(ROOT)
             case "export-vial":

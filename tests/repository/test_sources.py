@@ -71,59 +71,94 @@ class WorkspaceTests(unittest.TestCase):
         path.write_text(content)
         return path
 
-    def test_compose_preserves_tools_and_isolates_variants(self) -> None:
+    def test_prepare_uses_sources_in_place_and_preserves_objects(self) -> None:
         with patch.object(BUILD, "verify"):
-            debug = BUILD.compose(self.root, "debug")
-            release = BUILD.compose(self.root, "release")
-        self.assertEqual((debug / "lib/python/qmk/cli/__init__.py").read_text(), "CLI")
-        self.assertEqual(
-            (release / "keyboards/zuoya/gmk70/keymaps/release/keymap.c").read_text(),
-            "keymap",
-        )
-        (debug / "drivers/wireless/wireless.c").write_text("generated edit")
-        self.assertEqual((release / "drivers/wireless/wireless.c").read_text(), "radio")
-        self.assertEqual(
-            (self.root / "firmware/qmk-common/drivers/wireless/wireless.c").read_text(),
-            "radio",
-        )
-        origins = json.loads((release / "gmk70-source-origins.json").read_text())
+            debug = BUILD.prepare(self.root, "debug")
+            release = BUILD.prepare(self.root, "release")
+        self.assertNotEqual(debug, release)
+        for directory in (debug, release):
+            self.assertEqual(
+                [file.name for file in directory.iterdir()],
+                ["gmk70-source-origins.json"],
+            )
+            self.assertFalse(any(file.is_symlink() for file in directory.rglob("*")))
+        origins_file = release / "gmk70-source-origins.json"
+        origins = json.loads(origins_file.read_text())
         self.assertEqual(
             origins["drivers/wireless/wireless.c"],
             "firmware/qmk-common/drivers/wireless/wireless.c",
         )
-
-    def test_overlay_collisions_are_rejected(self) -> None:
-        self.write("firmware/qmk-common/quantum/quantum.c", "overwrite")
-        with (
-            patch.object(BUILD, "verify"),
-            self.assertRaisesRegex(ValueError, "overwrite"),
-        ):
-            BUILD.compose(self.root, "default")
-
-    def test_diagnostic_build_is_isolated_and_cleanable(self) -> None:
+        obj = release / ".build/kept.o"
+        obj.parent.mkdir()
+        obj.write_bytes(b"compiled object")
+        timestamp = origins_file.stat().st_mtime_ns
         with patch.object(BUILD, "verify"):
-            diagnostic = BUILD.compose(self.root, "debug")
-        self.assertEqual(
-            (diagnostic / "keyboards/zuoya/gmk70/keymaps/debug/keymap.c").read_text(),
-            "diagnostic",
-        )
+            self.assertEqual(BUILD.prepare(self.root, "release"), release)
+        self.assertEqual(obj.read_bytes(), b"compiled object")
+        self.assertEqual(origins_file.stat().st_mtime_ns, timestamp)
+
+    def test_normal_and_updater_caches_are_isolated(self) -> None:
+        with patch.object(BUILD, "verify"):
+            normal = BUILD.prepare(self.root, "debug")
+            updater = BUILD.prepare(self.root, "debug", mode="updater")
+        self.assertNotEqual(normal, updater)
+        self.assertEqual(normal.parent, updater.parent)
+        self.assertEqual(normal.name, "normal")
+        self.assertEqual(updater.name, "updater")
         self.write("artifacts/qmk/release/normal.bin", "existing firmware")
         BUILD.clean(self.root)
-        self.assertFalse(diagnostic.exists())
+        self.assertFalse(normal.exists())
+        self.assertFalse(updater.exists())
         self.assertEqual(
             (self.root / "artifacts/qmk/release/normal.bin").read_text(),
             "existing firmware",
         )
 
-    def test_unselected_nested_libraries_are_not_built_or_exported(self) -> None:
+    def test_source_collisions_are_rejected(self) -> None:
+        self.write("firmware/qmk-common/quantum/quantum.c", "overwrite")
+        with (
+            patch.object(BUILD, "verify"),
+            self.assertRaisesRegex(ValueError, "overwrite"),
+        ):
+            BUILD.prepare(self.root, "default")
+
+    def test_platform_source_collisions_are_rejected(self) -> None:
+        self.write("firmware/qmk-via/compat/gmk70.c", "overwrite")
+        with (
+            patch.object(BUILD, "verify"),
+            self.assertRaisesRegex(ValueError, "overwrite"),
+        ):
+            BUILD.prepare(self.root, "release")
+
+    def test_prepare_refuses_redirected_outputs_and_source_symlinks(self) -> None:
+        redirected = self.root / ".work/qmk/release/normal"
+        redirected.parent.mkdir(parents=True)
+        redirected.symlink_to(self.root / "firmware", target_is_directory=True)
+        with (
+            patch.object(BUILD, "verify"),
+            self.assertRaisesRegex(ValueError, "Refusing"),
+        ):
+            BUILD.prepare(self.root, "release")
+        redirected.unlink()
+        source = self.root / "firmware/qmk-via/compat/linked.c"
+        source.parent.mkdir(parents=True)
+        source.symlink_to(self.root / "dependencies/qmk/quantum/quantum.c")
+        with (
+            patch.object(BUILD, "verify"),
+            self.assertRaisesRegex(ValueError, "Source symlinks"),
+        ):
+            BUILD.prepare(self.root, "release")
+
+    def test_prepare_rejects_unknown_modes(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unsupported build mode"):
+            BUILD.prepare(self.root, "release", mode="../escape")
+
+    def test_unselected_nested_libraries_are_not_exported(self) -> None:
         self.write(
             "dependencies/qmk/lib/chibios/.gitmodules",
             '[submodule "optional-sdk"]\npath = optional-sdk\n',
         )
         self.write("dependencies/qmk/lib/chibios/optional-sdk/unused.a", "unused")
-        with patch.object(BUILD, "verify"):
-            generated = BUILD.compose(self.root, "default")
-        self.assertFalse((generated / "lib/chibios/optional-sdk").exists())
         self.assertNotIn(
             "qmk/lib/chibios/optional-sdk/unused.a", BUILD.dependency_hashes(self.root)
         )

@@ -8,11 +8,11 @@ The [historical manifest](provenance/BUNDLED-SOURCES-2024.tsv) preserves the exa
 
 ## Builds and source exports
 
-`make setup` explicitly provisions dependencies and locally installed compiler/Python tools. Subsequent builds verify the locked revisions, reject modified dependencies, and compose isolated trees under `.work/qmk/<variant>/`. The composition copies upstream sources, adds the local board/radio/keymap files, rejects collisions and records each local file's origin. It does not modify a dependency checkout.
+`make setup` explicitly provisions dependencies and locally installed compiler/Python tools. Subsequent builds verify the locked revisions, reject modified dependencies, and compile directly from the framework and maintained board/radio/keymap paths. Sources are neither copied nor symlinked. The external-source adapter rejects collisions and records each local file's origin. Generated headers and objects stay under `.work/<platform>/<variant>/<normal|updater>/`; dependency checkouts remain unmodified. See [external-source builds](EXTERNAL-BUILD.md).
 
 Each artifact folder includes its exact dependency lockfile, source origins, checksums and complete `source.tar.gz`. Archives include working project files and prepared dependency contents, while excluding Git metadata, generated firmware, virtual environments and caches. `dependencies/source-files.json` in the archive permits dependency integrity checks without Git. Extracted archives can build with preinstalled tools and without source downloads. Compiler and Python distributions are provisioned separately.
 
-`make clean` removes only generated QMK trees. `make format` is limited to project-owned sources and tests.
+`make clean` removes only generated QMK/Vial build directories. `make format` is limited to project-owned sources and tests.
 
 ## Updating dependencies
 

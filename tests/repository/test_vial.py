@@ -88,7 +88,7 @@ class VialTests(unittest.TestCase):
         self.assertEqual(matrix.count("0,0"), 1, "Keep the knob's physical press")
         self.assertIn("ENCODER_MAP_ENABLE = yes", (keymap / "rules.mk").read_text())
 
-    def test_composition_shares_board_and_excludes_stock_parser(self) -> None:
+    def test_preparation_shares_board_and_excludes_stock_parser(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             files = {
@@ -108,20 +108,19 @@ class VialTests(unittest.TestCase):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content)
             with patch.object(BUILD, "verify"):
-                destination = BUILD.compose_vial(root)
-            self.assertEqual(
-                (destination / "drivers/wireless/lowpower.c").read_text(), "power"
+                destination = BUILD.prepare_vial(root)
+            origins = json.loads(
+                (destination / "gmk70-source-origins.json").read_text()
             )
-            board = destination / "keyboards/zuoya/gmk70"
-            self.assertTrue((board / "vial_adapter.c").is_file())
-            self.assertFalse((board / "stock_via.c").exists())
-            (board / "gmk70.c").write_text("generated")
             self.assertEqual(
-                (
-                    root / "firmware/qmk-common/keyboards/zuoya/gmk70/gmk70.c"
-                ).read_text(),
-                "board",
+                origins["drivers/wireless/lowpower.c"],
+                "firmware/qmk-common/drivers/wireless/lowpower.c",
             )
+            self.assertIn("keyboards/zuoya/gmk70/vial_adapter.c", origins)
+            self.assertNotIn("keyboards/zuoya/gmk70/stock_via.c", origins)
+            self.assertFalse((destination / "keyboards").exists())
+            self.assertFalse((destination / "quantum").exists())
+            self.assertFalse(any(file.is_symlink() for file in destination.rglob("*")))
             BUILD.clean(root)
             self.assertFalse(destination.exists())
             self.assertTrue((root / "dependencies/vial-qmk/quantum/vial.c").is_file())

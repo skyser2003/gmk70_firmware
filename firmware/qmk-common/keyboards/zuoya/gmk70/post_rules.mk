@@ -27,5 +27,5 @@ else ifeq ($(strip $(VIA_ENABLE)), yes)
     SRC += stock_via.c
     LDFLAGS += -Wl,--wrap=nvm_via_read_magic -Wl,--wrap=nvm_via_update_magic
 endif
-include keyboards/zuoya/gmk70/wls/wls.mk
-include drivers/wireless/wireless.mk
+include $(KEYBOARD_PATH_1)/wls/wls.mk
+include $(GMK70_COMMON_DIR)/drivers/wireless/wireless.mk

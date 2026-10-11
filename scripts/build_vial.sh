@@ -14,7 +14,8 @@ mkdir -p .work/locks
 exec 9>.work/locks/vial-vial.lock
 flock 9
 source_python="${GMK70_SOURCE_PYTHON:-python3}"
-build_root="$("$source_python" tools/build-support/project_build.py compose-vial)"
+build_root="$("$source_python" tools/build-support/project_build.py prepare-vial --mode "$mode")"
+framework_root="$project_root/dependencies/vial-qmk"
 output=artifacts/vial/vial
 update_flags=()
 if [[ "$mode" == updater ]]; then
@@ -22,12 +23,16 @@ if [[ "$mode" == updater ]]; then
     update_flags+=(GMK70_SPLIT_UPDATE=yes MCU_LDSCRIPT=GMK70_UPDATE USE_CHIBIOS_CONTRIB=yes)
 fi
 mkdir -p "$output"
-export QMK_HOME="$build_root" QMK_USERSPACE=""
-make -C "$build_root" -r -R -f builddefs/build_keyboard.mk -j"${JOBS:-8}" \
+export QMK_HOME="$framework_root" QMK_USERSPACE=""
+export GMK70_PROJECT_ROOT="$project_root" GMK70_KEYMAP=vial PYTHONDONTWRITEBYTECODE=1
+target=zuoya_gmk70_vial
+make -C "$framework_root" -r -R -f "$project_root/tools/build-support/external.mk" -j"${JOBS:-8}" \
+    BUILD_DIR="$build_root/.build" GMK70_PLATFORM=vial \
+    QMK_BIN="python3 $project_root/tools/build-support/qmk_generate.py" \
     KEYBOARD=zuoya/gmk70 KEYMAP=vial SKIP_VERSION=yes SKIP_GIT=yes SILENT=false DEBUG_ENABLE=yes \
     "${update_flags[@]}" \
+    elf hex "$build_root/.build/$target.bin" sizeafter \
     2>&1 | tee "$output/build.log"
-target=zuoya_gmk70_vial
 for extension in bin hex elf map; do
     cp "$build_root/.build/$target.$extension" "$output/"
 done
@@ -55,7 +60,7 @@ if [[ "$mode" == updater ]]; then
     if arm-none-eabi-nm "$output/$target.elf" | grep ' gmk_eeprom_query\| gmk_sleep_log_query' >/dev/null; then
         printf 'Vial updater unexpectedly contains settings/log queries\n' >&2; exit 1
     fi
-    "$source_python" tools/build-support/update_package.py "$build_root" "$output" vial
+    "$source_python" tools/build-support/update_package.py "$framework_root" "$output" vial
     cp tools/firmware-update/update.py "$output/"
     printf 'hidapi==0.15.0\n' > "$output/requirements.txt"
 fi

@@ -31,7 +31,7 @@ mkdir -p .work/locks
 exec 9>".work/locks/qmk-$keymap.lock"
 flock 9
 source_python="${GMK70_SOURCE_PYTHON:-python3}"
-build_root="$("$source_python" tools/build-support/project_build.py compose "$keymap")"
+build_root="$("$source_python" tools/build-support/project_build.py prepare "$keymap" --mode "$mode")"
 output="artifacts/qmk/$keymap"
 update_flags=()
 if [[ "$mode" == updater ]]; then
@@ -40,13 +40,17 @@ if [[ "$mode" == updater ]]; then
     update_flags+=(GMK70_SPLIT_UPDATE=yes MCU_LDSCRIPT=GMK70_UPDATE USE_CHIBIOS_CONTRIB=yes)
 fi
 mkdir -p "$output"
-export QMK_HOME="$build_root"
+export QMK_HOME="$qmk_root"
 export QMK_USERSPACE=""
-make -C "$build_root" -r -R -f builddefs/build_keyboard.mk -j"${JOBS:-8}" \
+export GMK70_PROJECT_ROOT="$project_root" GMK70_KEYMAP="$keymap" PYTHONDONTWRITEBYTECODE=1
+target="zuoya_gmk70_$keymap"
+make -C "$qmk_root" -r -R -f "$project_root/tools/build-support/external.mk" -j"${JOBS:-8}" \
+    BUILD_DIR="$build_root/.build" GMK70_PLATFORM=qmk \
+    QMK_BIN="python3 $project_root/tools/build-support/qmk_generate.py" \
     KEYBOARD=zuoya/gmk70 KEYMAP="$keymap" SKIP_VERSION=yes SKIP_GIT=yes SILENT=false \
     "${update_flags[@]}" \
+    elf hex "$build_root/.build/$target.bin" sizeafter \
     2>&1 | tee "$output/build.log"
-target="zuoya_gmk70_$keymap"
 for extension in bin hex elf map; do
     cp "$build_root/.build/$target.$extension" "$output/"
 done
@@ -56,7 +60,7 @@ rm "$output/from-hex.bin"
 cp "$build_root/.build/obj_$target/cflags.txt" "$output/"
 cp "$build_root/.build/obj_$target/ldflags.txt" "$output/"
 if [[ "$mode" == updater ]]; then
-    python3 tools/build-support/update_package.py "$build_root" "$output" "$keymap"
+    python3 tools/build-support/update_package.py "$qmk_root" "$output" "$keymap"
 fi
 # Enforce the distribution boundary against the actual compiled adapter.
 if [[ "$keymap" != default ]]; then

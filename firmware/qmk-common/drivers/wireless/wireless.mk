@@ -1,5 +1,5 @@
 WIRELESS_ENABLE ?= yes
-WIRELESS_DIR = $(TOP_DIR)/drivers/wireless
+WIRELESS_DIR := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
 
 ifeq ($(strip $(WIRELESS_ENABLE)), yes)
     OPT_DEFS += -DWIRELESS_ENABLE -DNO_USB_STARTUP_CHECK -DGMK70_RADIO_THREAD

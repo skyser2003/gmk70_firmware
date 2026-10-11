@@ -86,17 +86,17 @@ firmware/
 
 definitions/via/               unchanged original vendor definition
 docs/                          shared hardware/protocol evidence and port notes
-scripts/                       explicit dependency setup, composition, build, clean
+scripts/                       explicit dependency setup, external build, clean
 tests/
   qmk/                         shared QMK-family regressions
   vial/                        Vial-specific tests (future)
   zmk/                         Zephyr/ZMK tests (future)
-  repository/                  dependency, composition and clean checks
+  repository/                  dependency, external-source and clean checks
 tools/                         project tooling, including offline keymap migration
 
 .work/                         ignored, generated workspaces
-  qmk/<variant>/               assembled QMK build tree per variant
-  vial/<variant>/              assembled Vial build tree per variant
+  qmk/<variant>/<mode>/        generated QMK headers and objects per build mode
+  vial/<variant>/<mode>/       generated Vial headers and objects per build mode
   zmk/                        West workspace, dependency checkouts and build dirs
 artifacts/
   qmk/{release,debug}/         the two VIA distributions
@@ -106,15 +106,16 @@ artifacts/
 ```
 
 Keep one authoritative board/radio implementation in `qmk-common`. QMK and Vial
-consume it through an explicit composition step into separate generated trees.
+compile it directly through the [external-source adapter](EXTERNAL-BUILD.md).
 Only platform-specific keymaps and small compatibility adapters differ. Do not
 maintain two complete copies of `gmk70.c` or the radio driver. Shared code should
 call a small compatibility interface where the selected fork APIs differ.
 
-The composition step records source origins, rejects unapproved path collisions,
-and never edits the upstream submodules. Generated copies are disposable and
-never an editing target. Each variant has its own intermediate directory so
-QMK/Vial versions and build flags cannot contaminate another build. The
+Build preparation records source origins, rejects source collisions,
+and never edits the upstream submodules. Sources are neither copied nor
+symlinked. Generated headers and objects are disposable and never an editing
+target. Each variant and normal/updater mode has its own intermediate directory
+so QMK/Vial versions and build flags cannot contaminate another build. The
 [Vial porting guide](https://get.vial.today/docs/porting-to-vial.html) explicitly
 requires a separate fork checkout; sibling dependencies satisfy this requirement.
 
@@ -162,7 +163,7 @@ The source layout makes room for that work without claiming the port is ready.
 - `make clean` removes generated build/intermediate data, preserving maintained
   sources, upstream checkouts and published artifacts. Dependency removal is a
   distinct operation. Reject redirected/symlinked cleanup paths as today.
-- CI checks the requested dependency pins, composes fresh trees, runs relevant
+- CI checks the requested dependency pins, prepares output directories, runs relevant
   tests, and builds each supported variant independently. Upstream trees must
   remain unmodified after builds.
 - Artifacts retain checksums, build logs, exact source revisions, compiler flags,

@@ -17,9 +17,10 @@ without fetching or following the branch. Official QMK's 0.34.4 pin is unchanged
 
 The maintained keymap, UID, unlock keys and definition live in
 `firmware/qmk-vial/keymaps/vial/`; the compatibility adapter lives in
-`firmware/qmk-vial/compat/`. Composition copies common hardware code into
-`.work/vial/vial/`, records file origins, and rejects source collisions. There
-is no second board/radio copy and no edit to either upstream framework.
+`firmware/qmk-vial/compat/`. Builds read these and the common hardware sources
+directly, with generated files under `.work/vial/vial/<normal|updater>/`.
+The build adapter records file origins and rejects source collisions. Sources
+are neither copied nor symlinked, and neither upstream framework is edited.
 
 The application uses the fork's VIA protocol 9 and Vial protocol 6 handlers,
 including native unlock checks, keymap/macros/encoder commands and VialRGB.
@@ -148,7 +149,7 @@ Vial trees while preserving maintained sources, dependencies and artifacts.
 Vial debug/diagnostic builds are not implemented.
 
 Software validation passed the native suite, Ruff, strict mypy and repository/
-tooling tests. New regressions cover dependency isolation, shared composition,
+tooling tests. New regressions cover dependency isolation, shared source paths,
 physical unlock configuration, custom-code gaps, schema rejection, bounded
 packets, and delegation of Vial identification/unlock/bootloader messages.
 The activity regression covers both halves, consumed user/feature records,

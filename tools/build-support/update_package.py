@@ -14,9 +14,12 @@ APP_SIZE = 0x1E000
 FLASH_SIZE = 0x40000
 
 
-def build(build_root: Path, output: Path, profile: str) -> None:
+def build(framework_root: Path, output: Path, profile: str) -> None:
     output = output.resolve()
-    source = build_root / "keyboards/zuoya/gmk70/update"
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "firmware/qmk-common/keyboards/zuoya/gmk70/update"
+    )
     flags = [
         flag
         for flag in shlex.split((output / "cflags.txt").read_text())
@@ -30,14 +33,14 @@ def build(build_root: Path, output: Path, profile: str) -> None:
         ("flash", source / "wb32_flash.c"),
         (
             "vendor_flash",
-            build_root
+            framework_root
             / "lib/chibios-contrib/os/hal/ports/WB32/WB32FQ95xx/hal_efl_lld.c",
         ),
     ):
         destination = output / f"resident-{name}.o"
         subprocess.run(
             ["arm-none-eabi-gcc", *flags, "-c", str(path), "-o", str(destination)],
-            cwd=build_root,
+            cwd=framework_root,
             check=True,
         )
         objects.append(str(destination))
@@ -134,11 +137,11 @@ def build(build_root: Path, output: Path, profile: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("build_root", type=Path)
+    parser.add_argument("framework_root", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("profile", choices=("release", "debug", "vial"))
     args = parser.parse_args()
-    build(args.build_root.resolve(), args.output, args.profile)
+    build(args.framework_root.resolve(), args.output, args.profile)
 
 
 if __name__ == "__main__":

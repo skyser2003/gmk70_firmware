@@ -72,11 +72,11 @@ firmware/qmk-via/                    official-QMK/VIA keymap and compatibility c
 firmware/qmk-vial/                   future Vial-specific work
 firmware/zmk/                        future ZMK-specific work
 definitions/via/                     original vendor JSON
-scripts/                             build composition and artifact packaging
+scripts/                             build orchestration and artifact packaging
 tests/                               project regression tests
 ```
 
-The build can export the pinned dependency and required libraries into a disposable build directory, then add the authoritative GMK70 board/radio files there. That keeps the submodule unchanged and leaves one maintained copy of each project-owned source. At the pinned revision, external userspace alone is insufficient: its keymap support does not supply this additional keyboard definition and root-level wireless directory. The existing local makefiles expect those paths inside the build tree.
+The initial migration composed a disposable build tree from the pinned framework and maintained GMK70 sources. Current builds compile those sources in place using the [external-source adapter](EXTERNAL-BUILD.md), with no source copying or symlinking. External userspace alone still does not register the new board at these pins; the adapter supplies board discovery to upstream JSON generators and external paths to Make. Both dependency checkouts remain unmodified.
 
 A conversion must update project paths, build/clean/test/format scripts, CI checkout, source packaging and the current vendoring policy in `AGENTS.md`. It should initially retain the tested QMK revision, run the existing regression tests, and compare clean VIA/default builds with the current firmware payloads. Later upstream updates should advance the recorded pin deliberately and repeat validation; automatically following every upstream commit would make builds less reproducible.
 
