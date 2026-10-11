@@ -60,6 +60,10 @@ make test         # firmware regression tests
 make check-tools  # Python formatting, lint, type checks and tests
 ```
 
+GitHub Actions builds all seven variants for pull requests, `main`, and manual
+runs. Download packages from the run's artifacts; pushing a `v*` tag publishes
+them to GitHub Releases. See [release instructions](docs/RELEASING.md).
+
 ## Using the firmware
 
 Back up your configuration before updating, and install the same build on both
