@@ -74,10 +74,21 @@ Vial images reset dynamic mappings and macros.
 - **VIA:** load the [original GMK70 definition](definitions/via/ZUOYA_GMK70.json)
   through the Design tab. See [compatibility and migration](docs/STOCK-COMPATIBILITY.md).
 - **Vial:** the layout is embedded. Physical unlock uses **Escape + left Shift**.
-- **Split updater:** requires a compatible resident installer on both halves;
-  initial installation requires direct USB access to each half with a verified
-  256 KB MCU. Follow the [updater guide](docs/SPLIT-UPDATER.md).
-  Vial writes require physical unlock.
+
+## Split updater
+
+Updater builds contain a small resident installer and the keyboard application.
+Initially install `install.bin` or `install.hex` on each half separately over USB;
+each half must have a verified 256 KB MCU.
+
+For later updates, connect the left half by USB in wired mode and keep the halves
+linked. The host tool uses `application.bin` and `update.json` from a compatible
+updater package, updating and verifying the right half through the split cable
+before updating the left. Incoming images are staged and checked before the
+resident installer replaces the application. Vial updates require physical unlock.
+
+See the [updater guide](docs/SPLIT-UPDATER.md) for compatibility requirements,
+detailed flashing instructions and recovery behavior.
 
 Additional details: [stock reconstruction](docs/STOCK-V15-RECONSTRUCTION.md),
 [EEPROM backups](docs/EEPROM-QUERIES.md),
