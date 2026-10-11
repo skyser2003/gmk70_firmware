@@ -64,8 +64,12 @@ class VialTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"0x[0-9A-F]{2}", uid[1])), 8)
         self.assertNotIn("VIAL_INSECURE", config)
         self.assertIn("DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 0xFFB", config)
-        self.assertEqual(len(definition["customKeycodes"]), 0x1A)
+        self.assertEqual(len(definition["customKeycodes"]), 0x22)
         self.assertIn("0x7E19", definition["customKeycodes"][0x19]["title"])
+        self.assertEqual(definition["customKeycodes"][7]["shortName"], "Show Charging")
+        self.assertEqual(definition["customKeycodes"][9]["shortName"], "Logo Effects")
+        self.assertEqual(definition["customKeycodes"][26]["shortName"], "Num/F Toggle")
+        self.assertEqual(definition["customKeycodes"][27]["shortName"], "Show Battery")
 
     def test_encoder_rotation_controls_and_press(self) -> None:
         keymap = PROJECT / "firmware/qmk-vial/keymaps/vial"

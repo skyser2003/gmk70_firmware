@@ -32,7 +32,42 @@ Project UID: `b691d7277fc88251`, generated once for this port. Physical unlock
 requires holding **Escape + left Shift**, matrix positions `(0,1)` and `(3,1)`,
 as requested by the Vial GUI. Insecure unlock is not enabled. The embedded
 layout is derived from the unchanged stock VIA definition. Custom keycode slots
-cover every value `0x7E00` through `0x7E19`, retaining reserved gaps.
+cover every value `0x7E00` through `0x7E21`, retaining reserved gaps. Known
+functions have readable labels, and reserved slots are identified by their
+decimal slot number. Existing aliases and numeric keycodes are unchanged.
+The tooltips include `CUSTOM(N)` and the stock code for each renamed entry.
+
+### Custom-key label evidence
+
+The manufacturer's bilingual [GMK70 instruction leaflet, mirrored on
+Manuals+](https://manuals.plus/m/afce334373cd4a880f56d8db405f46f6028be78bc31c28f94df390d428666f4c.pdf)
+documents the following functions. The manufacturer's website was unavailable
+when checked. The leaflet gives Fn shortcuts rather than numeric custom IDs;
+their IDs are matched against the stock keymap and dispatch evidence in
+[STOCK-COMPATIBILITY.md](STOCK-COMPATIBILITY.md).
+
+| Stock slot | Vial label | Leaflet shortcut/function |
+| --- | --- | --- |
+| `CUSTOM(7)` / `0x7E07` | Show Charging | Hold Fn+left Space; indicator shows charging/full |
+| `CUSTOM(9)` / `0x7E09` | Logo Effects | Fn+Backslash; cycle logo lighting |
+| `CUSTOM(26)` / `0x7E1A` | Num/F Toggle | Fn+left Ctrl; switch number-row/F-key behavior |
+| `CUSTOM(27)` / `0x7E1B` | Show Battery | Hold Fn+B; number-row LEDs display battery level |
+
+The six shortcut slots 28–33 are named Undo, Cut, Copy, Paste, GUI+Tab and GUI+E
+from their verified stock handlers, not from a custom-ID table in the leaflet.
+The GUI combinations retain literal names because their actions vary by OS.
+Slots 17–19 are the stock firmware's undocumented special USB sleep request
+controls; their labels do not imply an idle-timeout setting. Bluetooth 4/5
+labels are retained from the vendor JSON, while the leaflet describes 1–3.
+Undocumented reserved slots are left reserved rather than assigned a function.
+
+To try these labels without updating firmware, use the maintained `vial.json`
+with desktop Vial's **File → Sideload VIA JSON…** and select the `[sideload]`
+device. This provides a local VIA-mode definition, which hides Vial-only controls
+such as dynamic combos and QMK settings. Normal Vial mode uses the definition
+embedded in the firmware; the next build includes these labels.
+
+### Shared behavior and Vial features
 
 The build shares all four stock default layers, encoder assignments,
 LED geometry, wireless/power fixes and board controls. It enables:

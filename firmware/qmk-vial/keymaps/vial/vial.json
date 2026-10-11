@@ -47,98 +47,138 @@
     },
     {
       "name": "KC_BATQ",
-      "title": "Stock code 0x7E07: KC_BATQ",
-      "shortName": "07"
+      "title": "Show charging status while held (stock Fn+Left Space): red charging, green fully charged. CUSTOM(7), 0x7E07: KC_BATQ.",
+      "shortName": "Show Charging"
     },
     {
       "name": "Reserved 08",
-      "title": "Stock code 0x7E08: reserved",
-      "shortName": "08"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(8), 0x7E08.",
+      "shortName": "Reserved 8"
     },
     {
       "name": "RL_MOD",
-      "title": "Stock code 0x7E09: RL_MOD",
-      "shortName": "09"
+      "title": "Cycle the logo lighting effects (stock Fn+Backslash). CUSTOM(9), 0x7E09: RL_MOD.",
+      "shortName": "Logo Effects"
     },
     {
       "name": "Reserved 0A",
-      "title": "Stock code 0x7E0A: reserved",
-      "shortName": "0A"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(10), 0x7E0A.",
+      "shortName": "Reserved 10"
     },
     {
       "name": "Reserved 0B",
-      "title": "Stock code 0x7E0B: reserved",
-      "shortName": "0B"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(11), 0x7E0B.",
+      "shortName": "Reserved 11"
     },
     {
       "name": "Reserved 0C",
-      "title": "Stock code 0x7E0C: reserved",
-      "shortName": "0C"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(12), 0x7E0C.",
+      "shortName": "Reserved 12"
     },
     {
       "name": "Reserved 0D",
-      "title": "Stock code 0x7E0D: reserved",
-      "shortName": "0D"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(13), 0x7E0D.",
+      "shortName": "Reserved 13"
     },
     {
       "name": "Reserved 0E",
-      "title": "Stock code 0x7E0E: reserved",
-      "shortName": "0E"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(14), 0x7E0E.",
+      "shortName": "Reserved 14"
     },
     {
       "name": "Reserved 0F",
-      "title": "Stock code 0x7E0F: reserved",
-      "shortName": "0F"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(15), 0x7E0F.",
+      "shortName": "Reserved 15"
     },
     {
       "name": "Reserved 10",
-      "title": "Stock code 0x7E10: reserved",
-      "shortName": "10"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(16), 0x7E10.",
+      "shortName": "Reserved 16"
     },
     {
       "name": "STOCK_USB_SLEEP_OFF",
-      "title": "Stock code 0x7E11: STOCK_USB_SLEEP_OFF",
-      "shortName": "11"
+      "title": "Cancel the special USB sleep request and wake; this does not configure the idle timeout. CUSTOM(17), 0x7E11: STOCK_USB_SLEEP_OFF.",
+      "shortName": "USB Sleep Off"
     },
     {
       "name": "STOCK_USB_SLEEP_ON",
-      "title": "Stock code 0x7E12: STOCK_USB_SLEEP_ON",
-      "shortName": "12"
+      "title": "Request special USB sleep; this does not configure the idle timeout. CUSTOM(18), 0x7E12: STOCK_USB_SLEEP_ON.",
+      "shortName": "USB Sleep On"
     },
     {
       "name": "STOCK_USB_SLEEP_TOGGLE",
-      "title": "Stock code 0x7E13: STOCK_USB_SLEEP_TOGGLE",
-      "shortName": "13"
+      "title": "Toggle the special USB sleep request; this does not configure the idle timeout. CUSTOM(19), 0x7E13: STOCK_USB_SLEEP_TOGGLE.",
+      "shortName": "USB Sleep Toggle"
     },
     {
       "name": "Reserved 14",
-      "title": "Stock code 0x7E14: reserved",
-      "shortName": "14"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(20), 0x7E14.",
+      "shortName": "Reserved 20"
     },
     {
       "name": "Reserved 15",
-      "title": "Stock code 0x7E15: reserved",
-      "shortName": "15"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(21), 0x7E15.",
+      "shortName": "Reserved 21"
     },
     {
       "name": "Reserved 16",
-      "title": "Stock code 0x7E16: reserved",
-      "shortName": "16"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(22), 0x7E16.",
+      "shortName": "Reserved 22"
     },
     {
       "name": "Reserved 17",
-      "title": "Stock code 0x7E17: reserved",
-      "shortName": "17"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(23), 0x7E17.",
+      "shortName": "Reserved 23"
     },
     {
       "name": "Reserved 18",
-      "title": "Stock code 0x7E18: reserved",
-      "shortName": "18"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(24), 0x7E18.",
+      "shortName": "Reserved 24"
     },
     {
       "name": "STOCK_RESERVED_19",
-      "title": "Stock code 0x7E19: STOCK_RESERVED_19",
-      "shortName": "19"
+      "title": "Reserved stock custom keycode; no documented action. CUSTOM(25), 0x7E19.",
+      "shortName": "Reserved 25"
+    },
+    {
+      "name": "CUSTOM(26)",
+      "title": "Toggle number-row/F-key behavior (stock Fn+Left Ctrl). CUSTOM(26), 0x7E1A: KC_FILP.",
+      "shortName": "Num/F Toggle"
+    },
+    {
+      "name": "CUSTOM(27)",
+      "title": "Show battery level while held (stock Fn+B, wireless mode); number-row LEDs show charge in 10% steps. CUSTOM(27), 0x7E1B: HS_BATQ.",
+      "shortName": "Show Battery"
+    },
+    {
+      "name": "CUSTOM(28)",
+      "title": "Send Ctrl+Z (Undo), subject to the keyboard modifier configuration. CUSTOM(28), 0x7E1C: MOR_1.",
+      "shortName": "Undo"
+    },
+    {
+      "name": "CUSTOM(29)",
+      "title": "Send Ctrl+X (Cut), subject to the keyboard modifier configuration. CUSTOM(29), 0x7E1D: MOR_2.",
+      "shortName": "Cut"
+    },
+    {
+      "name": "CUSTOM(30)",
+      "title": "Send Ctrl+C (Copy), subject to the keyboard modifier configuration. CUSTOM(30), 0x7E1E: MOR_3.",
+      "shortName": "Copy"
+    },
+    {
+      "name": "CUSTOM(31)",
+      "title": "Send Ctrl+V (Paste), subject to the keyboard modifier configuration. CUSTOM(31), 0x7E1F: MOR_4.",
+      "shortName": "Paste"
+    },
+    {
+      "name": "CUSTOM(32)",
+      "title": "Send GUI+Tab (Task View on Windows); the action depends on the host OS. CUSTOM(32), 0x7E20: MOR_5.",
+      "shortName": "GUI+Tab"
+    },
+    {
+      "name": "CUSTOM(33)",
+      "title": "Send GUI+E (File Explorer on Windows); the action depends on the host OS. CUSTOM(33), 0x7E21: MOR_6.",
+      "shortName": "GUI+E"
     }
   ],
   "layouts": {
