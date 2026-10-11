@@ -1,23 +1,50 @@
 name: Firmware
+run-name: Firmware — ${{ github.ref_name }}
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    branches: [main, release/via, release/vial]
+    tags: ["via-v*", "vial-*"]
   pull_request:
-    branches: [main]
+    branches: [main, release/via, release/vial]
   workflow_dispatch:
+    inputs:
+      family:
+        description: Firmware family (release branches select their own family)
+        type: choice
+        default: all
+        options: [all, via, vial]
 
 permissions:
   contents: read
 
 concurrency:
-  group: firmware-${{ github.workflow }}-${{ github.ref }}
+  group: firmware-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  plan:
+    name: Select firmware family
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      family: ${{ steps.route.outputs.family }}
+      variants: ${{ steps.route.outputs.variants }}
+      publish: ${{ steps.route.outputs.publish }}
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Route branch or tag
+        id: route
+        env:
+          REQUESTED_FAMILY: ${{ inputs.family || 'all' }}
+        run: python3 tools/build-support/github_release.py plan --family "$REQUESTED_FAMILY" >> "$GITHUB_OUTPUT"
+
   checks:
     name: Tests and tooling
+    needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -49,20 +76,13 @@ jobs:
 
   build:
     name: Build ${{ matrix.variant }}
-    needs: checks
+    needs: [plan, checks]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        variant:
-          - qmk-default
-          - via-release
-          - via-debug
-          - via-release-updater
-          - via-debug-updater
-          - vial
-          - vial-updater
+        variant: ${{ fromJSON(needs.plan.outputs.variants) }}
     steps:
       - name: Checkout project
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -99,50 +119,36 @@ jobs:
           name: gmk70-firmware-${{ matrix.variant }}
           path: dist/*
           if-no-files-found: error
+          overwrite: true
           compression-level: 0
           retention-days: 30
 
   release:
-    name: Publish tagged firmware
-    needs: [checks, build]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    name: Publish ${{ needs.plan.outputs.family }} firmware
+    needs: [plan, checks, build]
+    if: needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
+    concurrency:
+      group: gmk70-publish-${{ needs.plan.outputs.family }}
+      cancel-in-progress: false
+      queue: max
     steps:
       - name: Checkout release notes
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Download all seven firmware bundles
+      - name: Download selected firmware bundles
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: gmk70-firmware-*
           merge-multiple: true
           path: dist
-      - name: Verify release assets
-        shell: bash
-        run: |
-          cd dist
-          for variant in qmk-default via-release via-debug via-release-updater via-debug-updater vial vial-updater; do
-            sha256sum --check "gmk70-$variant.sha256"
-          done
-          cat gmk70-*.sha256 > SHA256SUMS
-      - name: Upload and publish release
+      - name: Verify, tag and publish this family
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > "$RUNNER_TEMP/release-draft"; then
-            if [[ "$(cat "$RUNNER_TEMP/release-draft")" != true ]]; then
-              printf 'Release %s is already published; refusing to replace its assets.\n' "$RELEASE_TAG" >&2
-              exit 1
-            fi
-          else
-            gh release create "$RELEASE_TAG" --verify-tag --draft \
-              --title "$RELEASE_TAG" --notes-file docs/RELEASE-NOTES.md --generate-notes
-          fi
-          gh release upload "$RELEASE_TAG" dist/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false
+          FIRMWARE_FAMILY: ${{ needs.plan.outputs.family }}
+        run: python3 tools/build-support/github_release.py publish --family "$FIRMWARE_FAMILY"
