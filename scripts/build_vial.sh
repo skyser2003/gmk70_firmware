@@ -94,6 +94,9 @@ Export your configuration in the Vial GUI before updating.
 
 Use the Vial GUI. Identification/layout is embedded; vial.json is also included.
 Unlock by holding Escape + left Shift when prompted by Vial.
+Knob rotation: in Keymap, choose a layer and either circular control above the
+top-left knob button. Left is counterclockwise, right is clockwise. Assign any
+supported keycode; the knob's press action is a separate rectangular button.
 All discussed advanced features are compiled. Dynamic tables start empty;
 assign/configure them in Vial. Auto Shift and Flow Tap are initially off.
 Four layers, one encoder, 16 macros with 2123 shared bytes; 32 entries each for

@@ -42,7 +42,19 @@ class VialTests(unittest.TestCase):
         keymap = PROJECT / "firmware/qmk-vial/keymaps/vial"
         stock = json.loads((PROJECT / "definitions/via/ZUOYA_GMK70.json").read_text())
         definition = json.loads((keymap / "vial.json").read_text())
-        self.assertEqual(definition["layouts"], stock["layouts"])
+        stock_keys = [
+            item.split("\n")[0]
+            for row in stock["layouts"]["keymap"]
+            for item in row
+            if isinstance(item, str)
+        ]
+        vial_keys = [
+            item.split("\n")[0]
+            for row in definition["layouts"]["keymap"]
+            for item in row
+            if isinstance(item, str) and not item.endswith("\ne")
+        ]
+        self.assertEqual(vial_keys, stock_keys)
         self.assertEqual(definition["matrix"], stock["matrix"])
         config = (keymap / "config.h").read_text()
         self.assertIn("VIAL_UNLOCK_COMBO_ROWS {0, 3}", config)
@@ -54,6 +66,23 @@ class VialTests(unittest.TestCase):
         self.assertIn("DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 0xFFB", config)
         self.assertEqual(len(definition["customKeycodes"]), 0x1A)
         self.assertIn("0x7E19", definition["customKeycodes"][0x19]["title"])
+
+    def test_encoder_rotation_controls_and_press(self) -> None:
+        keymap = PROJECT / "firmware/qmk-vial/keymaps/vial"
+        definition = json.loads((keymap / "vial.json").read_text())
+        labels = [
+            item.split("\n")
+            for row in definition["layouts"]["keymap"]
+            for item in row
+            if isinstance(item, str)
+        ]
+        # KLE alignment 4 puts serial label 9 in the center; Vial recognizes
+        # an exact "e" there, with encoder index/direction in label 0.
+        encoders = [label for label in labels if len(label) > 9 and label[9] == "e"]
+        self.assertCountEqual([label[0] for label in encoders], ["0,0", "0,1"])
+        matrix = [label[0] for label in labels if label not in encoders]
+        self.assertEqual(matrix.count("0,0"), 1, "Keep the knob's physical press")
+        self.assertIn("ENCODER_MAP_ENABLE = yes", (keymap / "rules.mk").read_text())
 
     def test_composition_shares_board_and_excludes_stock_parser(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

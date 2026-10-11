@@ -51,6 +51,14 @@ Caps Word, Layer Lock and Repeat keys are available for assignment without
 replacing the stock default keymap. VialRGB uses the native fork's lighting API;
 matching every stock lighting control or animation across forks is unverified.
 
+To remap the knob, open **Keymap** and select a layer. Two circular controls
+above the top-left knob button represent counterclockwise (left) and clockwise
+(right) rotation. Select a direction and assign a keycode in the lower panel.
+The defaults are Volume Down and Volume Up on all four layers. The rectangular
+knob button below these controls edits its press action independently. The
+embedded layout uses Vial's separate encoder-direction entries; the stock VIA
+definition and physical matrix layout remain unchanged.
+
 The Vial adapter tracks activity and physical held keys in
 `pre_process_record_kb`, before combos and tapping can consume/replay records.
 Synthetic combo/macro/repeat output does not decrement physical held keys.
