@@ -6,14 +6,39 @@
 #include "stock_v15_fixture.h"
 #include "wireless.h"
 #include "stock_power.h"
+#include "lowpower.h"
 
-static bool     native_enabled;
-static uint32_t marker;
-static unsigned writes, forwarded, replies;
-static unsigned key_activity, wired_wake, user_calls;
-static uint8_t  device       = DEVS_BT1;
-static bool     user_accepts = true;
-uint8_t         wireless_get_current_devs(void) {
+static bool         native_enabled;
+static uint32_t     marker;
+static unsigned     writes, forwarded, replies;
+static unsigned     key_activity, wired_wake, user_calls;
+static uint8_t      device       = DEVS_BT1;
+static bool         user_accepts = true;
+static bool         rgb_enabled, rgb_suspended;
+static unsigned     led_pins, pin_writes, housekeeping_calls;
+static lpwr_state_t power_state = LPWR_NORMAL;
+uint8_t             rgb_matrix_is_enabled(void) {
+    return rgb_enabled;
+}
+bool rgb_matrix_get_suspend_state(void) {
+    return rgb_suspended;
+}
+lpwr_state_t lpwr_get_state(void) {
+    return power_state;
+}
+void gpio_write_pin(unsigned pin, bool enabled) {
+    assert(pin == LED_POWER_EN_PIN || pin == LED_POWER_EN2_PIN);
+    if (enabled)
+        led_pins |= 1u << pin;
+    else
+        led_pins &= ~(1u << pin);
+    ++pin_writes;
+}
+void __real_housekeeping_task(void) {
+    ++housekeeping_calls;
+}
+void    __wrap_housekeeping_task(void);
+uint8_t wireless_get_current_devs(void) {
     return device;
 }
 void lpwr_activity_trigger(void) {
@@ -134,5 +159,44 @@ int main(void) {
     const unsigned activity_before = key_activity, calls_before = user_calls;
     assert(pre_process_record_kb(4, &tick));
     assert(wired_wake == 1 && key_activity == activity_before && user_calls == calls_before + 1);
+
+    // The slave can boot with RGB disabled in its local EEPROM. Native split
+    // sync replaces that RAM setting with the enabled master setting, without
+    // calling the board's physical RGB Toggle handler or changing LED power.
+    const unsigned both_pins              = (1u << LED_POWER_EN_PIN) | (1u << LED_POWER_EN2_PIN);
+    const unsigned writes_before_lighting = writes;
+    rgb_enabled                           = true;
+    assert(led_pins == 0);
+    __wrap_housekeeping_task();
+    assert(led_pins == both_pins && housekeeping_calls == 1);
+
+    // Native VialRGB Off/On also bypasses the stock toggle RPC. Hardware power
+    // must follow the resulting config on both halves, with no EEPROM writes.
+    rgb_enabled = false;
+    __wrap_housekeeping_task();
+    assert(led_pins == 0);
+    rgb_enabled = true;
+    __wrap_housekeeping_task();
+    assert(led_pins == both_pins);
+    rgb_suspended = true;
+    __wrap_housekeeping_task();
+    assert(led_pins == 0);
+    rgb_suspended = false;
+    __wrap_housekeeping_task();
+    assert(led_pins == both_pins);
+    assert(writes == writes_before_lighting);
+
+    // Sleep preparation and recovery own the pins outside NORMAL. A master's
+    // still-enabled config must not undo the slave's STOP/critical power-down.
+    const unsigned pin_writes_before_sleep = pin_writes;
+    led_pins                               = 0;
+    for (power_state = LPWR_PRESLEEP; power_state <= LPWR_WAKEUP; ++power_state) {
+        __wrap_housekeeping_task();
+        assert(led_pins == 0 && pin_writes == pin_writes_before_sleep);
+    }
+    power_state = LPWR_NORMAL;
+    __wrap_housekeeping_task();
+    assert(led_pins == both_pins && housekeeping_calls == 9);
     puts("PASS: Vial schema isolation, native protocol/unlock routing, packet bounds and physical activity before consumed/synthetic events");
+    puts("PASS: Vial split RGB power recovery, native Off/On, suspend and sleep ownership without EEPROM writes");
 }

@@ -21,6 +21,7 @@ endif
 ifeq ($(strip $(VIAL_ENABLE)), yes)
     SRC += vial_adapter.c
     LDFLAGS += -Wl,--wrap=raw_hid_receive
+    LDFLAGS += -Wl,--wrap=housekeeping_task
     LDFLAGS += -Wl,--wrap=nvm_eeconfig_is_enabled -Wl,--wrap=nvm_eeconfig_enable
 else ifeq ($(strip $(VIA_ENABLE)), yes)
     SRC += stock_via.c

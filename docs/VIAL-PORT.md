@@ -51,6 +51,12 @@ Caps Word, Layer Lock and Repeat keys are available for assignment without
 replacing the stock default keymap. VialRGB uses the native fork's lighting API;
 matching every stock lighting control or animation across forks is unverified.
 
+During normal operation, each half reconciles its LED power switches with the
+native synchronized RGB enable and suspend state. This lets the right half
+recover automatically if its local startup setting had RGB disabled, and lets
+VialRGB Off/On control the physical LED supply. Stock sleep/wake callbacks retain
+control of the supply during sleep preparation, STOP and wake recovery.
+
 To remap the knob, open **Keymap** and select a layer. Two circular controls
 above the top-left knob button represent counterclockwise (left) and clockwise
 (right) rotation. Select a direction and assign a keycode in the lower panel.
