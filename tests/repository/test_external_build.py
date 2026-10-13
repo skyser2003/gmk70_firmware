@@ -57,6 +57,37 @@ class ExternalGeneratorTests(unittest.TestCase):
             )
             self.assertIn("FEATURES=yes yes yes yes", result)
 
+    def test_frameworks_select_separate_rgb_and_protocol_integration(self) -> None:
+        for framework, platform, adapter in (
+            ("qmk", "via", "stock_via.c"),
+            ("vial-qmk", "vial", "vial_adapter.c"),
+        ):
+            with (
+                self.subTest(framework=framework),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                result = self.make(
+                    framework,
+                    Path(temporary),
+                    "--eval=gmk70-test-integration: ; @printf '%s\\n' 'RGB_SOURCE=$(GMK70_PLATFORM_DIR)/compat/rgb_integration.c' 'SOURCES=$(SRC)' 'LINK_FLAGS=$(LDFLAGS)'",
+                    "gmk70-test-integration",
+                )
+                self.assertIn(
+                    f"RGB_SOURCE={PROJECT}/firmware/qmk-{platform}/compat/rgb_integration.c",
+                    result,
+                )
+                sources = next(
+                    line.removeprefix("SOURCES=")
+                    for line in result.splitlines()
+                    if line.startswith("SOURCES=")
+                ).split()
+                self.assertIn("rgb_integration.c", sources)
+                self.assertIn(adapter, sources)
+                other = "vial_adapter.c" if platform == "via" else "stock_via.c"
+                self.assertNotIn(other, sources)
+                self.assertEqual("stock_eeprom.c" in sources, platform == "via")
+                self.assertIn("-Wl,--wrap=rgb_matrix_set_color", result)
+
     def test_linker_script_edit_invalidates_cached_elf(self) -> None:
         for framework in ("qmk", "vial-qmk"):
             with (

@@ -27,6 +27,22 @@ Record PCB revision, stock keyboard version, receiver version, host OS, and the 
 
 The original port reports a right-half idle problem. This fork fixes specific source defects in that path, including USB slave timeout, split pin shutdown before RPC completion, missing split-RX wake event, wrong sleep column pins on the right, an extra five zero-initialized row pins, and a pending-interrupt bitmask typo. Wake behavior on both halves still requires physical testing; it is not established by these changes.
 
+## October 13 Vial Bluetooth indicator routing
+
+The user reports continuous right-side P flashing on BT1 and left-bracket
+flashing on BT2 while Bluetooth typing works. Stock global LED indices 14/13
+are Q/W on the left; passing them directly to the right local chain selects
+P/left bracket. The pinned Vial RGB implementation does not reject these
+cross-half writes, whereas the pinned official QMK implementation does.
+
+VIA and Vial now select separate framework rules and RGB integration modules.
+VIA retains native QMK routing. Vial rejects invalid and foreign-half indices
+before its native global-to-local conversion. Regression tests compile each
+framework's actual index/setter functions with its integration module and cover
+Bluetooth indicators and all 77 LED indices on both halves. This corrects the
+RGB write boundary without adding radio-state synchronization to the split ABI.
+Physical confirmation after installing the corrected Vial build is pending.
+
 ## October 11 intermittent wired key pauses
 
 The user reports pauses of one second or less affecting typing from both halves

@@ -12,6 +12,10 @@ Both upstream dependencies remain unmodified. Exact framework, library and
 toolchain versions are pinned in [sources.lock.json](dependencies/sources.lock.json).
 Project firmware sources live in `firmware/`.
 
+Board/radio code is shared in `firmware/qmk-common/`. Framework and RGB
+integration are selected separately from `firmware/qmk-via/` and
+`firmware/qmk-vial/`.
+
 ## What this repository provides
 
 - QMK/VIA release and debug builds, plus a fixed-keymap QMK build.

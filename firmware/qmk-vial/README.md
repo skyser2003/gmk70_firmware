@@ -7,6 +7,11 @@ The port reuses
 `firmware/qmk-common/` for the board, keymap, radio and power logic. Its adapter,
 UID, physical unlock configuration and embedded layout are maintained here.
 
+`compat/platform_rules.mk` selects Vial's integration independently of VIA.
+`compat/rgb_integration.c` rejects RGB writes to the other half before Vial's
+global-to-local LED conversion, keeping Bluetooth indicators on Q/W/E and
+preserving the right half's normal lighting. Board/radio sources stay shared.
+
 See [the port report](../../docs/VIAL-PORT.md) for protocols, EEPROM separation,
 software validation and remaining work. Live QMK settings, tap dances, combos,
 key overrides, Caps Word, Layer Lock, Repeat/Alternate Repeat, extended macros,
