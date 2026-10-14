@@ -1,6 +1,6 @@
 # Debug and release firmware
 
-`make build` produces two QMK/VIA distributions. Both share the official pinned QMK framework, reconstructed V15 board/radio behavior, compiled keymap, original VIA definition, and 1 ms `sym_defer_g` debounce.
+`make build` produces two QMK/VIA distributions. Both share the official pinned QMK framework, reconstructed V15 board/radio behavior, compiled keymap, original VIA definition, and 5 ms `sym_defer_g` debounce. Vial uses the same debounce setting.
 
 | Build | Command | Firmware | Extra features |
 | --- | --- | --- | --- |
