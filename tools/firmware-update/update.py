@@ -112,10 +112,12 @@ class UsbLink:
 
         self._hid = hid
         self._device = hid.device()
+        self._pending_request: bytes | None = None
         self.reconnect()
 
     def reconnect(self) -> None:
         self._device.close()
+        self._pending_request = None
         candidates = [
             item
             for item in self._hid.enumerate(0x342D, 0xE491)
@@ -129,20 +131,73 @@ class UsbLink:
             )
         self._device = self._hid.device()
         self._device.open_path(candidates[0]["path"])
+        # Drain once without waiting. Correlate subsequent replies instead of
+        # paying a timed empty read before every request and STATUS poll.
+        if self._device.set_nonblocking(1) != 0:
+            raise OSError("Could not enable nonblocking HID reads")
+        try:
+            for _ in range(32):
+                if not self._device.read(32, 0):
+                    break
+        finally:
+            if self._device.set_nonblocking(0) != 0:
+                raise OSError("Could not restore blocking HID reads")
 
     def exchange(self, packet: bytes) -> bytes:
         if len(packet) != 32:
             raise ValueError("Updater packets must be 32 bytes")
-        # Ignore stale replies left by an interrupted host process.
-        for _ in range(32):
-            if not self._device.read(32, 1):
-                break
+        expected_packet = packet
+        if packet[4] == Op.STATUS:
+            if (
+                self._pending_request is not None
+                and self._pending_request[:4] == packet[:4]
+            ):
+                expected_packet = self._pending_request
+        else:
+            self._pending_request = packet
         if self._device.write(b"\0" + packet) != 33:
             raise OSError("Incomplete USB write")
-        response = bytes(self._device.read(32, 2000))
-        if len(response) != 32:
-            raise OSError("USB response timed out")
-        return response
+        deadline = time.monotonic() + 2
+        while (remaining := deadline - time.monotonic()) > 0:
+            response = bytes(self._device.read(32, max(1, int(remaining * 1000))))
+            if not response:
+                break
+            if len(response) != 32 or response[:4] != packet[:4]:
+                continue
+            if response[5] not in (0, 1):
+                if expected_packet[4] != Op.STATUS:
+                    # Completion errors echo the original session/offset.
+                    # A gate failure while polling echoes STATUS itself.
+                    completed_error = (
+                        response[4] == expected_packet[4]
+                        and response[8:16] == expected_packet[8:16]
+                    )
+                    polling_error = (
+                        packet[4] == Op.STATUS
+                        and response[4] == Op.STATUS
+                        and response[8:16] == packet[8:16]
+                    )
+                    if not (completed_error or polling_error):
+                        continue
+                return response
+            if expected_packet[4] != Op.STATUS and response[4] != expected_packet[4]:
+                continue
+            if response[5] == 0 and expected_packet[4] not in (
+                Op.INFO,
+                Op.STATUS,
+                Op.ABORT,
+            ):
+                if response[8:12] != expected_packet[8:12]:
+                    continue
+                if expected_packet[4] == Op.DATA:
+                    expected = (
+                        struct.unpack_from("<I", expected_packet, 12)[0]
+                        + expected_packet[5]
+                    )
+                    if struct.unpack_from("<I", response, 12)[0] != expected:
+                        continue
+            return response
+        raise OSError("USB response timed out")
 
     def close(self) -> None:
         self._device.close()
@@ -175,6 +230,7 @@ class Updater:
         original = self.packet(target, operation, session, offset, data)
         packet = original
         deadline = time.monotonic() + 8
+        poll_delay = 0.0
         while time.monotonic() < deadline:
             try:
                 reply = Reply.decode(self._link.exchange(packet), target)
@@ -186,7 +242,9 @@ class Updater:
                 continue
             if reply.result == 1:
                 packet = self.packet(target, Op.STATUS)
-                time.sleep(0.01)
+                if poll_delay:
+                    time.sleep(poll_delay)
+                poll_delay = min(0.004, poll_delay * 2 if poll_delay else 0.001)
                 continue
             if reply.result == 7:
                 packet = original
@@ -206,6 +264,11 @@ class Updater:
                 )
             if operation not in (Op.INFO, Op.ABORT) and reply.session != session:
                 raise RuntimeError("Mismatched update session")
+            if operation == Op.DATA and reply.received < offset + len(data):
+                # STATUS can still carry an earlier chunk's acknowledgement.
+                # Retry the idempotent request instead of accepting stale progress.
+                packet = original
+                continue
             return reply
         raise TimeoutError(
             f"Target {target}: {operation.name} timed out; no automatic fallback or protection changes"

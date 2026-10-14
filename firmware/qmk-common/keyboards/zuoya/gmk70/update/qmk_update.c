@@ -27,6 +27,7 @@ bool gmk_update_active(void) {
 
 // The split transport calls this in its high-priority thread. Only copy RAM here;
 // flash programming, EEPROM reads and CRC checks run in normal housekeeping.
+// DATA fills the existing page buffer immediately; only a full/final page queues.
 static void receive(const uint8_t *request, uint8_t *response) {
     chSysLock();
     if (!gmk_packet_valid(request)) {
@@ -35,6 +36,17 @@ static void receive(const uint8_t *request, uint8_t *response) {
     } else if (request[4] == GMK_STATUS || pending) {
         memcpy(response, pending ? queued : last_response, GMK_PACKET_SIZE);
         if (pending) response[5] = GMK_BUSY;
+    } else if (request[4] == GMK_DATA) {
+        gmk_update_result_t result = wireless_get_current_devs() == DEVS_USB ? gmk_update_buffer_data(&update, request) : GMK_UNAVAILABLE;
+        gmk_update_response(&update, request, result, response);
+        response[7] = (is_keyboard_left() ? 1 : 0) | (is_keyboard_master() ? 2 : 0);
+        if (result == GMK_OK || result == GMK_BUSY) last_request = timer_read32();
+        if (result == GMK_BUSY) {
+            memcpy(queued, request, GMK_PACKET_SIZE);
+            pending = true;
+        } else {
+            memcpy(last_response, response, GMK_PACKET_SIZE);
+        }
     } else {
         memcpy(queued, request, GMK_PACKET_SIZE);
         pending = true;
@@ -71,10 +83,13 @@ void gmk_update_task(void) {
         if (timer_elapsed32(reset_at) >= 300) mcu_reset();
         return;
     }
+    chSysLock();
     if (!pending) {
         if (update.state != GMK_IDLE && timer_elapsed32(last_request) > 10000) update = (gmk_update_t){0};
+        chSysUnlock();
         return;
     }
+    chSysUnlock();
     uint8_t request[GMK_PACKET_SIZE];
     chSysLock();
     memcpy(request, queued, GMK_PACKET_SIZE);

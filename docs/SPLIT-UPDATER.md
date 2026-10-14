@@ -123,6 +123,29 @@ validation/copy enters the original WB32 ROM bootloader instead of running a
 known-incomplete application. Direct USB/hardware boot entry remains the recovery
 path if the receiver or installed application cannot run.
 
+Data packets fill the receiver's existing 256-byte RAM page buffer directly.
+Partial-page chunks receive immediate acknowledgements; only a full page or the
+final partial page returns BUSY and waits for flash programming in housekeeping.
+While a page is pending, new requests receive BUSY without overwriting its RAM
+contents. The receiver tracks accepted and durably staged byte counts separately;
+SEAL is rejected until every image byte has been written to staging. A RAM
+acknowledgement alone does not authorize installation. This adds four bytes of
+receiver state, without allocating another page buffer or changing the resident
+installer, packet size, or split RPC buffers. Error replies echo the rejected
+request's session and offset in bytes 8–15; successful replies keep reporting the
+receiver's session and accepted byte count. Error state, image size and CRC still
+describe the receiver. This lets the host identify delayed failures without
+discarding valid errors from a receiver in a different state.
+
+The host drains stale HID reports once at connection using nonblocking reads.
+It correlates later acknowledgements with the target, operation, session and
+expected byte offset, including replies fetched through STATUS. Its first BUSY
+poll is immediate; repeated BUSY replies use 1, 2, then at most 4 ms backoff.
+There is no fixed 10 ms wait after each data chunk, and no legacy transfer mode
+or capability negotiation. Right-before-left verification, retries and all
+image/resident checks remain in place. Software tests cover buffering and reply
+correlation; transfer speed on hardware still needs measurement.
+
 The implementation links the unmodified pinned Westberry/ChibiOS flash driver,
 including the vendor's existing pre-operation machine-code sequence and RAM flash
 primitive. It does not invent controller programming commands. The resident

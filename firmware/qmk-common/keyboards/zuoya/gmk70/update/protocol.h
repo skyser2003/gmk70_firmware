@@ -11,9 +11,12 @@ typedef struct {
     gmk_image_t        image;
     uint32_t           session;
     uint32_t           received;
+    uint32_t           staged;
     uint8_t            page[GMK_PAGE_SIZE];
 } gmk_update_t;
 
-bool                gmk_packet_valid(const uint8_t request[GMK_PACKET_SIZE]);
+bool gmk_packet_valid(const uint8_t request[GMK_PACKET_SIZE]);
+// RAM-only ingestion. BUSY means a complete/final page needs housekeeping.
+gmk_update_result_t gmk_update_buffer_data(gmk_update_t *update, const uint8_t request[GMK_PACKET_SIZE]);
 gmk_update_result_t gmk_update_process(gmk_update_t *update, const uint8_t request[GMK_PACKET_SIZE]);
 void                gmk_update_response(const gmk_update_t *update, const uint8_t request[GMK_PACKET_SIZE], gmk_update_result_t result, uint8_t response[GMK_PACKET_SIZE]);

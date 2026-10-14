@@ -26,11 +26,29 @@ static gmk_update_result_t flash_failure(gmk_update_t *update) {
     return GMK_FLASH_ERROR;
 }
 
+gmk_update_result_t gmk_update_buffer_data(gmk_update_t *update, const uint8_t request[GMK_PACKET_SIZE]) {
+    if (!gmk_packet_valid(request) || request[4] != GMK_DATA) return GMK_BAD_REQUEST;
+    uint32_t session = gmk_read_u32(request + 8);
+    uint32_t offset  = gmk_read_u32(request + 12);
+    uint32_t count   = request[5];
+    if (update->state != GMK_RECEIVING || !session || session != update->session) return GMK_BAD_STATE;
+    if (offset > update->image.size || count > update->image.size - offset || count > GMK_PAGE_SIZE - offset % GMK_PAGE_SIZE) return GMK_BAD_OFFSET;
+    if (offset < update->received && count <= update->received - offset) {
+        const uint8_t *previous = offset >= update->staged ? update->page + offset - update->staged : gmk_flash_view(GMK_STAGE_BASE + offset);
+        if (memcmp(previous, request + 16, count) != 0) return GMK_BAD_OFFSET;
+    } else {
+        if (offset != update->received) return GMK_BAD_OFFSET;
+        if (update->received - update->staged == GMK_PAGE_SIZE) return GMK_BUSY;
+        memcpy(update->page + offset - update->staged, request + 16, count);
+        update->received += count;
+    }
+    return update->received > update->staged && (update->received % GMK_PAGE_SIZE == 0 || update->received == update->image.size) ? GMK_BUSY : GMK_OK;
+}
+
 gmk_update_result_t gmk_update_process(gmk_update_t *update, const uint8_t request[GMK_PACKET_SIZE]) {
     // EEPROM queries belong to the read-only QMK service, never the installer.
     if (!gmk_packet_valid(request) || request[4] > GMK_INFO) return GMK_BAD_REQUEST;
     uint32_t session = gmk_read_u32(request + 8);
-    uint32_t offset  = gmk_read_u32(request + 12);
     uint8_t  op      = request[4];
     if (op == GMK_INFO || op == GMK_STATUS) return GMK_OK;
     if (update->state == GMK_COMMITTED) return op == GMK_INSTALL && session == update->session ? GMK_OK : GMK_BAD_STATE;
@@ -51,26 +69,19 @@ gmk_update_result_t gmk_update_process(gmk_update_t *update, const uint8_t reque
         return GMK_OK;
     }
     if (op == GMK_DATA) {
-        uint32_t count = request[5];
-        if (update->state != GMK_RECEIVING || offset > update->image.size || count > update->image.size - offset || count > GMK_PAGE_SIZE - offset % GMK_PAGE_SIZE) return GMK_BAD_OFFSET;
-        if (offset < update->received && count <= update->received - offset) {
-            uint32_t       buffered = update->received - update->received % GMK_PAGE_SIZE;
-            const uint8_t *previous = offset >= buffered ? update->page + offset % GMK_PAGE_SIZE : gmk_flash_view(GMK_STAGE_BASE + offset);
-            return memcmp(previous, request + 16, count) == 0 ? GMK_OK : GMK_BAD_OFFSET;
+        for (;;) {
+            gmk_update_result_t result = gmk_update_buffer_data(update, request);
+            if (result != GMK_BUSY) return result;
+            if (!gmk_flash_page(GMK_STAGE_BASE + update->staged, update->page)) return flash_failure(update);
+            update->staged = update->received;
+            memset(update->page, 0xFF, GMK_PAGE_SIZE);
+            // Recheck the request against durable bytes, or ingest a chunk
+            // that was backpressured by the previous full page.
         }
-        if (offset != update->received) return GMK_BAD_OFFSET;
-        memcpy(update->page + offset % GMK_PAGE_SIZE, request + 16, count);
-        update->received += count;
-        if (update->received % GMK_PAGE_SIZE == 0 || update->received == update->image.size) {
-            if (!gmk_flash_page(GMK_STAGE_BASE + offset - offset % GMK_PAGE_SIZE, update->page)) return flash_failure(update);
-            // Preserve the final partial page for idempotent retransmission.
-            if (update->received % GMK_PAGE_SIZE == 0) memset(update->page, 0xFF, GMK_PAGE_SIZE);
-        }
-        return GMK_OK;
     }
     if (op == GMK_SEAL) {
         if (update->state == GMK_SEALED) return GMK_OK;
-        if (update->state != GMK_RECEIVING || update->received != update->image.size) return GMK_BAD_STATE;
+        if (update->state != GMK_RECEIVING || update->received != update->image.size || update->staged != update->received) return GMK_BAD_STATE;
         if (!gmk_image_valid(GMK_STAGE_BASE, update->image)) {
             update->state = GMK_FAILED;
             return GMK_BAD_IMAGE;
@@ -96,8 +107,14 @@ void gmk_update_response(const gmk_update_t *update, const uint8_t request[GMK_P
     memcpy(response, request, 5);
     response[5] = result;
     response[6] = update->state;
-    gmk_write_u32(response + 8, update->session);
-    gmk_write_u32(response + 12, update->received);
+    if (result != GMK_OK && result != GMK_BUSY) {
+        // Errors identify the rejected request rather than receiver progress,
+        // so a delayed error cannot reject a later session or DATA offset.
+        memcpy(response + 8, request + 8, 8);
+    } else {
+        gmk_write_u32(response + 8, update->session);
+        gmk_write_u32(response + 12, update->received);
+    }
     gmk_write_u32(response + 16, update->image.size);
     gmk_write_u32(response + 20, update->image.crc);
     gmk_write_u32(response + 24, GMK_UPDATE_ABI);

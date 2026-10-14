@@ -181,6 +181,123 @@ static void query(uint8_t packet[32], uint8_t target, uint8_t op, uint32_t token
     gmk_write_u32(packet + 12, offset);
 }
 
+static void test_error_correlation(void) {
+    fixture();
+    left = master = false;
+    uint8_t packet[32], response[32];
+    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x70, 1, 1, GMK_STATUS};
+    begin(packet, 1);
+    rpc(32, packet, 32, response);
+    gmk_update_task();
+    assert(flash_writes == 1);
+
+    // Immediate errors must identify the rejected request, even when its
+    // session/offset differs from the receiver's current progress.
+    query(packet, 1, GMK_DATA, 99, 64, 16);
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_BAD_STATE && response[6] == GMK_RECEIVING);
+    assert(gmk_read_u32(response + 8) == 99 && gmk_read_u32(response + 12) == 64);
+    query(packet, 1, GMK_DATA, 42, 64, 16);
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_BAD_OFFSET);
+    assert(gmk_read_u32(response + 8) == 42 && gmk_read_u32(response + 12) == 64);
+
+    // Queued errors retain the same correlation through STATUS.
+    begin(packet, 1);
+    gmk_write_u32(packet + 8, 99);
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_BUSY);
+    gmk_update_task();
+    rpc(32, status, 32, response);
+    assert(response[4] == GMK_BEGIN && response[5] == GMK_BAD_STATE);
+    assert(gmk_read_u32(response + 8) == 99 && gmk_read_u32(response + 12) == 0);
+    assert(flash_writes == 1 && !locks);
+}
+
+static void test_buffered_peer_data(void) {
+    fixture();
+    left = master = false;
+    uint8_t packet[32], response[32];
+    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x70, 1, 1, GMK_STATUS};
+    uint8_t image[1028];
+    for (unsigned i = 0; i < sizeof(image); ++i)
+        image[i] = (uint8_t)(i * 7 + 3);
+    begin(packet, 1);
+    gmk_write_u32(packet + 16, sizeof(image));
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_BUSY && !flash_writes);
+    gmk_update_task();
+    assert(flash_writes == 1);
+    unsigned page_writes = 0;
+    for (unsigned offset = 0; offset < sizeof(image); offset += 16) {
+        unsigned count = sizeof(image) - offset;
+        if (count > 16) count = 16;
+        query(packet, 1, GMK_DATA, 42, offset, count);
+        memcpy(packet + 16, image + offset, count);
+        uint8_t original[32];
+        memcpy(original, packet, sizeof(original));
+        rpc(32, packet, 32, response);
+        bool full = (offset + count) % 256 == 0 || offset + count == sizeof(image);
+        assert(response[5] == (full ? GMK_BUSY : GMK_OK));
+        assert(flash_writes == 1 + page_writes); // No flash in the callback.
+        if (!full) {
+            assert(response[7] == 0 && gmk_read_u32(response + 8) == 42);
+            assert(gmk_read_u32(response + 12) == offset + count);
+            rpc(32, original, 32, response); // A lost ACK can be retried.
+            assert(response[5] == GMK_OK && gmk_read_u32(response + 12) == offset + count);
+            original[16] ^= 1;
+            rpc(32, original, 32, response);
+            assert(response[5] == GMK_BAD_OFFSET);
+        } else {
+            query(packet, 1, GMK_DATA, 42, offset + count, 16);
+            rpc(32, packet, 32, response);
+            assert(response[5] == GMK_BUSY && flash_writes == 1 + page_writes);
+        }
+        gmk_update_task();
+        if (full) {
+            ++page_writes;
+            rpc(32, status, 32, response);
+            assert(response[5] == GMK_OK && gmk_read_u32(response + 12) == offset + count);
+            assert(memcmp(gmk_flash_view(GMK_STAGE_BASE), image, offset + count) == 0);
+        }
+        assert(flash_writes == 1 + page_writes && gmk_update_active());
+    }
+    assert(page_writes == 5);
+    for (unsigned i = sizeof(image); i < 1280; ++i)
+        assert(gmk_flash_view(GMK_STAGE_BASE)[i] == 0xFF);
+    // Duplicates from an already staged page cannot rewrite flash or advance.
+    query(packet, 1, GMK_DATA, 42, 0, 16);
+    memcpy(packet + 16, image, 16);
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_OK && gmk_read_u32(response + 12) == sizeof(image));
+    assert(flash_writes == 6 && !locks);
+}
+
+static void test_buffered_data_mode_and_timeout(void) {
+    fixture();
+    left = master = false;
+    uint8_t packet[32], response[32];
+    begin(packet, 1);
+    rpc(32, packet, 32, response);
+    gmk_update_task();
+    for (unsigned offset = 0; offset < 32; offset += 16) {
+        query(packet, 1, GMK_DATA, 42, offset, 16);
+        rpc(32, packet, 32, response);
+        assert(response[5] == GMK_OK);
+        now += 9000;
+        gmk_update_task();
+        assert(gmk_update_active() && flash_writes == 1);
+    }
+    mode = DEVS_BT1;
+    query(packet, 1, GMK_DATA, 42, 32, 16);
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_UNAVAILABLE && gmk_read_u32(response + 12) == 32);
+    mode = DEVS_USB;
+    now += 1001;
+    gmk_update_task();
+    assert(!gmk_update_active() && flash_writes == 1 && !resets);
+}
+
 #ifndef GMK70_VIAL_UPDATE
 static void test_eeprom_peer(void) {
     fixture();
@@ -417,6 +534,10 @@ static void test_vial_unlock_and_unavailable_queries(void) {
 
 static void vial_exchange(uint8_t packet[32], uint8_t target) {
     raw_hid_receive(packet, 32);
+    if (packet[5] == GMK_OK) {
+        assert(packet[4] == GMK_DATA && gmk_read_u32(packet + 12) % GMK_PAGE_SIZE && !locks);
+        return;
+    }
     assert(packet[5] == GMK_BUSY);
     left = master = !target;
     // Slave stays locked; authorization belongs to the left USB master.
@@ -465,6 +586,9 @@ static void test_vial_install(void) {
 #endif
 
 int main(void) {
+    test_error_correlation();
+    test_buffered_peer_data();
+    test_buffered_data_mode_and_timeout();
     uint8_t packet[32], response[32];
     fixture();
     for (unsigned i = 0; i < 1000; ++i) {
