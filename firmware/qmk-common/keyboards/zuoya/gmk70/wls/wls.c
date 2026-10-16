@@ -116,7 +116,25 @@ bool hs_rgb_blink_hook() {
     return true;
 }
 
+static volatile bool local_key_wake;
+static volatile bool split_rx_wake;
+
+void hs_split_wake_peer(void) {
+    bool notify    = local_key_wake && !split_rx_wake;
+    local_key_wake = split_rx_wake = false;
+    if (!notify || is_keyboard_master() || wireless_get_current_devs() == DEVS_USB || lpwr_get_state() != LPWR_WAKEUP || lpwr_get_prepare_class() != LPWR_PREPARE_ORDINARY) return;
+
+    // A slave only replies to master polls. Restoring an idle-high UART alone
+    // need not create the edge which wakes the sleeping master's A10 input.
+    // Preload the GPIO latch before changing modes, then restore UART idle.
+    gpio_write_pin_low(SERIAL_USART_TX_PIN);
+    gpio_set_pin_output(SERIAL_USART_TX_PIN);
+    wait_us(100);
+    usart_init();
+}
+
 void lpwr_exti_init_hook(void) {
+    local_key_wake = split_rx_wake = false;
     // V15 retains the boot/encoder GPIO modes for these inputs.
     lpwr_enable_wake_line(HS_BAT_CABLE_PIN, PAL_EVENT_MODE_RISING_EDGE);
     if (lpwr_get_prepare_class() == LPWR_PREPARE_ORDINARY) {
@@ -149,6 +167,15 @@ bool lpwr_matrix_pin_wake_allowed_hook(uint32_t pin) {
 }
 
 void palcallback_cb(uint8_t line) {
+    if (line == PAL_PAD(SERIAL_USART_RX_PIN)) {
+        split_rx_wake = true;
+    } else {
+        const ioline_t rows[] = MATRIX_ROW_PINS;
+        for (uint8_t i = 0; i < sizeof(rows) / sizeof(*rows); ++i) {
+            if (rows[i] != NO_PIN && line == PAL_PAD(rows[i])) local_key_wake = true;
+        }
+        if (line == PAL_PAD(LPWR_EXTRA_WAKE_PIN)) local_key_wake = true;
+    }
     switch (line) {
         case PAL_PAD(C13): {
             lpwr_set_sleep_wakeupcd(LPWR_WAKEUP_ONEKEY);

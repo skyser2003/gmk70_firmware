@@ -27,6 +27,29 @@ Record PCB revision, stock keyboard version, receiver version, host OS, and the 
 
 The original port reports a right-half idle problem. This fork fixes specific source defects in that path, including USB slave timeout, split pin shutdown before RPC completion, missing split-RX wake event, wrong sleep column pins on the right, an extra five zero-initialized row pins, and a pending-interrupt bitmask typo. Wake behavior on both halves still requires physical testing; it is not established by these changes.
 
+## October 16 right-key wake candidate
+
+The user reports that, during connected Bluetooth idle sleep, a right-side key
+wakes only the right half. A left-side key then restores both halves and typing.
+VIA and Vial share the board wake implementation; their relevant split protocol,
+WB32 serial/GPIO drivers and compiled UART restoration callbacks match.
+
+The shared wake callback now emits a single 100-microsecond low pulse on split
+TX A9 after a local row/encoder wake on a wireless non-master in ordinary WAKEUP.
+Restoring UART mode releases TX high, ensuring a transition for the sleeping
+master's A10 wake input even when the UART retained its idle-high level.
+The pulse is skipped if a split-RX edge was observed, preventing an echo of a
+peer-triggered wake. The request is consumed once and cleared before each STOP
+arming. Master, USB, special-class and normal-operation callbacks do not pulse.
+
+The native regression compiles the actual board wake callback and IRQ hooks
+against simulated retained-idle-high GPIO. It fails against the preceding
+callback and passes with the pulse, covering every row, encoder wake, wireless
+selections, repeated cycles and the suppression gates. This is a software model,
+not a physical STOP/line-timing measurement. Confirm right-only wake after
+connected Bluetooth idle on matching applications on both halves, then repeat
+left-key wake and 2.4 GHz checks. Physical confirmation is pending.
+
 ## October 13 Vial Bluetooth indicator routing
 
 The user reports continuous right-side P flashing on BT1 and left-bracket

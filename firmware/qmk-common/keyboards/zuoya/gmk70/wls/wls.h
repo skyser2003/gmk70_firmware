@@ -24,3 +24,5 @@ bool        hs_rgb_blink_hook(void);
 bool        hs_mode_scan(bool update, uint8_t moude, uint8_t lsat_btdev);
 bool        hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev);
 void        hs_rgb_blink_set_timer(uint32_t time);
+void        hs_split_wake_peer(void);
+void        usart_init(void);

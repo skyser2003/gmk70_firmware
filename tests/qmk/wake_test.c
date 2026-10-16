@@ -18,7 +18,35 @@ static uint8_t         device, radio_state;
 static lpwr_prepare_t  preparation;
 static lpwr_wakeupcd_t cause;
 static lpwr_state_t    state, previous;
-lpwr_state_t           lpwr_get_previous_state(void) {
+#ifdef GMK70_TEST_BOARD_WAKE
+static bool     tx_output, tx_low, peer_sleeping;
+static unsigned peer_edges, pulse_us;
+
+lpwr_state_t lpwr_get_state(void) {
+    return state;
+}
+static void drive_tx(bool high) {
+    if (tx_low == !high) return;
+    tx_low = !high;
+    ++peer_edges;
+    // A10 is armed on both edges while the other MCU is in ordinary STOP.
+    peer_sleeping = false;
+}
+void gpio_set_pin_output(ioline_t pin) {
+    assert(pin == A9);
+    tx_output = true;
+    drive_tx(low[A9] == 0);
+}
+void usart_init(void) {
+    tx_output = false;
+    drive_tx(true); // UART idle is high; merely restoring it produces no edge.
+}
+void wait_us(uint16_t us) {
+    assert(tx_output && tx_low);
+    pulse_us += us;
+}
+#endif
+lpwr_state_t lpwr_get_previous_state(void) {
     return previous;
 }
 
@@ -56,6 +84,9 @@ void gpio_set_pin_input(ioline_t pin) {
 void gpio_write_pin_low(ioline_t pin) {
     assert(pin < 48);
     ++low[pin];
+#ifdef GMK70_TEST_BOARD_WAKE
+    if (pin == A9 && tx_output) drive_tx(false);
+#endif
 }
 void waitInputPinDelay(void) {}
 void palDisableLineEventI(ioline_t pin) {
@@ -131,6 +162,11 @@ static void reset(bool is_master, lpwr_prepare_t cls) {
     device      = DEVS_BT1;
     radio_state = MD_STATE_CONNECTED;
     sends = drains = delay = 0;
+#ifdef GMK70_TEST_BOARD_WAKE
+    tx_output = tx_low = false;
+    peer_sleeping      = true;
+    peer_edges = pulse_us = 0;
+#endif
     lpwr_stop_prepare();
 }
 static void fire(unsigned line) {
@@ -225,9 +261,57 @@ static void test_radio_before_stop(void) {
     lpwr_stop_hook_pre();
     assert(sends == 0 && !cable);
 }
+#ifdef GMK70_TEST_BOARD_WAKE
+static void test_right_key_wakes_peer(void) {
+    const ioline_t local_sources[] = {A1, A2, A3, A4, C13, B6};
+    for (unsigned dev = DEVS_BT1; dev <= DEVS_2G4; ++dev) {
+        for (unsigned i = 0; i < sizeof(local_sources) / sizeof(*local_sources); ++i) {
+            reset(false, LPWR_PREPARE_ORDINARY);
+            device = dev;
+            lpwr_exti_init();
+            fire(PAL_PAD(local_sources[i]));
+            state = LPWR_WAKEUP;
+            suspend_wakeup_init_user();
+            assert(!peer_sleeping && peer_edges == 2);
+            assert(pulse_us > 0 && pulse_us <= 1000);
+            assert(!tx_output && !tx_low);
+            // No repeated pulses on a later callback in this wake cycle.
+            suspend_wakeup_init_user();
+            assert(peer_edges == 2);
+        }
+    }
+}
+static void test_peer_wake_guards(void) {
+    for (unsigned scenario = 0; scenario < 9; ++scenario) {
+        reset(scenario == 0, LPWR_PREPARE_ORDINARY);
+        lpwr_exti_init();
+        if (scenario != 1) fire(PAL_PAD(A1));
+        state = LPWR_WAKEUP;
+        if (scenario == 2) device = DEVS_USB;
+        if (scenario == 3) preparation = LPWR_PREPARE_USB;
+        if (scenario == 4) preparation = LPWR_PREPARE_CRITICAL;
+        if (scenario == 5) fire(PAL_PAD(A10)); // Peer is already sending.
+        if (scenario == 6) {                   // A later STOP must discard the old local-key event.
+            lpwr_exti_init();
+        }
+        if (scenario == 7) state = LPWR_NORMAL;
+        if (scenario == 8) { // Do not echo a peer-triggered wake.
+            lpwr_exti_init();
+            fire(PAL_PAD(A10));
+        }
+        suspend_wakeup_init_user();
+        assert(peer_edges == 0 && pulse_us == 0);
+    }
+}
+#endif
 int main(void) {
     test_wake_sources();
     test_special_wake_filter();
     test_radio_before_stop();
+#ifdef GMK70_TEST_BOARD_WAKE
+    test_right_key_wakes_peer();
+    test_peer_wake_guards();
+    puts("Right local wake signals the sleeping master once; peer/USB/special/normal wakes do not pulse");
+#endif
     puts("WB32 wake sources, per-group IRQs, repeat arming, special filters and radio STOP sequencing passed");
 }

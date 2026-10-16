@@ -343,7 +343,7 @@ void suspend_wakeup_init_kb(void) {
 
 void suspend_wakeup_init_user(void) {
     usart_init();
-    // Stock wakes the peer by restoring the split line, not by sending CC.
+    hs_split_wake_peer();
 }
 
 void suspend_power_down_user(void) {

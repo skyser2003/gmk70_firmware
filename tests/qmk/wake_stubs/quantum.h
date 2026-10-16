@@ -21,6 +21,7 @@ enum { A1 = 1, A2, A3, A4, A5, A6, A7, A8, A9, A10, B0 = 16, B6 = 22, B10 = 26, 
 #define PAL_USE_CALLBACKS TRUE
 #define LPWR_UART_WAKEUP_DISABLE
 #define LPWR_EXTRA_WAKE_PIN B6
+#define SERIAL_USART_TX_PIN A9
 #define SERIAL_USART_RX_PIN A10
 #define HS_BAT_CABLE_PIN A7
 #define LED_POWER_EN_PIN A5
@@ -78,12 +79,15 @@ void               palDisableLineEventI(ioline_t pin);
 void               nvicEnableVector(unsigned vector, unsigned priority);
 void               nvicDisableVector(unsigned vector);
 void               gpio_set_pin_output_open_drain(ioline_t pin);
+void               gpio_set_pin_output(ioline_t pin);
 void               gpio_set_pin_input_high(ioline_t pin);
 void               gpio_set_pin_input(ioline_t pin);
 void               gpio_write_pin_low(ioline_t pin);
 bool               gpio_read_pin(ioline_t pin);
 void               waitInputPinDelay(void);
 void               wait_ms(unsigned ms);
+void               wait_us(uint16_t us);
+void               suspend_wakeup_init_user(void);
 bool               is_keyboard_master(void);
 uint32_t           timer_read32(void);
 uint32_t           timer_elapsed32(uint32_t timestamp);
