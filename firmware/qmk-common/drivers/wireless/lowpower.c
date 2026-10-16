@@ -371,7 +371,10 @@ void lpwr_wakeup_cb(void) {
 #endif
     }
 
-    suspend_wakeup_init();
+    // Matrix events can already be processed during the 200 ms wake delay.
+    // Restore peripherals/modules/board hooks without clearing that live input.
+    // Native USB resume and host switches retain their full framework reset.
+    suspend_wakeup_init_quantum();
     lpwr_wakeup_hook();
 
     split_diagnostics_checkpoint(2); // Save recovery once, before NORMAL clears the reason.

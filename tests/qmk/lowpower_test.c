@@ -120,12 +120,17 @@ void gmk70_stock_usb_sleep_set(bool requested) {
         lpwr_set_prepare_class(LPWR_PREPARE_ORDINARY);
     }
 }
+#ifndef GMK70_TEST_FRAMEWORK_WAKE
 void suspend_power_down(void) {
     ++fixture.power_down_calls;
 }
 void suspend_wakeup_init(void) {
     ++fixture.wake_calls;
 }
+void suspend_wakeup_init_quantum(void) {
+    ++fixture.wake_calls;
+}
+#endif
 bool rgb_matrix_is_enabled(void) {
     return fixture.rgb_enabled;
 }

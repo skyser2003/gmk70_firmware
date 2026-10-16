@@ -92,6 +92,7 @@ bool               is_keyboard_master(void);
 uint32_t           timer_read32(void);
 uint32_t           timer_elapsed32(uint32_t timestamp);
 void               suspend_wakeup_init(void);
+void               suspend_wakeup_init_quantum(void);
 void               gmk70_stock_usb_sleep_set(bool requested);
 
 void chSysLock(void);

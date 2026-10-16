@@ -27,6 +27,39 @@ Record PCB revision, stock keyboard version, receiver version, host OS, and the 
 
 The original port reports a right-half idle problem. This fork fixes specific source defects in that path, including USB slave timeout, split pin shutdown before RPC completion, missing split-RX wake event, wrong sleep column pins on the right, an extra five zero-initialized row pins, and a pending-interrupt bitmask typo. Wake behavior on both halves still requires physical testing; it is not established by these changes.
 
+## October 16 held input during delayed wake
+
+The user reports that, after an unspecified idle interval on Bluetooth, Alt+Tab
+initially works but Windows commits the selection while Alt is still held.
+Other connections have not been tested for this symptom.
+
+Native execution reproduces a mechanism in both pinned frameworks: scanning can
+accept Alt during the board's 200 ms WAKEUP phase, then the delayed call to
+ChibiOS `suspend_wakeup_init()` clears modifiers and keys. A held matrix position
+does not generate another press, so the next Tab report drops Alt. This proves
+the software mechanism in simulation, not the cause of the user's actual event.
+
+Delayed board recovery now calls `suspend_wakeup_init_quantum()`. It restores
+lighting, modules and the existing board/user callbacks, including radio
+reselection, UART restoration and the right-to-left wake pulse, while preserving
+input already accepted during recovery. Native USB resume and physical mode
+changes continue to call the full framework initialization and clear old input.
+Calling only the board callback would skip quantum lighting/module recovery;
+saving and replaying report state around the full reset would introduce extra
+input-state and side-effect handling. Neither alternative is used.
+
+The regression links the actual shared low-power task and ChibiOS resume source
+with the actual quantum and board wake callbacks from each pinned framework.
+MCU/host/report storage is supplied by the fixture. Before the fix, Alt+Tab,
+held-input and native-USB-then-delayed-wake scenarios fail in both builds. After
+the fix they pass, along with release-before-completion, active USB and physical
+host-switch controls. The tests check lighting/module/UART/board recovery too.
+
+Bluetooth hardware confirmation is pending. After idle, hold Alt and tap Tab
+repeatedly across the first second of recovery; selection should remain active
+until Alt is physically released. Repeat after wakes initiated on each half.
+No keyboard was read, reset, flashed or written by this cloud workflow.
+
 ## October 16 right-key wake candidate
 
 The user reports that, during connected Bluetooth idle sleep, a right-side key
