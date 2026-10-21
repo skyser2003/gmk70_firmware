@@ -19,6 +19,19 @@ SPEC.loader.exec_module(BUILD)
 
 
 class VialTests(unittest.TestCase):
+    def test_radio_diagnostic_build_has_separate_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(BUILD, "verify"):
+                try:
+                    diagnostic = BUILD.prepare_vial(root, "radio-diagnostic-updater")
+                except ValueError as error:
+                    self.fail(f"Optional radio diagnostic build is missing: {error}")
+                normal = BUILD.prepare_vial(root, "normal")
+                updater = BUILD.prepare_vial(root, "updater")
+            self.assertEqual(len({diagnostic, normal, updater}), 3)
+            self.assertTrue((diagnostic / "gmk70-source-origins.json").is_file())
+
     def test_independent_pinned_dependency(self) -> None:
         pin = BUILD.pin(PROJECT, "vial")
         self.assertEqual(pin["repository"], "https://github.com/vial-kb/vial-qmk.git")

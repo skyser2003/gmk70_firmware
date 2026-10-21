@@ -5,6 +5,7 @@
 #include "module.h"
 #include "smsg.h"
 #include "uart.h"
+#include "radio_capture.h"
 #ifdef GMK70_RADIO_THREAD
 #    include "ch.h"
 static MUTEX_DECL(md_uart_mutex);
@@ -133,6 +134,7 @@ static void md_receive_msg_task(void) {
 
     while (uart_available()) {
         uint8_t data = uart_read();
+        gmk_radio_diag_count(GMK_RADIO_RX_BYTES, selected_device);
 
         switch (data_count) {
             case 0: { // cmd
@@ -148,6 +150,7 @@ static void md_receive_msg_task(void) {
                         data_remain                  = 2;
                     } break;
                     default: {
+                        gmk_radio_diag_count(GMK_RADIO_UNKNOWN_BYTES, selected_device);
                         data_count = 0;
                     } break;
                 }
@@ -161,6 +164,7 @@ static void md_receive_msg_task(void) {
             case 2: {
                 // ACK
                 if ((md_rev_payload[0] == 0x61) && (md_rev_payload[1] == 0x0D) && (data == 0x0A)) {
+                    gmk_radio_diag_count(GMK_RADIO_ACKS, selected_device);
                     if (smsg_get_state() == smsg_state_busy) {
                         smsg_set_state(smsg_state_replied);
                     }
@@ -170,7 +174,9 @@ static void md_receive_msg_task(void) {
 
                 // raw data
                 if ((md_rev_payload[0] == MD_REV_CMD_RAW) && (md_rev_payload[1] == MD_REV_CMD_RAW_OUT)) {
+                    gmk_radio_diag_header(data, selected_device);
                     if (data > MD_RAW_SIZE) {
+                        gmk_radio_diag_count(GMK_RADIO_RAW_OVERSIZE, selected_device);
                         data_count = 0;
                         continue;
                     }
@@ -191,6 +197,10 @@ static void md_receive_msg_task(void) {
         }
 
         if (md_check_sum(md_rev_payload, data_count)) {
+            gmk_radio_diag_count(GMK_RADIO_VALID_FRAMES, selected_device);
+            if (md_rev_payload[0] == MD_REV_CMD_RAW && md_rev_payload[1] == MD_REV_CMD_RAW_OUT) {
+                gmk_radio_diag_count(md_rev_payload[2] == 31 ? GMK_RADIO_RAW_31 : md_rev_payload[2] == 32 ? GMK_RADIO_RAW_32 : GMK_RADIO_RAW_OTHER, selected_device);
+            }
             md_send_ack();
 
             if (md_receive_process_kb(md_rev_payload, data_count) != true) {
@@ -207,6 +217,7 @@ static void md_receive_msg_task(void) {
 
                     if (len == sizeof(md_raw_payload)) {
                         memcpy(md_raw_payload, pdata, len);
+                        gmk_radio_diag_count(GMK_RADIO_RAW_DISPATCHED, selected_device);
                         md_receive_raw_cb(md_raw_payload, len);
                     }
                 } break;
@@ -242,6 +253,7 @@ static void md_receive_msg_task(void) {
                 } break;
                 case MD_REV_CMD_MD_FW_VERSION: {
                     md_info.version = md_rev_payload[1];
+                    gmk_radio_diag_version(md_rev_payload[1]);
                 } break;
                 case MD_REV_CMD_HOST_STATE: {
                     md_receive_host_cb(md_rev_payload[1] == MD_REV_CMD_HOST_STATE_RESUME);
@@ -249,6 +261,8 @@ static void md_receive_msg_task(void) {
                 default:
                     break;
             }
+        } else {
+            gmk_radio_diag_count(GMK_RADIO_CHECKSUM_ERRORS, selected_device);
         }
         data_count = 0;
     }
@@ -310,6 +324,7 @@ static THD_FUNCTION(md_worker, arg) {
 #endif
 
 void md_init(void) {
+    gmk_radio_diag_init();
     uart_init(MD_BAUD_RATE);
     smsg_init();
     smsg_timer      = 0;
@@ -501,6 +516,7 @@ void md_send_raw(uint8_t *data, uint8_t length) {
     if (length != MD_RAW_SIZE) {
         return;
     }
+    gmk_radio_diag_count(GMK_RADIO_RAW_TX_REQUESTS, selected_device);
 
     sdata[0] = MD_SND_CMD_RAW;
     sdata[1] = MD_SND_CMD_RAW_IN;

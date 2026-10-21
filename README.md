@@ -26,7 +26,8 @@ integration are selected separately from `firmware/qmk-via/` and
   key overrides, live QMK settings and VialRGB. See [Vial features](docs/VIAL-PORT.md).
 - Optional split updater: update both halves through the left half's USB connection.
 - QMK/VIA updater EEPROM backups, QMK debug split/sleep diagnostics and
-  debug-updater persistent sleep logs. Vial builds exclude backups and diagnostics.
+  debug-updater persistent sleep logs. Normal Vial builds exclude backups and diagnostics;
+  a separate [radio diagnostic build](docs/RADIO-DIAGNOSTICS.md) provides RAM counters.
 
 Complete stock equivalence and hardware validation of the latest Vial/updater
 changes remain unverified. ZMK is not implemented.
@@ -52,6 +53,7 @@ Choose a build target:
 | `make build-updater` | QMK/VIA release and debug with split updater |
 | `make build-vial` | Normal Vial firmware |
 | `make build-vial-updater` | Vial firmware with split updater |
+| `make build-vial-radio-diagnostic` | Optional Vial updater with RAM radio capture |
 
 Builds write firmware, checksums and matching source archives to
 `artifacts/qmk/<variant>/` or `artifacts/vial/<variant>/`.

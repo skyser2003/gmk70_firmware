@@ -8,6 +8,41 @@
 #include "stock_power.h"
 #include "lowpower.h"
 #include "rgb_matrix.h"
+#ifdef GMK70_RADIO_DIAGNOSTICS
+#    include "via.h"
+#    include "nvm_via.h"
+#    include "usb_main.h"
+#    include "radio_capture.h"
+
+void __real_via_init(void);
+void via_init_kb(void);
+bool __wrap_nvm_eeconfig_is_enabled(void);
+
+static bool diagnostic_settings_valid(void) {
+    // This temporary capture build has the same definition and storage schema.
+    // Retain the installed build's magic, so a round trip to it keeps settings.
+    // Invalid core/schema or erased magic still follows native initialization.
+    if (!__wrap_nvm_eeconfig_is_enabled()) return false;
+    uint8_t magic0, magic1, magic2;
+    nvm_via_read_magic(&magic0, &magic1, &magic2);
+    return magic0 != 0xFF || magic1 != 0xFF || magic2 != 0xFF;
+}
+
+bool __wrap_via_eeprom_is_valid(void) {
+    // eeconfig_is_enabled() checks this again in quantum_init(), after via_init.
+    return diagnostic_settings_valid();
+}
+
+void __wrap_via_init(void) {
+    // via.c's internal validity call cannot be intercepted by the linker wrap.
+    if (diagnostic_settings_valid()) {
+        via_init_kb();
+        via_set_layout_options_kb(via_get_layout_options());
+    } else {
+        __real_via_init();
+    }
+}
+#endif
 #ifdef GMK70_VIAL_UPDATE
 #    include "vial.h"
 #    include "update/qmk_update.h"
@@ -64,6 +99,13 @@ void __wrap_nvm_eeconfig_enable(void) {
 void __wrap_raw_hid_receive(uint8_t *data, uint8_t length) {
     if (length != RAW_EPSIZE) return;
     gmk70_stock_activity();
+#ifdef GMK70_RADIO_DIAGNOSTICS
+    bool allowed = wireless_get_current_devs() == DEVS_USB && get_transport() == TRANSPORT_USB && USB_DRIVER.state == USB_ACTIVE && is_keyboard_left() && is_keyboard_master();
+    if (gmk_radio_diag_query(data, length, allowed, timer_read32())) {
+        raw_hid_send(data, length);
+        return;
+    }
+#endif
 #ifdef GMK70_VIAL_UPDATE
     if (gmk_update_usb(data, length)) {
         raw_hid_send(data, length);

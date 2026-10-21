@@ -2,8 +2,8 @@
 set -euo pipefail
 source "$(dirname "$0")/project.sh"
 mode="${2:-normal}"
-[[ "${1:-vial}" == vial && ( "$mode" == normal || "$mode" == updater ) ]] || {
-    printf 'Vial supports the vial keymap with normal or updater mode.\n' >&2
+[[ "${1:-vial}" == vial && ( "$mode" == normal || "$mode" == updater || "$mode" == radio-diagnostic-updater ) ]] || {
+    printf 'Vial supports normal, updater, or radio-diagnostic-updater mode.\n' >&2
     exit 2
 }
 for tool in arm-none-eabi-gcc qmk flock; do
@@ -18,8 +18,13 @@ build_root="$("$source_python" tools/build-support/project_build.py prepare-vial
 framework_root="$project_root/dependencies/vial-qmk"
 output=artifacts/vial/vial
 update_flags=()
-if [[ "$mode" == updater ]]; then
-    output="$output-updater"
+if [[ "$mode" != normal ]]; then
+    if [[ "$mode" == radio-diagnostic-updater ]]; then
+        output="$output-radio-diagnostic-updater"
+        update_flags+=(GMK70_RADIO_DIAGNOSTICS=yes)
+    else
+        output="$output-updater"
+    fi
     update_flags+=(GMK70_SPLIT_UPDATE=yes MCU_LDSCRIPT=GMK70_UPDATE USE_CHIBIOS_CONTRIB=yes)
 fi
 mkdir -p "$output"
@@ -54,7 +59,14 @@ fi
 if grep -q -- '-DGMK70_DEBUG_USB_BOOTLOADER\|-DGMK70_SPLIT_DIAGNOSTICS\|-DGMK70_PERSISTENT_DIAGNOSTICS' "$output/cflags.txt"; then
     printf 'Vial unexpectedly contains diagnostics\n' >&2; exit 1
 fi
-if [[ "$mode" == updater ]]; then
+if [[ "$mode" == radio-diagnostic-updater ]]; then
+    grep -q -- '-DGMK70_RADIO_DIAGNOSTICS' "$output/cflags.txt"
+else
+    if grep -q -- '-DGMK70_RADIO_DIAGNOSTICS' "$output/cflags.txt"; then
+        printf 'Normal Vial unexpectedly contains radio capture\n' >&2; exit 1
+    fi
+fi
+if [[ "$mode" != normal ]]; then
     grep -q -- '-DGMK70_SPLIT_UPDATE' "$output/cflags.txt"
     grep -q -- '-DGMK70_VIAL_UPDATE' "$output/cflags.txt"
     if arm-none-eabi-nm "$output/$target.elf" | grep ' gmk_eeprom_query\| gmk_sleep_log_query' >/dev/null; then
@@ -62,6 +74,9 @@ if [[ "$mode" == updater ]]; then
     fi
     "$source_python" tools/build-support/update_package.py "$framework_root" "$output" vial
     cp tools/firmware-update/update.py "$output/"
+    if [[ "$mode" == radio-diagnostic-updater ]]; then
+        cp tools/firmware-update/read_radio.py "$output/"
+    fi
     printf 'hidapi==0.15.0\n' > "$output/requirements.txt"
 fi
 cp firmware/qmk-vial/keymaps/vial/vial.json dependencies/sources.lock.json "$output/"
@@ -69,10 +84,13 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
 {
     printf 'Platform: vial\nKeyboard: zuoya/gmk70\nKeymap: vial\n'
     printf 'Build mode: %s\nEXPERIMENTAL port: no hardware validation.\n' "$mode"
-    if [[ "$mode" == updater ]]; then
-        printf 'Updater: ABI 1, existing resident installer; direct USB left master relays to right slave. Firmware writes require Vial physical unlock. EEPROM queries and diagnostics disabled.\n'
+    if [[ "$mode" != normal ]]; then
+        printf 'Updater: ABI 1, existing resident installer; direct USB left master relays to right slave. Firmware writes require Vial physical unlock. EEPROM queries and persistent logs disabled.\n'
     else
         printf 'Normal image; use the separate vial-updater package with the resident split updater.\n'
+    fi
+    if [[ "$mode" == radio-diagnostic-updater ]]; then
+        printf 'Exception: optional RAM radio counters and read-only USB snapshot enabled. Matching native storage schema retains installed EEPROM magic; no per-build settings reset.\n'
     fi
     printf 'Storage: native Vial layout, schema 0x564D4702 at 0xFFC. Stock/prior Vial EEPROM data is not imported; back up settings before installation.\n'
     printf 'Unlock: Escape + left Shift. Four layers, one encoder, 16 macros (2123 bytes).\n'
@@ -115,10 +133,14 @@ images=("$target.bin" "$target.hex")
 extras=()
 support=()
 archive=gmk70-vial.zip
-if [[ "$mode" == updater ]]; then
+if [[ "$mode" != normal ]]; then
     archive=gmk70-vial-updater.zip
     images=(application.bin application.hex resident.bin install.bin install.hex update.json)
     extras=(update.py requirements.txt)
+    if [[ "$mode" == radio-diagnostic-updater ]]; then
+        archive=gmk70-vial-radio-diagnostic-updater.zip
+        extras+=(read_radio.py)
+    fi
     support=(resident.elf resident.map)
     cat >> "$output/README.txt" <<'EOF'
 
@@ -148,6 +170,9 @@ zuoya_gmk70_vial.hex and .bin are the same normal image at 0x08000000.
 Use the separate gmk70-vial-updater.zip for the resident split updater.
 Do not submit this normal image as application.bin to that updater.
 EOF
+fi
+if [[ "$mode" == radio-diagnostic-updater ]]; then
+    cp docs/RADIO-DIAGNOSTICS.md "$output/README.txt"
 fi
 "$source_python" tools/build-support/project_build.py export-vial "$output/source.tar.gz"
 (

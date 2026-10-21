@@ -18,6 +18,9 @@ build-vial:
 	bash ./scripts/build.sh vial
 build-vial-updater:
 	bash ./scripts/build.sh vial vial updater
+build-vial-radio-diagnostic:
+	bash ./scripts/build.sh vial vial radio-diagnostic-updater
+.PHONY: build-vial-radio-diagnostic
 build-zmk:
 	bash ./scripts/build.sh zmk
 clean:

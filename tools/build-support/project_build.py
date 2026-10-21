@@ -165,7 +165,9 @@ def prepare_vial(root: Path, mode: str = "normal") -> Path:
 
 
 def prepare_framework(root: Path, variant: str, platform: str, mode: str) -> Path:
-    if mode not in ("normal", "updater"):
+    if mode not in ("normal", "updater") and not (
+        platform == "vial" and mode == "radio-diagnostic-updater"
+    ):
         raise ValueError(f"Unsupported build mode: {mode}")
     if variant == "default" and mode == "updater":
         raise ValueError("Updater supports release/debug/vial only")
@@ -266,7 +268,11 @@ def main() -> None:
         ),
     )
     parser.add_argument("argument", nargs="?")
-    parser.add_argument("--mode", choices=("normal", "updater"), default="normal")
+    parser.add_argument(
+        "--mode",
+        choices=("normal", "updater", "radio-diagnostic-updater"),
+        default="normal",
+    )
     args = parser.parse_args()
     try:
         match args.command:

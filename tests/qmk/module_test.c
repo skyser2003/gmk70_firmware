@@ -151,4 +151,5 @@ int main(void) {
     test_pairing_name_packet();
     test_stop_command_drain();
     puts("Radio: direct HID, finite command retries, battery retry limit, status context and pairing gates passed");
+    return 0;
 }

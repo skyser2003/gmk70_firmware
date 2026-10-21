@@ -5,7 +5,7 @@ platform="${1:-qmk}"
 keymap="${2:-${km:-release}}"
 mode="${3:-normal}"
 case "$mode" in
-    normal|updater) ;;
+    normal|updater|radio-diagnostic-updater) ;;
     *) printf 'Unknown build mode: %s\n' "$mode" >&2; exit 2 ;;
 esac
 case "$platform" in

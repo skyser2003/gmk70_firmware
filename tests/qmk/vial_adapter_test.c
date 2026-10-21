@@ -199,4 +199,5 @@ int main(void) {
     assert(led_pins == both_pins && housekeeping_calls == 9);
     puts("PASS: Vial schema isolation, native protocol/unlock routing, packet bounds and physical activity before consumed/synthetic events");
     puts("PASS: Vial split RGB power recovery, native Off/On, suspend and sleep ownership without EEPROM writes");
+    return 0;
 }

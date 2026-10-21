@@ -19,6 +19,11 @@ ifeq ($(strip $(WIRELESS_ENABLE)), yes)
         $(WIRELESS_DIR)/smsg.c \
         $(WIRELESS_DIR)/module.c
 
+    ifeq ($(strip $(GMK70_RADIO_DIAGNOSTICS)), yes)
+        OPT_DEFS += -DGMK70_RADIO_DIAGNOSTICS
+        SRC += $(WIRELESS_DIR)/radio_capture.c
+    endif
+
     ifeq ($(strip $(WIRELESS_LPWR_STOP_ENABLE)), yes)
         OPT_DEFS += -DWIRELESS_LPWR_STOP_ENABLE
         SRC += $(WIRELESS_DIR)/lpwr_wb32.c
