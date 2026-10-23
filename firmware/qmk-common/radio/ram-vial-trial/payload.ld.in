@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+ENTRY(radio_install)
+SECTIONS {
+    . = TRIAL_ALLOCATED_BASE + 32;
+    .text : { *(.text*) *(.rodata*) }
+    . = ALIGN(4);
+    .data : { *(.data*) }
+    . = ALIGN(4);
+    .bss : { *(.bss*) *(COMMON) }
+    __payload_end = .;
+    ASSERT(__payload_end <= TRIAL_ALLOCATED_END - 16, "Payload exceeds owned allocation")
+    /DISCARD/ : { *(.ARM.exidx*) *(.ARM.extab*) *(.comment*) }
+}

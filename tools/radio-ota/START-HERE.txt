@@ -1,0 +1,14 @@
+GMK70 RADIO RECOVERY PREPARATION - READ ONLY
+
+1. Extract this entire ZIP to a writable folder on Windows.
+2. Keep GMK70-2 awake and connected by Bluetooth. Close Bluetooth LE Explorer.
+3. Double-click run-recovery.cmd. It uses built-in Windows PowerShell 5.1.
+4. Wait for two flash-window passes and two ROM passes. Tap Shift occasionally to keep the keyboard awake.
+5. Keep the generated *-private.zip on your PC. It can contain pairing keys.
+6. Send only the generated *-analysis.zip for the next investigation.
+
+No new keyboard firmware, MSVC, or Python installation is needed.
+The script contains only bounded flash/ROM read requests, no erase/program/reset.
+A successful capture does NOT yet establish a working rollback procedure.
+If acquisition fails, send the analysis ZIP produced on failure.
+USB radio recovery is still under investigation; these reads use Bluetooth.

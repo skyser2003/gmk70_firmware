@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+ENTRY(radio_reconnect)
+SECTIONS {
+    . = TRIAL_PAYLOAD_END;
+    .text : { *(.text*) *(.rodata*) }
+    ASSERT(. <= TRIAL_ALLOCATED_END - 16, "Reconnect helper exceeds owned tail")
+    /DISCARD/ : { *(.ARM.exidx*) *(.ARM.extab*) *(.comment*) }
+}
