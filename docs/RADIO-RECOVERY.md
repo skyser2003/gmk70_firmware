@@ -10,6 +10,9 @@ The later 2026-10-23 RAM-only trial demonstrated native Bluetooth HID and an
 unchanged Web Vial keymap readout without changing stock radio flash. Its sources,
 verification and reconnect limitations are recorded in the
 [radio payload README](../firmware/qmk-common/radio/ram-vial-trial/README.md).
+The subsequent [offline persistence analysis](WEB-VIAL-PERSISTENCE.md) compares
+a stock-radio flash extension with MCU-driven RAM loading and records their
+remaining initialization and recovery requirements; neither route was installed.
 The offline-prototype statements below describe the earlier recovery checkpoint;
 they do not supersede that later volatile trial or establish persistent rollback.
 

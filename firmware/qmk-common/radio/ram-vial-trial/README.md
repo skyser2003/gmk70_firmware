@@ -10,8 +10,15 @@ The 2026-10-23 trial loaded the GMK70 keymap and native extension tabs in the
 unchanged official `https://vial.rocks/` client on Windows. A standard Service
 Changed indication refreshed the GATT list; a link disconnect/reconnect was then
 needed for Windows to expose the second HID device. This reconnect preserved RAM.
-The installed desktop Vial still has its separate BLE serial-discovery limitation.
+The installed desktop Vial still has its separate BLE serial-discovery limitation;
+the [desktop investigation](../../../../docs/VIAL-BLUETOOTH-DESKTOP.md) records a
+successful original-client HID getter and the current Windows driver blocker.
 Idle main-MCU wake behavior and configuration setters have not been validated.
+
+The [persistent Web Vial assessment](../../../../docs/WEB-VIAL-PERSISTENCE.md)
+records the minimum-radio/MCU-feature split, stock Bluetooth and dongle
+compatibility requirements, and the missing recovery evidence. It is an offline
+analysis; no persistent radio image is ready or installed.
 
 Only one configuration client may use the keyboard at a time. FFF0 and the new
 HID service share the stock UART response stream, which has no transaction IDs.
