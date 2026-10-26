@@ -78,7 +78,7 @@ class VialTests(unittest.TestCase):
         self.assertNotIn("VIAL_INSECURE", config)
         self.assertIn("DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 0xFFB", config)
         self.assertEqual(len(definition["customKeycodes"]), 0x2F)
-        self.assertIn("0x7E19", definition["customKeycodes"][0x19]["title"])
+        self.assertIn("CUSTOM(25)", definition["customKeycodes"][0x19]["title"])
         self.assertEqual(definition["customKeycodes"][7]["shortName"], "Show Charging")
         self.assertEqual(definition["customKeycodes"][9]["shortName"], "Logo Effects")
         self.assertEqual(definition["customKeycodes"][26]["shortName"], "Num/F Toggle")
@@ -96,13 +96,13 @@ class VialTests(unittest.TestCase):
             self.assertGreaterEqual(code, 0x7E22)
             entry = definition["customKeycodes"][code - 0x7E00]
             self.assertEqual(entry["name"], name)
-            self.assertIn(value, entry["title"])
             self.assertIn(f"CUSTOM({code - 0x7E00})", entry["title"])
             self.assertNotIn("CUSTOM", entry["shortName"])
         for slot in (8, *range(10, 17), *range(20, 26)):
-            self.assertIn("Reserved", definition["customKeycodes"][slot]["shortName"])
-        self.assertIn("hold for 3 seconds", definition["customKeycodes"][0]["title"])
-        self.assertIn("hold for 3 seconds", definition["customKeycodes"][5]["title"])
+            self.assertEqual(definition["customKeycodes"][slot]["shortName"], "")
+        for slot, entry in enumerate(definition["customKeycodes"]):
+            self.assertIn(f"CUSTOM({slot})", entry["title"])
+            self.assertLessEqual(len(entry["title"]), 29)
 
     def test_encoder_rotation_controls_and_press(self) -> None:
         keymap = PROJECT / "firmware/qmk-vial/keymaps/vial"
