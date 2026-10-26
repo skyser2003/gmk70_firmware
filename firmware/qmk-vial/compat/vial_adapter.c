@@ -8,6 +8,7 @@
 #include "stock_power.h"
 #include "lowpower.h"
 #include "rgb_matrix.h"
+#include "battery_indicators.h"
 #ifdef GMK70_RADIO_DIAGNOSTICS
 #    include "via.h"
 #    include "nvm_via.h"
@@ -70,7 +71,7 @@ void __wrap_housekeeping_task(void) {
     // those updates, including a slave that booted with RGB disabled locally.
     // Stock sleep/wake callbacks retain ownership outside normal operation.
     if (lpwr_get_state() != LPWR_NORMAL) return;
-    bool enabled = rgb_matrix_is_enabled() && !rgb_matrix_get_suspend_state();
+    bool enabled = (rgb_matrix_is_enabled() || gmk70_vial_battery_indicator_requested()) && !rgb_matrix_get_suspend_state();
     gpio_write_pin(LED_POWER_EN_PIN, enabled);
     gpio_write_pin(LED_POWER_EN2_PIN, enabled);
 }
