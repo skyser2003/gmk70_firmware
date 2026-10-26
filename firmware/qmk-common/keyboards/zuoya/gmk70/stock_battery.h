@@ -10,3 +10,4 @@ bool stock_battery_receive(uint8_t command, uint8_t *response);
 bool stock_battery_level_requested(void);
 bool stock_battery_charging_requested(void);
 void stock_battery_render(uint8_t percentage);
+void stock_battery_render_charging(bool cable_connected, bool fully_charged);

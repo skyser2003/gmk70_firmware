@@ -85,3 +85,8 @@ void stock_battery_render(uint8_t percentage) {
         }
     }
 }
+
+void stock_battery_render_charging(bool cable_connected, bool fully_charged) {
+    if (!charging_requested || !cable_connected) return;
+    rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, fully_charged ? 0 : 80, fully_charged ? 80 : 0, 0);
+}

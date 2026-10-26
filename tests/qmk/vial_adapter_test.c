@@ -14,7 +14,7 @@ static unsigned     writes, forwarded, replies;
 static unsigned     key_activity, wired_wake, user_calls;
 static uint8_t      device       = DEVS_BT1;
 static bool         user_accepts = true;
-static bool         rgb_enabled, rgb_suspended;
+static bool         rgb_enabled, rgb_suspended, battery_requested;
 static unsigned     led_pins, pin_writes, housekeeping_calls;
 static lpwr_state_t power_state = LPWR_NORMAL;
 uint8_t             rgb_matrix_is_enabled(void) {
@@ -22,6 +22,9 @@ uint8_t             rgb_matrix_is_enabled(void) {
 }
 bool rgb_matrix_get_suspend_state(void) {
     return rgb_suspended;
+}
+bool gmk70_vial_battery_indicator_requested(void) {
+    return battery_requested;
 }
 lpwr_state_t lpwr_get_state(void) {
     return power_state;
@@ -197,6 +200,15 @@ int main(void) {
     power_state = LPWR_NORMAL;
     __wrap_housekeeping_task();
     assert(led_pins == both_pins && housekeeping_calls == 9);
+
+    // A held battery query needs LED power while the saved RGB state is off.
+    rgb_enabled       = false;
+    battery_requested = true;
+    __wrap_housekeeping_task();
+    assert(led_pins == both_pins && !rgb_enabled);
+    battery_requested = false;
+    __wrap_housekeeping_task();
+    assert(led_pins == 0 && !rgb_enabled);
     puts("PASS: Vial schema isolation, native protocol/unlock routing, packet bounds and physical activity before consumed/synthetic events");
     puts("PASS: Vial split RGB power recovery, native Off/On, suspend and sleep ownership without EEPROM writes");
     return 0;

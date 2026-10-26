@@ -1,5 +1,10 @@
 GMK70 Vial firmware, built from the commit selected by this Vial tag.
 
+Battery-level and charging-status queries now display while RGB is off, without
+enabling the saved lighting setting. Custom-key descriptions contain only the
+role and `CUSTOM(n)`; unused reserved slots have blank labels with identifying
+tooltips. All existing custom-key numbers are preserved.
+
 - Normal firmware: `gmk70-vial`.
 - Split updater firmware: `gmk70-vial-updater`.
 - Portable `.zip` packages contain firmware and instructions; full `.tar.gz` bundles also include ELF/map files, dependency pins, build information, checksums and matching `source.tar.gz`.
