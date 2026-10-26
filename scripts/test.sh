@@ -14,6 +14,12 @@ cc "${common_flags[@]}" tests/qmk/update_test.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
     -o artifacts/tests/qmk/updater
 artifacts/tests/qmk/updater
+cc "${common_flags[@]}" tests/qmk/trial_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
+    -o artifacts/tests/qmk/trial
+artifacts/tests/qmk/trial
 cc "${common_flags[@]}" -Itests/qmk/module_stubs \
     '-DPRODUCT="ZUOYA GMK70"' '-DMANUFACTURER="HS"' \
     -DVENDOR_ID=0x342d -DPRODUCT_ID=0xe491 \
@@ -99,6 +105,19 @@ cc -Itests/qmk/vial_stubs -Itests/qmk/update_stubs "${common_flags[@]}" \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
     -Wl,--wrap=raw_hid_send -o artifacts/tests/qmk/vial-updater
 artifacts/tests/qmk/vial-updater
+cc -Itests/qmk/vial_stubs -Itests/qmk/update_stubs "${common_flags[@]}" \
+    -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs -Idependencies/qmk/platforms \
+    -DRAW_ENABLE -DGMK70_SPLIT_UPDATE -DGMK70_VIAL_UPDATE -DGMK70_VIAL_TRIAL -DEEPROM_TEST_HARNESS \
+    -DCOMBO_ENABLE -DREPEAT_KEY_ENABLE -DMATRIX_ROWS=10 -DMATRIX_COLS=9 \
+    -ffunction-sections -fdata-sections -Wl,--gc-sections \
+    tests/qmk/update_adapter_test.c tests/qmk/stock_v15_fixture.c \
+    firmware/qmk-vial/compat/vial_adapter.c firmware/qmk-common/drivers/wireless/md_raw.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
+    -Wl,--wrap=raw_hid_send -Wl,--wrap=gmk_trial_process -o artifacts/tests/qmk/vial-trial-updater
+artifacts/tests/qmk/vial-trial-updater
 cc "${common_flags[@]}" tests/qmk/stock_via_test.c \
     tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/stock-via
 artifacts/tests/qmk/stock-via

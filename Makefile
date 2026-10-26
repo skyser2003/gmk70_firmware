@@ -42,3 +42,9 @@ check-tools:
 setup-vial:
 	bash ./scripts/setup_vial.sh
 .PHONY: setup-vial
+
+build-vial-trial-updater:
+	bash ./scripts/build.sh vial vial trial-updater
+build-zmk-trial-fixtures:
+	bash ./scripts/build_zmk_trial_fixtures.sh
+.PHONY: build-vial-trial-updater build-zmk-trial-fixtures

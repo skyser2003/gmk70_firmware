@@ -1,6 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "qmk_update.h"
 #include "protocol.h"
+#ifdef GMK70_VIAL_TRIAL
+#    ifndef GMK70_VIAL_UPDATE
+#        error "The trial receiver requires native Vial authorization"
+#    endif
+#    include "trial.h"
+static bool               trial_mode;
+static gmk_trial_launch_t trial_launch;
+#endif
+
+static bool packet_valid(const uint8_t request[GMK_PACKET_SIZE]) {
+#ifdef GMK70_VIAL_TRIAL
+    if (gmk_trial_packet_valid(request)) return true;
+#endif
+    return gmk_packet_valid(request);
+}
 #ifndef GMK70_VIAL_UPDATE
 #    include "eeprom_query.h"
 #endif
@@ -30,14 +45,42 @@ bool gmk_update_active(void) {
 // DATA fills the existing page buffer immediately; only a full/final page queues.
 static void receive(const uint8_t *request, uint8_t *response) {
     chSysLock();
-    if (!gmk_packet_valid(request)) {
+    if (!packet_valid(request)) {
         memcpy(response, request, GMK_PACKET_SIZE);
         response[5] = GMK_BAD_REQUEST;
-    } else if (request[4] == GMK_STATUS || pending) {
-        memcpy(response, pending ? queued : last_response, GMK_PACKET_SIZE);
-        if (pending) response[5] = GMK_BUSY;
+    } else if (pending) {
+        // Housekeeping mutates update outside this lock. While pending, only
+        // queued/cached packets are published; never inspect transfer state.
+#ifdef GMK70_VIAL_TRIAL
+        if (request[1] != queued[1]) {
+            memcpy(response, last_response, GMK_PACKET_SIZE);
+            memcpy(response, request, 5);
+            memcpy(response + 8, request + 8, 8);
+            response[5] = GMK_BAD_STATE;
+        } else
+#endif
+        {
+            memcpy(response, queued, GMK_PACKET_SIZE);
+            response[5] = GMK_BUSY;
+        }
+#ifdef GMK70_VIAL_TRIAL
+    } else if (update.state != GMK_IDLE && request[4] != GMK_INFO && request[4] != GMK_STATUS && (request[1] == GMK_TRIAL_NAMESPACE) != trial_mode) {
+        gmk_update_response(&update, request, GMK_BAD_STATE, response);
+    } else if (request[4] == GMK_STATUS && request[1] != last_response[1]) {
+        gmk_update_response(&update, request, GMK_OK, response);
+#endif
+    } else if (request[4] == GMK_STATUS) {
+        memcpy(response, last_response, GMK_PACKET_SIZE);
     } else if (request[4] == GMK_DATA) {
-        gmk_update_result_t result = wireless_get_current_devs() == DEVS_USB ? gmk_update_buffer_data(&update, request) : GMK_UNAVAILABLE;
+        gmk_update_result_t result = GMK_UNAVAILABLE;
+        if (wireless_get_current_devs() == DEVS_USB) {
+#ifdef GMK70_VIAL_TRIAL
+            if (request[1] == GMK_TRIAL_NAMESPACE)
+                result = gmk_trial_buffer_data(&update, request);
+            else
+#endif
+                result = gmk_update_buffer_data(&update, request);
+        }
         gmk_update_response(&update, request, result, response);
         response[7] = (is_keyboard_left() ? 1 : 0) | (is_keyboard_master() ? 2 : 0);
         if (result == GMK_OK || result == GMK_BUSY) last_request = timer_read32();
@@ -69,6 +112,10 @@ static void peer_handler(uint8_t in_size, const void *in, uint8_t out_size, void
 }
 
 void gmk_update_init(void) {
+#ifdef GMK70_VIAL_TRIAL
+    trial_mode   = false;
+    trial_launch = (gmk_trial_launch_t){0};
+#endif
     update                                 = (gmk_update_t){0};
     pending                                = false;
     last_request                           = 0;
@@ -85,7 +132,13 @@ void gmk_update_task(void) {
     }
     chSysLock();
     if (!pending) {
-        if (update.state != GMK_IDLE && timer_elapsed32(last_request) > 10000) update = (gmk_update_t){0};
+        if (update.state != GMK_IDLE && timer_elapsed32(last_request) > 10000) {
+            update = (gmk_update_t){0};
+#ifdef GMK70_VIAL_TRIAL
+            trial_launch = (gmk_trial_launch_t){0};
+            trial_mode   = false;
+#endif
+        }
         chSysUnlock();
         return;
     }
@@ -119,7 +172,20 @@ void gmk_update_task(void) {
         response[5] = GMK_UNAVAILABLE;
 #endif
     } else {
-        if (wireless_get_current_devs() == DEVS_USB) result = gmk_update_process(&update, request);
+        if (wireless_get_current_devs() == DEVS_USB) {
+#ifdef GMK70_VIAL_TRIAL
+            bool trial = request[1] == GMK_TRIAL_NAMESPACE;
+            if (trial) {
+                // No watchdog/startup backend has been proven. Never arm or
+                // execute a device trial through this offline milestone.
+                result = gmk_trial_process(&update, &trial_launch, request, false);
+            } else
+#endif
+                result = gmk_update_process(&update, request);
+#ifdef GMK70_VIAL_TRIAL
+            if (request[4] == GMK_BEGIN && result == GMK_OK) trial_mode = trial;
+#endif
+        }
         gmk_update_response(&update, request, result, response);
     }
     response[7] = (is_keyboard_left() ? 1 : 0) | (is_keyboard_master() ? 2 : 0);
@@ -145,7 +211,7 @@ bool gmk_update_usb(uint8_t *data, uint8_t length) {
     uint8_t response[GMK_PACKET_SIZE];
     memcpy(response, data, sizeof(response));
     response[5] = GMK_UNAVAILABLE;
-    if (gmk_packet_valid(data) && is_keyboard_left() && is_keyboard_master() && get_transport() == TRANSPORT_USB && USB_DRIVER.state == USB_ACTIVE) {
+    if (packet_valid(data) && is_keyboard_left() && is_keyboard_master() && get_transport() == TRANSPORT_USB && USB_DRIVER.state == USB_ACTIVE) {
 #    ifdef GMK70_VIAL_UPDATE
         // USB enumeration alone does not mean the mode switch is wired.
         bool wired = wireless_get_current_devs() == DEVS_USB;

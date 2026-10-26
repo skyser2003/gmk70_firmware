@@ -8,6 +8,10 @@ ifeq ($(strip $(GMK70_SPLIT_UPDATE)), yes)
     OPT_DEFS += -DGMK70_SPLIT_UPDATE
     SRC += update/image.c update/protocol.c update/wb32_flash.c update/qmk_update.c
 endif
+ifeq ($(strip $(GMK70_VIAL_TRIAL)), yes)
+    OPT_DEFS += -DGMK70_VIAL_TRIAL
+    SRC += update/trial.c
+endif
 include $(GMK70_PLATFORM_DIR)/compat/platform_rules.mk
 include $(KEYBOARD_PATH_1)/wls/wls.mk
 include $(GMK70_COMMON_DIR)/drivers/wireless/wireless.mk

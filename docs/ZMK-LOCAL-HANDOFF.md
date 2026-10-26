@@ -117,3 +117,12 @@ a Zephyr implementation of the updater USB/relay/flash/authorization services.
 The staging-trial design is intended to avoid depending on those services while
 their underlying drivers are still being developed. No claim of cable-free
 recovery should be made before the independent watchdog path is demonstrated.
+
+## Local implementation continuation
+
+The first software milestone is now tracked in [ZMK-TRIAL-LAUNCHER.md](ZMK-TRIAL-LAUNCHER.md):
+a separate opt-in Vial staging receiver, portable launch-intent model, offline
+package/packet tooling and bare reset-return/hang fixtures. Device RUN is still
+disabled. The next execution milestone is the early-startup trampoline and
+independent-watchdog integration/proof in that document; no hardware trial,
+firmware installation or resident modification is implied by the offline work.

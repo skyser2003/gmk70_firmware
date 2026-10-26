@@ -585,7 +585,173 @@ static void test_vial_install(void) {
 }
 #endif
 
+#ifdef GMK70_VIAL_TRIAL
+#    include "update/trial.h"
+static bool         interleave_trial_begin;
+gmk_update_result_t __real_gmk_trial_process(gmk_update_t *update, gmk_trial_launch_t *launch, const uint8_t request[GMK_PACKET_SIZE], bool recovery_ready);
+gmk_update_result_t __wrap_gmk_trial_process(gmk_update_t *update, gmk_trial_launch_t *launch, const uint8_t request[GMK_PACKET_SIZE], bool recovery_ready) {
+    gmk_update_result_t result = __real_gmk_trial_process(update, launch, request, recovery_ready);
+    if (interleave_trial_begin && request[4] == GMK_BEGIN && result == GMK_OK) {
+        interleave_trial_begin = false;
+        // Re-enter the actual receiver at the post-process/pre-publication
+        // boundary, as a high-priority split callback can do on the MCU.
+        uint8_t retry[32];
+        memcpy(retry, request, sizeof(retry));
+        assert(gmk_update_usb(retry, sizeof(retry)));
+        assert(retry[5] == GMK_BUSY && retry[1] == 0x71);
+        begin(retry, 0);
+        assert(gmk_update_usb(retry, sizeof(retry)));
+        assert(retry[5] == GMK_BAD_STATE && gmk_read_u32(retry + 8) == 42);
+    }
+    return result;
+}
+
+static void trial_begin(uint8_t packet[32], uint8_t target) {
+    begin(packet, target);
+    packet[1] = 0x71;
+    packet[5] = 16;
+    gmk_write_u32(packet + 24, GMK_STAGE_BASE);
+    gmk_write_u32(packet + 28, 0x20006FC0);
+}
+
+static void trial_command(uint8_t packet[32], uint8_t target) {
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_BUSY);
+    left = master = target == 0;
+    gmk_update_task();
+    left = master      = true;
+    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x71, 1, target, GMK_STATUS};
+    assert(gmk_update_usb(status, 32));
+    memcpy(packet, status, 32);
+}
+
+static void test_trial_run_disabled(void) {
+    for (uint8_t target = 0; target < 2; ++target) {
+        fixture();
+        relay = target == 1;
+        memset(memory, 0xFF, sizeof(memory));
+        uint8_t payload[1024] = {0}, packet[32];
+        gmk_write_u32(payload, 0x20006FC0);
+        for (unsigned i = 1; i <= 3; ++i)
+            gmk_write_u32(payload + 4 * i, GMK_STAGE_BASE + 513);
+        trial_begin(packet, target);
+        gmk_write_u32(packet + 20, gmk_crc32(payload, sizeof(payload)));
+        trial_command(packet, target);
+        assert(packet[5] == GMK_OK && packet[7] == (target ? 0 : 3));
+        for (unsigned offset = 0; offset < sizeof(payload); offset += 16) {
+            query(packet, target, GMK_DATA, 42, offset, 16);
+            packet[1] = 0x71;
+            memcpy(packet + 16, payload + offset, 16);
+            assert(gmk_update_usb(packet, 32));
+            assert(packet[5] == ((offset + 16) % GMK_PAGE_SIZE ? GMK_OK : GMK_BUSY));
+            if (packet[5] == GMK_BUSY) {
+                left = master = target == 0;
+                gmk_update_task();
+                left = master = true;
+            }
+        }
+        query(packet, target, GMK_SEAL, 42, 0, 0);
+        packet[1] = 0x71;
+        trial_command(packet, target);
+        assert(packet[5] == GMK_OK);
+        query(packet, target, 0x10, 42, 0, 0);
+        packet[1] = 0x71;
+        trial_command(packet, target);
+        assert(packet[5] == GMK_UNAVAILABLE && packet[6] == GMK_SEALED);
+        for (unsigned i = 0; i < GMK_STAGE_BASE - GMK_FLASH_BASE; ++i)
+            assert(memory[i] == 0xFF);
+        for (unsigned i = GMK_STAGE_BASE - GMK_FLASH_BASE + GMK_APP_SIZE; i < sizeof(memory); ++i)
+            assert(memory[i] == 0xFF);
+        assert(flash_writes == 4 && resets == 0 && eeprom_reads == 0);
+    }
+}
+
+static void test_trial_adapter(void) {
+    fixture();
+    memset(memory, 0xFF, sizeof(memory));
+    uint8_t packet[32], response[32];
+    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x71, 1, 0, GMK_STATUS};
+    vial_unlocked      = false;
+    trial_begin(packet, 0);
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_LOCKED);
+    gmk_update_task();
+    assert(flash_writes == 0 && !gmk_update_active());
+    vial_unlocked = true;
+    trial_begin(packet, 0);
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_BUSY);
+    interleave_trial_begin = true;
+    // A queued trial cannot be displaced by an ordinary BEGIN.
+    begin(packet, 0);
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_BAD_STATE);
+    gmk_update_task();
+    assert(flash_writes == 0 && gmk_update_active() && !interleave_trial_begin);
+    memcpy(packet, status, 32);
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[1] == 0x71 && packet[4] == GMK_BEGIN && packet[5] == GMK_OK);
+    begin(packet, 0);
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_BAD_STATE);
+    query(packet, 0, GMK_ABORT, 42, 0, 0);
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_BAD_STATE);
+    query(packet, 0, GMK_ABORT, 42, 0, 0);
+    packet[1] = 0x71;
+    assert(gmk_update_usb(packet, 32));
+    gmk_update_task();
+    assert(!gmk_update_active());
+    // Normal BEGIN owns the slot until abort/expiry too.
+    begin(packet, 0);
+    assert(gmk_update_usb(packet, 32));
+    gmk_update_task();
+    assert(flash_writes == 1);
+    trial_begin(packet, 0);
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_BAD_STATE);
+    now += 10001;
+    gmk_update_task();
+    assert(!gmk_update_active());
+    trial_begin(packet, 0);
+    assert(gmk_update_usb(packet, 32));
+    gmk_update_task();
+    assert(gmk_update_active());
+    now += 10001;
+    gmk_update_task();
+    assert(!gmk_update_active() && resets == 0);
+    // Same USB and peer role/mode restrictions as the ordinary service.
+    fixture();
+    trial_begin(packet, 0);
+    mode = DEVS_BT1;
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_UNAVAILABLE);
+    fixture();
+    trial_begin(packet, 0);
+    left = false;
+    assert(gmk_update_usb(packet, 32));
+    assert(packet[5] == GMK_UNAVAILABLE);
+    fixture();
+    trial_begin(packet, 1);
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_UNAVAILABLE);
+    left = master = false;
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_BUSY);
+    gmk_update_task();
+    assert(flash_writes == 0);
+    memcpy(packet, status, 32);
+    packet[3] = 1;
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_OK && response[7] == 0);
+}
+#endif
+
 int main(void) {
+#ifdef GMK70_VIAL_TRIAL
+    test_trial_adapter();
+    test_trial_run_disabled();
+#endif
     test_error_correlation();
     test_buffered_peer_data();
     test_buffered_data_mode_and_timeout();

@@ -2,8 +2,8 @@
 set -euo pipefail
 source "$(dirname "$0")/project.sh"
 mode="${2:-normal}"
-[[ "${1:-vial}" == vial && ( "$mode" == normal || "$mode" == updater || "$mode" == radio-diagnostic-updater ) ]] || {
-    printf 'Vial supports normal, updater, or radio-diagnostic-updater mode.\n' >&2
+[[ "${1:-vial}" == vial && ( "$mode" == normal || "$mode" == updater || "$mode" == radio-diagnostic-updater || "$mode" == trial-updater ) ]] || {
+    printf 'Vial supports normal, updater, radio-diagnostic-updater, or trial-updater mode.\n' >&2
     exit 2
 }
 for tool in arm-none-eabi-gcc qmk flock; do
@@ -22,6 +22,9 @@ if [[ "$mode" != normal ]]; then
     if [[ "$mode" == radio-diagnostic-updater ]]; then
         output="$output-radio-diagnostic-updater"
         update_flags+=(GMK70_RADIO_DIAGNOSTICS=yes)
+    elif [[ "$mode" == trial-updater ]]; then
+        output="$output-trial-updater"
+        update_flags+=(GMK70_VIAL_TRIAL=yes)
     else
         output="$output-updater"
     fi
@@ -64,6 +67,16 @@ if [[ "$mode" == radio-diagnostic-updater ]]; then
 else
     if grep -q -- '-DGMK70_RADIO_DIAGNOSTICS' "$output/cflags.txt"; then
         printf 'Normal Vial unexpectedly contains radio capture\n' >&2; exit 1
+    fi
+fi
+if [[ "$mode" == trial-updater ]]; then
+    grep -q -- '-DGMK70_VIAL_TRIAL' "$output/cflags.txt"
+    arm-none-eabi-nm "$output/$target.elf" > "$output/trial-symbols.txt"
+    grep -q ' gmk_trial_process$' "$output/trial-symbols.txt"
+    rm "$output/trial-symbols.txt"
+else
+    if grep -q -- '-DGMK70_VIAL_TRIAL' "$output/cflags.txt"; then
+        printf 'Normal Vial unexpectedly contains the trial receiver\n' >&2; exit 1
     fi
 fi
 if [[ "$mode" != normal ]]; then
@@ -141,6 +154,12 @@ if [[ "$mode" != normal ]]; then
         archive=gmk70-vial-radio-diagnostic-updater.zip
         extras+=(read_radio.py)
     fi
+    if [[ "$mode" == trial-updater ]]; then
+        archive=gmk70-vial-trial-updater.zip
+        cp docs/ZMK-TRIAL-LAUNCHER.md "$output/TRIAL-LAUNCHER.md"
+        cp tools/firmware-update/trial.py "$output/"
+        extras+=(TRIAL-LAUNCHER.md trial.py)
+    fi
     support=(resident.elf resident.map)
     cat >> "$output/README.txt" <<'EOF'
 
@@ -170,6 +189,19 @@ zuoya_gmk70_vial.hex and .bin are the same normal image at 0x08000000.
 Use the separate gmk70-vial-updater.zip for the resident split updater.
 Do not submit this normal image as application.bin to that updater.
 EOF
+fi
+if [[ "$mode" == trial-updater ]]; then
+    cat >> "$output/README.txt" <<'EOF_TRIAL'
+
+Experimental staging trial receiver (namespace 0x71).
+RUN is disabled: no watchdog/startup handoff backend is implemented or proven.
+This is an updater application, NOT a staging trial binary. Its ordinary update
+package still installs at 0x08002000 and keeps the existing resident unchanged.
+Trial fixtures use separate trial.json/trial.bin packages. Never INSTALL them.
+Use Python 3.12+ and the included dependency-free trial.py to inspect or plan
+trial packages offline. It never opens USB and has no RUN command.
+See TRIAL-LAUNCHER.md for the recovery design and remaining hardware proof.
+EOF_TRIAL
 fi
 if [[ "$mode" == radio-diagnostic-updater ]]; then
     cp docs/RADIO-DIAGNOSTICS.md "$output/README.txt"

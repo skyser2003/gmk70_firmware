@@ -13,3 +13,12 @@ Keep future board definitions, devicetree, Kconfig, keymaps, and upstream versio
 ZMK Studio will be a build variant of this port, using the same board and drivers. It needs physical layout metadata, settings storage, an RPC transport, unlock behavior and enough memory. Enable it on the central half of a split after the underlying hardware port works. USB and BLE Studio transport support require separate validation with this MCU and external radio.
 
 Hardware integration reference: https://zmk.dev/docs/hardware-integration/new-board
+
+## Offline staging fixtures
+
+`make build-zmk-trial-fixtures` builds bare Cortex-M3 reset-return and hang
+programs under `artifacts/zmk/trial-fixtures/`, linked at 0x08020000. They are
+not ZMK builds or normal updater packages. The separate opt-in Vial trial
+receiver and watchdog recovery design are described in
+[ZMK-TRIAL-LAUNCHER.md](../../docs/ZMK-TRIAL-LAUNCHER.md). RUN is disabled until
+watchdog/startup integration is implemented and proven. No build executes them.

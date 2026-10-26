@@ -29,7 +29,10 @@ class VialTests(unittest.TestCase):
                     self.fail(f"Optional radio diagnostic build is missing: {error}")
                 normal = BUILD.prepare_vial(root, "normal")
                 updater = BUILD.prepare_vial(root, "updater")
-            self.assertEqual(len({diagnostic, normal, updater}), 3)
+                trial = BUILD.prepare_vial(root, "trial-updater")
+            self.assertEqual(len({diagnostic, normal, updater, trial}), 4)
+            with self.assertRaisesRegex(ValueError, "Unsupported build mode"):
+                BUILD.prepare(root, "debug", "trial-updater")
             self.assertTrue((diagnostic / "gmk70-source-origins.json").is_file())
 
     def test_independent_pinned_dependency(self) -> None:
