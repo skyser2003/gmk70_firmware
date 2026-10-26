@@ -37,5 +37,10 @@ int main(void) {
     }
     assert(gmk70_rgb_keycode(KC_A) == KC_A);
     assert(gmk70_rgb_keycode(HS_BATQ) == HS_BATQ);
+    // QMK/VIA must retain identity translation for every value, including the
+    // newly exposed Vial-only slots. Only the Vial platform overrides this hook.
+    for (uint32_t code = 0; code <= UINT16_MAX; ++code) {
+        assert(gmk70_platform_keycode(code) == code);
+    }
     puts("Stock keycodes, all device/selector combinations, and shortcuts passed");
 }

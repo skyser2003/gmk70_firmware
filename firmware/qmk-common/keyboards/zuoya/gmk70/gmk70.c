@@ -1133,7 +1133,7 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     // V15 board gate 0x08005420 runs before ordinary key processing. Special
     // controls remain available for reconnecting; report delivery is not gated.
     if (confinfo.devs != DEVS_USB && *md_getp_state() != MD_STATE_CONNECTED && keycode >= 4 && keycode <= 0xA4) return false;
-    uint16_t translated = gmk70_rgb_keycode(keycode);
+    uint16_t translated = gmk70_rgb_keycode(gmk70_platform_keycode(keycode));
     if (!process_gmk70_record(translated, record)) {
         return false;
     }

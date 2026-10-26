@@ -72,6 +72,11 @@ cc "${common_flags[@]}" -D'QMK_KEYBOARD_H="quantum.h"' \
     tests/qmk/stock_keycodes_test.c firmware/qmk-common/keyboards/zuoya/gmk70/stock_keycodes.c \
     -o artifacts/tests/qmk/stock-keycodes
 artifacts/tests/qmk/stock-keycodes
+cc "${common_flags[@]}" -D'QMK_KEYBOARD_H="quantum.h"' -Ifirmware/qmk-vial/compat \
+    tests/qmk/vial_manual_keys_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/stock_keycodes.c \
+    firmware/qmk-vial/compat/manual_keycodes.c -o artifacts/tests/qmk/vial-manual-keys
+artifacts/tests/qmk/vial-manual-keys
 cc "${common_flags[@]}" -Itests/qmk/stock_battery_stubs \
     -include firmware/qmk-common/keyboards/zuoya/gmk70/config.h \
     tests/qmk/stock_battery_test.c firmware/qmk-common/keyboards/zuoya/gmk70/stock_battery.c \

@@ -32,8 +32,9 @@ command; all other messages reach the native Vial handler.
 Project UID: `b691d7277fc88251`, generated once for this port. Physical unlock
 requires holding **Escape + left Shift**, matrix positions `(0,1)` and `(3,1)`,
 as requested by the Vial GUI. Insecure unlock is not enabled. The embedded
-layout is derived from the unchanged stock VIA definition. Custom keycode slots
-cover every value `0x7E00` through `0x7E21`, retaining reserved gaps. Known
+layout is derived from the unchanged stock VIA definition. Stock custom slots
+cover every value `0x7E00` through `0x7E21`, retaining reserved gaps. Vial-only
+manual-control aliases follow at `0x7E22` through `0x7E2E`. Known
 functions have readable labels, and reserved slots are identified by their
 decimal slot number. Existing aliases and numeric keycodes are unchanged.
 The tooltips include `CUSTOM(N)` and the stock code for each renamed entry.
@@ -61,6 +62,12 @@ Slots 17–19 are the stock firmware's undocumented special USB sleep request
 controls; their labels do not imply an idle-timeout setting. Bluetooth 4/5
 labels are retained from the vendor JSON, while the leaflet describes 1–3.
 Undocumented reserved slots are left reserved rather than assigned a function.
+
+All 22 keyboard-specific controls in the leaflet are available together in the
+User tab, including named Windows/Mac mode, Windows-key lock and RGB controls.
+The [complete manual-key reference](VIAL-MANUAL-KEYS.md) lists their stable values,
+standard F/media/navigation keys already available in Vial, and the hardware-only
+operations. The new aliases reuse board handlers and do not rewrite saved maps.
 
 To try these labels without updating firmware, use the maintained `vial.json`
 with desktop Vial's **File → Sideload VIA JSON…** and select the `[sideload]`

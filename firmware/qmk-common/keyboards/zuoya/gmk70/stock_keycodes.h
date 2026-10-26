@@ -35,3 +35,6 @@ bool     gmk70_device_allowed(uint8_t device, uint8_t physical_mode);
 uint16_t gmk70_shortcut_keycode(uint16_t keycode);
 
 uint16_t gmk70_rgb_keycode(uint16_t keycode);
+
+// Platform-specific picker aliases resolve to the existing board controls.
+uint16_t gmk70_platform_keycode(uint16_t keycode);
