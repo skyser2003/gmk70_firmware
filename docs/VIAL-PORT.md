@@ -35,9 +35,13 @@ as requested by the Vial GUI. Insecure unlock is not enabled. The embedded
 layout is derived from the unchanged stock VIA definition. Stock custom slots
 cover every value `0x7E00` through `0x7E21`, retaining reserved gaps. Vial-only
 manual-control aliases follow at `0x7E22` through `0x7E2E`. Known
-functions have readable labels, and reserved slots are identified by their
-decimal slot number. Existing aliases and numeric keycodes are unchanged.
-The tooltips include `CUSTOM(N)` and the stock code for each renamed entry.
+functions have readable labels. Reserved slots 8, 10–16 and 20–25 use empty
+button labels, with `Unused (CUSTOM(N))` tooltips identifying their original
+numbers. Vial still displays these as blank selectable buttons; they are not
+removed from the list. Existing aliases and numeric keycodes are unchanged.
+Tooltips contain only the basic role name and `CUSTOM(N)`. Pairing instructions,
+manual shortcuts and detailed behavior remain in this guide and the manual-key
+reference instead of the picker descriptions.
 
 ### Custom-key label evidence
 
