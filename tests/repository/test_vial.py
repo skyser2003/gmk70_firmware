@@ -77,12 +77,32 @@ class VialTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"0x[0-9A-F]{2}", uid[1])), 8)
         self.assertNotIn("VIAL_INSECURE", config)
         self.assertIn("DYNAMIC_KEYMAP_EEPROM_MAX_ADDR 0xFFB", config)
-        self.assertEqual(len(definition["customKeycodes"]), 0x22)
+        self.assertEqual(len(definition["customKeycodes"]), 0x2F)
         self.assertIn("0x7E19", definition["customKeycodes"][0x19]["title"])
         self.assertEqual(definition["customKeycodes"][7]["shortName"], "Show Charging")
         self.assertEqual(definition["customKeycodes"][9]["shortName"], "Logo Effects")
         self.assertEqual(definition["customKeycodes"][26]["shortName"], "Num/F Toggle")
         self.assertEqual(definition["customKeycodes"][27]["shortName"], "Show Battery")
+
+    def test_manual_controls_keep_stock_slots_and_match_the_picker(self) -> None:
+        definition = json.loads(
+            (PROJECT / "firmware/qmk-vial/keymaps/vial/vial.json").read_text()
+        )
+        header = (PROJECT / "firmware/qmk-vial/compat/manual_keycodes.h").read_text()
+        controls = re.findall(r"(GMK70_\w+)\s*=\s*(0x[0-9A-F]+)", header)
+        self.assertEqual(len(controls), 13)
+        for name, value in controls:
+            code = int(value, 16)
+            self.assertGreaterEqual(code, 0x7E22)
+            entry = definition["customKeycodes"][code - 0x7E00]
+            self.assertEqual(entry["name"], name)
+            self.assertIn(value, entry["title"])
+            self.assertIn(f"CUSTOM({code - 0x7E00})", entry["title"])
+            self.assertNotIn("CUSTOM", entry["shortName"])
+        for slot in (8, *range(10, 17), *range(20, 26)):
+            self.assertIn("Reserved", definition["customKeycodes"][slot]["shortName"])
+        self.assertIn("hold for 3 seconds", definition["customKeycodes"][0]["title"])
+        self.assertIn("hold for 3 seconds", definition["customKeycodes"][5]["title"])
 
     def test_encoder_rotation_controls_and_press(self) -> None:
         keymap = PROJECT / "firmware/qmk-vial/keymaps/vial"

@@ -12,17 +12,17 @@
   "customKeycodes": [
     {
       "name": "BT DEV1",
-      "title": "Bluetooth device 1",
+      "title": "Select Bluetooth device 1; hold for 3 seconds to pair (manual Fn+Q). Requires the Bluetooth position of the hardware selector. CUSTOM(0), 0x7E00.",
       "shortName": "BT DEV1"
     },
     {
       "name": "BT DEV2",
-      "title": "Bluetooth device 2",
+      "title": "Select Bluetooth device 2; hold for 3 seconds to pair (manual Fn+W). Requires the Bluetooth position of the hardware selector. CUSTOM(1), 0x7E01.",
       "shortName": "BT DEV2"
     },
     {
       "name": "BT DEV3",
-      "title": "Bluetooth device 3",
+      "title": "Select Bluetooth device 3; hold for 3 seconds to pair (manual Fn+E). Requires the Bluetooth position of the hardware selector. CUSTOM(2), 0x7E02.",
       "shortName": "BT DEV3"
     },
     {
@@ -37,12 +37,12 @@
     },
     {
       "name": "2.4G",
-      "title": "2.4 GHz",
+      "title": "Select 2.4 GHz; hold for 3 seconds to pair the receiver (manual Fn+R). Requires the 2.4 GHz position of the hardware selector. CUSTOM(5), 0x7E05.",
       "shortName": "2.4G"
     },
     {
       "name": "USB",
-      "title": "USB",
+      "title": "Select USB wired mode; requires the wired position of the hardware selector. CUSTOM(6), 0x7E06.",
       "shortName": "USB"
     },
     {
@@ -179,6 +179,71 @@
       "name": "CUSTOM(33)",
       "title": "Send GUI+E (File Explorer on Windows); the action depends on the host OS. CUSTOM(33), 0x7E21: MOR_6.",
       "shortName": "GUI+E"
+    },
+    {
+      "name": "GMK70_WINDOWS_MODE",
+      "title": "Use the Windows base layout; manual Fn+A. CUSTOM(34), 0x7E22.",
+      "shortName": "Windows Mode"
+    },
+    {
+      "name": "GMK70_MAC_MODE",
+      "title": "Use the Mac base layout; manual Fn+S. CUSTOM(35), 0x7E23.",
+      "shortName": "Mac Mode"
+    },
+    {
+      "name": "GMK70_WINDOWS_LOCK",
+      "title": "Toggle the Windows-key lock; manual Fn+Win. CUSTOM(36), 0x7E24.",
+      "shortName": "Windows Lock"
+    },
+    {
+      "name": "GMK70_RGB_TOGGLE",
+      "title": "Toggle key backlighting; manual Fn+X. CUSTOM(37), 0x7E25.",
+      "shortName": "RGB On/Off"
+    },
+    {
+      "name": "GMK70_RGB_EFFECT_NEXT",
+      "title": "Cycle key-backlight effects; manual Fn+Tab. CUSTOM(38), 0x7E26.",
+      "shortName": "RGB Effect"
+    },
+    {
+      "name": "GMK70_RGB_BRIGHTNESS_UP",
+      "title": "Increase key-backlight brightness; manual Fn+Up. CUSTOM(39), 0x7E27.",
+      "shortName": "Brightness +"
+    },
+    {
+      "name": "GMK70_RGB_BRIGHTNESS_DN",
+      "title": "Decrease key-backlight brightness; manual Fn+Down. CUSTOM(40), 0x7E28.",
+      "shortName": "Brightness -"
+    },
+    {
+      "name": "GMK70_RGB_SPEED_UP",
+      "title": "Increase key-backlight animation speed; manual Fn+Right. CUSTOM(41), 0x7E29.",
+      "shortName": "Effect Speed +"
+    },
+    {
+      "name": "GMK70_RGB_SPEED_DN",
+      "title": "Decrease key-backlight animation speed; manual Fn+Left. CUSTOM(42), 0x7E2A.",
+      "shortName": "Effect Speed -"
+    },
+    {
+      "name": "GMK70_RGB_HUE_UP",
+      "title": "Increase key-backlight hue; manual Fn+Right Bracket. CUSTOM(43), 0x7E2B.",
+      "shortName": "Hue +"
+    },
+    {
+      "name": "GMK70_RGB_HUE_DN",
+      "title": "Decrease key-backlight hue; manual Fn+Left Bracket. CUSTOM(44), 0x7E2C.",
+      "shortName": "Hue -"
+    },
+    {
+      "name": "GMK70_RGB_SAT_UP",
+      "title": "Increase key-backlight saturation; manual Fn+Quote. CUSTOM(45), 0x7E2D.",
+      "shortName": "Saturation +"
+    },
+    {
+      "name": "GMK70_RGB_SAT_DN",
+      "title": "Decrease key-backlight saturation; manual Fn+Semicolon. CUSTOM(46), 0x7E2E.",
+      "shortName": "Saturation -"
     }
   ],
   "layouts": {

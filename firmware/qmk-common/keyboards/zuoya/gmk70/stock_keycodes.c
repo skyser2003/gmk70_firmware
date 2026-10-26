@@ -4,6 +4,10 @@
 #include "module.h"
 #include "wls/wls.h"
 
+__attribute__((weak)) uint16_t gmk70_platform_keycode(uint16_t keycode) {
+    return keycode;
+}
+
 uint8_t gmk70_wireless_device(uint16_t keycode) {
     if (keycode >= KC_BT1 && keycode <= KC_BT5) {
         return DEVS_BT1 + (keycode - KC_BT1);
