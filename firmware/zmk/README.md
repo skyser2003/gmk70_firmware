@@ -2,6 +2,10 @@
 
 Reserved for future investigation; no working GMK70 ZMK port is claimed. `make build-zmk` intentionally exits with an explanatory error.
 
+The [GMK70 feasibility investigation](../../docs/ZMK-FEASIBILITY.md) records the
+reviewed upstream versions, missing WB32 support, existing hardware mapping,
+radio options, memory/update constraints and recommended USB-first approach.
+
 ZMK is a separate firmware stack built on Zephyr, not another VIA-style UI for the QMK binary. Board/SoC integration, GPIO and matrix configuration, split transport, power management, and the external radio interface need a supported implementation. The current WB32FQ95 controller and vendor radio do not become ZMK-compatible by converting a keymap or JSON file.
 
 Keep future board definitions, devicetree, Kconfig, keymaps, and upstream version records here within this repository. The [multi-platform layout plan](../../docs/FIRMWARE-ARCHITECTURE.md) uses a local Zephyr module plus a pinned West dependency manifest and frozen revisions, with upstream checkouts in an ignored workspace. Generated outputs belong under `artifacts/zmk/`. Share hardware evidence from `../../docs/`; do not import a duplicate GMK70 project or copy QMK C drivers as if they were Zephyr drivers.
