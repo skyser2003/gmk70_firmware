@@ -2,6 +2,11 @@
 rsource "drivers/gpio/Kconfig"
 rsource "drivers/usb/device/Kconfig"
 
+if BOARD_GMK70_WIRED
+rsource "drivers/kscan/Kconfig"
+rsource "update/Kconfig"
+endif
+
 config GMK70_TRIAL_MAIN_RETURN
 	bool "Experimental software-reset proof after successful ZMK main"
 	depends on BOARD_GMK70_RIGHT

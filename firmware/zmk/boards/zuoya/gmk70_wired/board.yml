@@ -1,0 +1,6 @@
+board:
+  name: gmk70_wired
+  full_name: ZUOYA GMK70 experimental unlocked wired updater
+  vendor: zuoya
+  socs:
+    - name: wb32fq95

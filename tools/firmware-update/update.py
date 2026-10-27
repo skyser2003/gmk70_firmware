@@ -13,6 +13,9 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Protocol, TypedDict, cast
 
+ZMK_BOOT_SHA256 = "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a"
+ZMK_BOOT_CRC = 1770733249
+
 
 class Manifest(TypedDict):
     format: int
@@ -33,37 +36,55 @@ class Package:
     image: bytes
     manifest: Manifest
 
-    @classmethod
-    def load(cls, directory: Path) -> "Package":
-        manifest = cast(Manifest, json.loads((directory / "update.json").read_text()))
-        image = (directory / "application.bin").read_bytes()
-        resident = (directory / "resident.bin").read_bytes()
+    def validate_application(self) -> None:
+        """Also protect programmatic callers before any device request."""
+        manifest = self.manifest
+        image = self.image
         if (
-            manifest["format"] != 1
+            manifest["profile"] not in ("debug", "release", "vial", "zmk")
+            or manifest["format"] != 1
             or manifest["board"] != "zuoya/gmk70"
             or manifest["mcu"] != "WB32FQ95-256K"
-            or manifest["profile"] not in ("debug", "release", "vial")
             or manifest["app_address"] != 0x08002000
             or not 1024 <= len(image) <= 0x1E000
             or len(image) % 4
             or manifest["app_size"] != len(image)
             or manifest["app_crc"] != zlib.crc32(image)
             or manifest["app_sha256"] != hashlib.sha256(image).hexdigest()
-            or not 64 <= len(resident) <= 0x2000
         ):
-            raise ValueError("Invalid or corrupt GMK70 updater package")
-        boot = resident.ljust(0x2000, b"\xff")
+            raise ValueError("Invalid or corrupt application package")
         stack, reset = struct.unpack_from("<II", image)
+        if not (
+            0x20000000 < stack <= 0x20007000
+            and stack % 8 == 0
+            and reset & 1
+            and 0x08002000 <= reset < 0x08002000 + len(image)
+        ):
+            raise ValueError(
+                "Wrong application link address; staging cannot be installed"
+            )
+        if manifest["profile"] == "zmk" and (
+            manifest["boot_sha256"] != ZMK_BOOT_SHA256
+            or manifest["boot_crc"] != ZMK_BOOT_CRC
+        ):
+            raise ValueError("ZMK requires the exact reviewed resident installer")
+
+    @classmethod
+    def load(cls, directory: Path) -> "Package":
+        manifest = cast(Manifest, json.loads((directory / "update.json").read_text()))
+        image = (directory / "application.bin").read_bytes()
+        resident = (directory / "resident.bin").read_bytes()
+        package = cls(image, manifest)
+        package.validate_application()
+        if not 64 <= len(resident) <= 0x2000:
+            raise ValueError("Invalid resident size")
+        boot = resident.ljust(0x2000, b"\xff")
         if (
             manifest["boot_crc"] != zlib.crc32(boot)
             or manifest["boot_sha256"] != hashlib.sha256(boot).hexdigest()
-            or not 0x20000000 < stack <= 0x20007000
-            or stack % 8
-            or not reset & 1
-            or not 0x08002000 <= reset < 0x08002000 + len(image)
         ):
-            raise ValueError("Wrong installer or application link address")
-        return cls(image, manifest)
+            raise ValueError("Wrong resident installer identity")
+        return package
 
 
 class Op(IntEnum):
@@ -288,6 +309,7 @@ class Updater:
         return reply
 
     def install(self, target: int, package: Package) -> None:
+        package.validate_application()
         before = self.inspect(target, package)
         if before.state != 0:
             raise RuntimeError(
@@ -352,9 +374,10 @@ class Updater:
         )
 
     def install_both(self, package: Package) -> None:
-        if package.manifest["profile"] not in ("debug", "vial"):
+        package.validate_application()
+        if package.manifest["profile"] not in ("debug", "vial", "zmk"):
             raise ValueError(
-                "The left half must retain USB update support; use a debug or Vial updater package for --target both"
+                "The left half must retain USB update support; use a debug, Vial or ZMK updater package for --target both"
             )
         # Check both before the first write; install/verify right before left.
         self.inspect(0, package)
@@ -384,10 +407,10 @@ def main() -> None:
     if (
         not args.inspect
         and args.target != "right"
-        and package.manifest["profile"] not in ("debug", "vial")
+        and package.manifest["profile"] not in ("debug", "vial", "zmk")
     ):
         parser.error(
-            "Left updates require debug or Vial updater firmware so completion can be verified over USB"
+            "Left updates require debug, Vial or ZMK updater firmware so completion can be verified over USB"
         )
     link = UsbLink()
     try:

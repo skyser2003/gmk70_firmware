@@ -1,4 +1,55 @@
-# GMK70 ZMK staging trials
+# GMK70 ZMK wired development and staging trials
+
+## Experimental permanent wired updater
+
+The universal `gmk70_wired` board runs the pinned ZMK application with a combined
+10-by-9 matrix, the stock physical key order and Fn at left row4/column2. B9
+selects the half; C14/C15 select wired mode. Keyboard HID0 and updater HID1 use
+`342D:E491`, manufacturer `HS`, and the updater's `FF60:61` usage. The native
+live worker services the permanent watchdog and deferred updater. This is an
+explicitly unlocked development build; it is not a normal release asset.
+
+```sh
+make build-zmk-wired-updater
+make build-zmk-wired-update-test
+make build-zmk-wired-qualification
+make test-zmk
+```
+
+Permanent A/B images link at `0x08002000`, retaining the resident and all saved
+EEPROM. Their only configuration difference is the product string:
+`GMK70 ZMK Wired` versus `GMK70 ZMK Wired Update Test`. Each uses its own
+`.work/zmk/<variant>/updater/` cache and `artifacts/zmk/<variant>/` output.
+Packaging requires the existing reviewed
+`artifacts/qmk/debug-updater/resident.bin`: its **padded** 8192-byte SHA256 must be
+`be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a`
+and CRC32 `1770733249`. ZMK never rebuilds this prerequisite. Application-only
+packages have `profile=zmk` and load through `tools/firmware-update/update.py`;
+there is no generated direct-USB installer.
+
+Qualification links at `0x08020000`, identifies as `GMK70 ZMK Wired Qualification`,
+never feeds the inherited watchdog, and permits no running-code write or durable
+install. It emits only `left/` and `right/` target-specific `TrialPackage` outputs;
+it must enter through the separate trial workflow. No permanent target wraps main.
+
+`tools/firmware-update/read_health.py --target left --duration 60 --output <path>`
+collects read-only runtime evidence; use `--target both` after both halves run
+ZMK. Run it from the firmware-update uv project/environment after loading
+`scripts/project.sh`. It requires advancing uptime/feed calls for at least 60
+seconds after uptime exceeds 2 seconds, with completed samples at most 2 seconds
+apart per half. Transport and relay retries are counted separately; no reconnect
+or reset is attempted. Zero matrix events means unavailable, not physical input
+evidence. `--inspect-only --qualification` reads bounded staging identity/health
+without claiming permanent watchdog service. The callable `HealthReader` accepts
+an existing link so qualification scripts can share one HID handle.
+
+Radio, RGB, encoder rotation, power saving, Studio and persistent ZMK settings
+remain outside this wired milestone. Building/native testing cannot establish
+silicon timing, USB/UART behavior or physical key input. An inherited permanent
+IWDG also makes arbitrary warm rollback to frozen Vial unqualified; retain the
+separate recovery procedure and do not fabricate a trial record.
+
+## Existing staging trials
 
 `make build-zmk` builds the actual pinned `dependencies/zmk/app` for
 `gmk70_left`, using this repository's WB32FQ95 SoC, GPIO and USB integration.

@@ -1,6 +1,7 @@
-"""Validate a real ZMK ARM ELF against the resident staging and retained RAM contract."""
+"""Validate a real ZMK ARM ELF against application/staging and retained RAM contracts."""
 
 import argparse
+import hashlib
 import json
 import struct
 import subprocess
@@ -12,13 +13,17 @@ RAM_START = 0x20000040
 RAM_END = 0x20006FC0
 
 
-def validate_vectors(image: bytes) -> dict[str, str | int]:
+def validate_vectors(
+    image: bytes, flash_start: int = FLASH_START
+) -> dict[str, str | int]:
+    if flash_start not in (0x08002000, FLASH_START):
+        raise ValueError("Unsupported image slot")
     if len(image) < 8 or len(image) > 120 * 1024:
         raise ValueError("Staging image must contain vectors and fit within 120 KiB")
     stack, reset = struct.unpack_from("<II", image)
     if not RAM_START < stack <= RAM_END or stack % 8:
         raise ValueError("Initial stack overlaps reserved or unavailable RAM")
-    if not reset & 1 or not FLASH_START <= reset & ~1 < FLASH_START + len(image):
+    if not reset & 1 or not flash_start <= reset & ~1 < flash_start + len(image):
         raise ValueError("Reset vector is outside the staging image")
     return {"stack": f"0x{stack:08x}", "reset": f"0x{reset:08x}", "bytes": len(image)}
 
@@ -48,7 +53,11 @@ def validate_elf(data: bytes, reset: int) -> None:
             raise ValueError("ELF initialized data loads from outside staging")
 
 
-def check(elf: Path, image: Path, board: str = "gmk70_left") -> dict[str, str | int]:
+def check(
+    elf: Path, image: Path, board: str = "gmk70_left", variant: str | None = None
+) -> dict[str, str | int]:
+    if board == "gmk70_wired":
+        return check_wired(elf, image, variant)
     if board not in ("gmk70_left", "gmk70_right"):
         raise ValueError(f"Unsupported board {board}")
     result = validate_vectors(image.read_bytes())
@@ -80,6 +89,166 @@ def check(elf: Path, image: Path, board: str = "gmk70_left") -> dict[str, str | 
     return result
 
 
+def validate_wired_elf(data: bytes, image: bytes, base: int, image_end: int) -> None:
+    """Check the entire physical load image, including initialized SRAM data."""
+    vectors = validate_vectors(image, base)
+    if not 1024 <= len(image) <= 0x1E000 or len(image) % 4:
+        raise ValueError("Wired image must satisfy updater size/alignment contract")
+    for index, vector in enumerate(struct.unpack_from("<15I", image, 4)):
+        if vector == 0 and index > 2:
+            continue
+        if not vector & 1 or not base + 64 <= vector & ~1 <= base + len(image) - 2:
+            raise ValueError("Core vector points outside image code")
+    if image_end != base + len(image):
+        raise ValueError("Complete image-end does not match binary load range")
+    if len(data) < 52 or data[:7] != b"\x7fELF\x01\x01\x01":
+        raise ValueError("Expected little endian ELF32")
+    if struct.unpack_from("<H", data, 18)[0] != 40:
+        raise ValueError("Expected ARM ELF")
+    entry, phoff = struct.unpack_from("<II", data, 24)
+    entsize, count = struct.unpack_from("<HH", data, 42)
+    if (
+        entry != int(str(vectors["reset"]), 16)
+        or entsize < 32
+        or phoff + entsize * count > len(data)
+    ):
+        raise ValueError("Wrong entry or truncated program headers")
+    start, end = base + len(image), base
+    shoff = struct.unpack_from("<I", data, 32)[0]
+    shentsize, shnum = struct.unpack_from("<HH", data, 46)
+    if shnum and (shentsize < 40 or shoff + shentsize * shnum > len(data)):
+        raise ValueError("Truncated ELF section headers")
+    sections: list[tuple[int, int, int]] = []
+    matched: set[tuple[int, int, int]] = set()
+    for index in range(shnum):
+        _, kind, flags, address, offset, size = struct.unpack_from(
+            "<6I", data, shoff + shentsize * index
+        )
+        if flags & 2 and kind != 8 and size:  # SHF_ALLOC, excluding SHT_NOBITS
+            if offset + size > len(data):
+                raise ValueError("Truncated initialized ELF section")
+            sections.append((address, offset, size))
+    for index in range(count):
+        kind, offset, address, load, filesz, memsz = struct.unpack_from(
+            "<6I", data, phoff + entsize * index
+        )
+        if kind != 1 or not memsz:
+            continue
+        if filesz > memsz or offset + filesz > len(data):
+            raise ValueError("Truncated ELF load segment")
+        if not (
+            base <= address <= address + memsz <= base + 0x1E000
+            or RAM_START <= address <= address + memsz <= RAM_END
+        ):
+            raise ValueError("ELF segment overlaps protected memory")
+        if filesz:
+            if not base <= load < load + filesz <= base + len(image):
+                raise ValueError("ELF initialized data loads outside image slot")
+            if sections:
+                # Zephyr objcopy fills inter-section alignment gaps with FF;
+                # ELF program headers contain zero padding there. Compare all
+                # actual initialized sections, never mistake padding for data.
+                for section_address, section_offset, size in sections:
+                    if address <= section_address < address + filesz:
+                        relative = section_address - address
+                        if (
+                            relative + size > filesz
+                            or data[section_offset : section_offset + size]
+                            != image[
+                                load - base + relative : load - base + relative + size
+                            ]
+                        ):
+                            raise ValueError(
+                                "ELF initialized section bytes differ from binary"
+                            )
+                        matched.add((section_address, section_offset, size))
+            elif (
+                data[offset : offset + filesz]
+                != image[load - base : load - base + filesz]
+            ):
+                raise ValueError("ELF load bytes differ from binary")
+            start, end = min(start, load), max(end, load + filesz)
+    if start != base or end != image_end:
+        raise ValueError("ELF load extent differs from complete image-end")
+    if matched != set(sections):
+        raise ValueError("Initialized ELF section is missing from the load segments")
+
+
+def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | int]:
+    if variant not in ("wired-updater", "wired-update-test", "wired-qualification"):
+        raise ValueError("Universal wired board requires explicit supported variant")
+    qualification = variant == "wired-qualification"
+    base = FLASH_START if qualification else 0x08002000
+    payload = image.read_bytes()
+    result = validate_vectors(payload, base)
+    lines = subprocess.check_output(
+        ["arm-none-eabi-nm", "--defined-only", str(elf)], text=True
+    )
+    symbols = {
+        parts[-1]: int(parts[0], 16)
+        for line in lines.splitlines()
+        if len(parts := line.split()) == 3
+    }
+    for name in (
+        "main",
+        "__gmk_image_end",
+        "__rom_region_start",
+        "_flash_used",
+        "_image_ram_end",
+        "zmk_keymap_position_state_changed",
+        "zmk_usb_get_conn_state",
+        "wb32_usb_clock_enable",
+        "soc_early_init_hook",
+        "gmk_flash_page",
+        "gmk_running_size",
+        "gmk_zmk_watchdog_init",
+        "gmk_zmk_receiver_step",
+        "gmk_zmk_raw_hid_init",
+        "gmk_wired_scan",
+        "gmk_wired_update",
+        "_k_thread_data_gmk_scan_thread",
+        "_k_thread_data_gmk_serial_thread",
+        "_k_thread_data_update_worker",
+    ):
+        if name not in symbols:
+            raise ValueError(f"Missing native ZMK wired symbol {name}")
+    if "__wrap_main" in symbols:
+        raise ValueError("Permanent/qualification wired target must not wrap main")
+    if not qualification and (
+        "gmk_trial_packet_valid" not in symbols
+        or "gmk_zmk_watchdog_feed" not in symbols
+    ):
+        raise ValueError("Missing permanent watchdog/peer validator")
+    if qualification and (
+        "gmk_zmk_watchdog_feed" in symbols or "gmk_trial_packet_valid" in symbols
+    ):
+        raise ValueError("Qualification retained permanent feed/peer trial code")
+    if any(
+        name.startswith("gmk_trial_") and name != "gmk_trial_packet_valid"
+        for name in symbols
+    ):
+        raise ValueError("Common trial backend survived section garbage collection")
+    if (
+        symbols["__rom_region_start"] != base
+        or symbols["__gmk_image_end"] != base + symbols["_flash_used"]
+    ):
+        raise ValueError("Wrong full-image checksum linker contract")
+    validate_wired_elf(elf.read_bytes(), payload, base, symbols["__gmk_image_end"])
+    result.update(
+        application="dependencies/zmk/app",
+        board="gmk70_wired",
+        variant=variant,
+        load_address=base,
+        sha256=hashlib.sha256(payload).hexdigest(),
+        image_end=symbols["__gmk_image_end"],
+        ram_end=symbols["_image_ram_end"],
+        development="EXPERIMENTAL unlocked",
+        trial_backend="absent",
+        main_wrapper="absent",
+    )
+    return result
+
+
 def validate_main_wrapping(disassembly: str) -> None:
     """Require startup to invoke the wrapper and wrapper to invoke actual ZMK main."""
     import re
@@ -98,13 +267,21 @@ def main() -> None:
     parser.add_argument("elf", type=Path)
     parser.add_argument("image", type=Path)
     parser.add_argument(
-        "--board", choices=("gmk70_left", "gmk70_right"), default="gmk70_left"
+        "--board",
+        choices=("gmk70_left", "gmk70_right", "gmk70_wired"),
+        default="gmk70_left",
+    )
+    parser.add_argument(
+        "--variant",
+        choices=("wired-updater", "wired-update-test", "wired-qualification"),
     )
     args = parser.parse_args()
     try:
-        print(json.dumps(check(args.elf, args.image, args.board), indent=2))
+        print(
+            json.dumps(check(args.elf, args.image, args.board, args.variant), indent=2)
+        )
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        parser.exit(1, f"ZMK staging check failed: {error}\n")
+        parser.exit(1, f"ZMK image check failed: {error}\n")
 
 
 if __name__ == "__main__":

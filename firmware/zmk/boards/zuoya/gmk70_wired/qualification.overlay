@@ -1,0 +1,2 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+&flash0 { reg = <0x08020000 0x1e000>; };

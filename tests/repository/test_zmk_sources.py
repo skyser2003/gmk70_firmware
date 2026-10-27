@@ -163,7 +163,7 @@ class ZmkImageTests(unittest.TestCase):
     def test_build_routes_explicit_right_without_changing_left_default(self) -> None:
         build = (PROJECT / "scripts/build_zmk.sh").read_text()
         self.assertIn("${1:-left-trial}", build)
-        self.assertIn('"$variant" == right-trial', build)
+        self.assertIn("left-trial|right-trial)", build)
         self.assertIn("artifacts/zmk/$variant", build)
         self.assertIn('--board "$board"', build)
 
