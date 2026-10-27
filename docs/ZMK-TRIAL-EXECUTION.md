@@ -101,22 +101,34 @@ checksummed software-reset intent before any GPIO callback. Regression tests fai
 with the previous ordering and pass after correction. Ordinary boots and watchdog
 returns now take a path with no GPIO accesses.
 
-The right requires the documented factory bootloader entry for recovery because
-its application cannot receive relay commands. The prepared recovery restores the
-already verified published unlocked application at 0x08002000. It first checks the
-resident and failed-image hashes, then compares complete before/after flash images,
-requiring every byte outside the application payload to remain unchanged. It never
-requests protection changes or a chip erase. Physical bootloader entry is pending. Direct USB exposed neither Vial nor DFU
-in normal mode, standalone mode, or after reconnecting USB in standalone mode.
-The user currently lacks a pad-bridging tool. The working left application was
-not replaced. The corrected backend is built (95,188 bytes, SHA256
+Recovery completed through the documented factory bootloader entry on October 27.
+Windows initially detected `342D:DFA0` with missing-driver code 28. The user
+installed the driver manually; no driver installer was launched by the agent.
+The recovery first verified the resident and failed-image hashes and erased
+ordinary commit page, then wrote only the known-good published unlocked
+application at 0x08002000. All 262,144 bytes were read back and matched the exact
+expected image; every byte outside the 91,236-byte application payload remained
+unchanged, including the resident, staging and metadata. No protection change,
+chip erase or reset command was requested by the recovery tool.
+
+After the user restored normal wiring and left USB, both halves reported IDLE,
+application size 91,236, application CRC32 1962194226 and resident CRC32
+1770733249. Native Vial was unlocked, and all 263 configuration getter responses
+through the left USB master matched the saved backup without configuration writes.
+Evidence is recorded in
+[`2026-10-27-right-unlocked-recovery.json`](../artifacts/recovery/2026-10-27-right-unlocked-recovery.json)
+and
+[`2026-10-27-recovery-running-verification.json`](../artifacts/recovery/2026-10-27-recovery-running-verification.json).
+
+The corrected backend is built (95,188 bytes, SHA256
 `528fc71bdf0f9cc77f8b2c64a06c6c0da8883a78f56221ecd74185b065d96344`),
 but has not been installed. Full `make test`, `make check-tools`, locked and
 unlocked trial builds and linked ELF checks pass for the correction. Earlier
 QMK release/debug normal/updater and Vial normal/updater builds also passed.
 
-Live watchdog-only, return and hang execution remain unproven. Coordinated both-half launch, power-interruption trials,
-long-running ZMK firmware and native ZMK split remain later work.
+Live watchdog-only, return and hang execution remain unproven. Coordinated
+both-half launch, power-interruption trials, long-running ZMK firmware and native
+ZMK split remain later work.
 
 Hardware source: [WB32FQ95 reference manual](https://www.westberrytech.com/uploads/file/WB32FQ95xx/EN_RM2905025_WB32FQ95xx_V01.pdf),
 particularly sections 7.1, 7.2.12, 7.3.16/24/28, 18 and 27.4.2, plus the pinned

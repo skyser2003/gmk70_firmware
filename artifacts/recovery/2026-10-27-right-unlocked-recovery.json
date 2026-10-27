@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "at": "2026-10-27T15:57:55.753778+00:00",
+  "application_sha256": "4365bca28938d27615d84c68ec1adb0b70d7af136eb0476c2400d670a58c23b8",
+  "application_bytes": 91236,
+  "resident_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a",
+  "entire_flash_verified": true,
+  "outside_application_unchanged": true,
+  "reset_requested": false,
+  "protection_changed": false,
+  "before_sha256": "433bfea24eca409f94af0aebd7d81613145a1a6db2d59f945198b4ad76a12214",
+  "after_sha256": "f9b4c725058c868f02b13541c5738995f60e916c387dfaab8e145276f8467abe"
+}

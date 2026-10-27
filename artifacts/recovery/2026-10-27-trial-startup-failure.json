@@ -34,7 +34,7 @@
     }
   },
   "software_recovery_available": false,
-  "physical_recovery_pending": true,
+  "physical_recovery_pending": false,
   "fixed_backend": {
     "installed": false,
     "app_size": 95188,
@@ -42,5 +42,12 @@
     "app_sha256": "528fc71bdf0f9cc77f8b2c64a06c6c0da8883a78f56221ecd74185b065d96344",
     "offline_tests_pass": true
   },
-  "updated_at": "2026-10-27T14:46:02.455253+00:00"
+  "updated_at": "2026-10-27T16:01:07.960626+00:00",
+  "resolution": {
+    "status": "recovered",
+    "at": "2026-10-27T16:01:07.960626+00:00",
+    "flash_verification": "artifacts/recovery/2026-10-27-right-unlocked-recovery.json",
+    "running_verification": "artifacts/recovery/2026-10-27-recovery-running-verification.json",
+    "both_halves_running_published_unlocked_updater": true
+  }
 }
