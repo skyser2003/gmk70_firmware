@@ -137,13 +137,18 @@ The [execution continuation](ZMK-TRIAL-EXECUTION.md) now implements the ABI 2
 pre-CRT launcher and watchdog backend, with the explicitly requested unlocked
 Vial release variant. Consult that document for current validation status.
 
-The latest runtime checkpoint is also in that execution document. A left-only
-runtime profile retained normal Vial startup and disabled staging RUN and all
-right-side qualification. Its DWT/software fallback returned automatically;
-the IWDG-dependent probe did not return USB and required one left USB reconnect.
-The left was then restored to the exact published unlocked0.1.7 release. Both
-halves, both resident CRCs and all263native saved-configuration getters verify;
-the right was not flashed during this checkpoint. Do not reinstall either failed
-trial candidate or repeat WATCHDOG/RUN as the next step. Capture watchdog setup
-progress and CPU fault state offline first; the failing MMIO/reset stage remains
-unknown. Preserve the user's preference to avoid right-only physical recovery.
+The latest checkpoint is the [first actual left ZMK trial](ZMK-LEFT-FIRST-TRIAL.md).
+Pinned ZMK was flashed into left staging, enumerated as a USB keyboard, and
+returned automatically to Vial. The full launcher also passed watchdog, staging
+return and staging hang tests. The left now runs the experimental unlocked trial
+updater; the right remains on published unlocked Vial 0.1.7. Both residents and
+all 263 saved-configuration getters verify. No right firmware write or physical
+recovery was needed during this sequence.
+
+Current sources are on `codex/zmk-trial-launcher`. Maintained ZMK integration is
+under `firmware/zmk/`, with exact dependencies in the root lockfile and explicit
+`make setup-zmk`. `make build-zmk` builds the real application without device
+operations. This is a bounded left USB trial; physical input, right-side launch,
+native split/radio and permanent ZMK installation remain future work. Use the
+qualified left staging path for further development and preserve the user's
+preference to avoid right-only physical recovery.

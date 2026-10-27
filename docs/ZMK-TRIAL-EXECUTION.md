@@ -1,11 +1,17 @@
 # Staging execution and watchdog recovery
 
+Current result: the [first actual left ZMK trial](ZMK-LEFT-FIRST-TRIAL.md) was
+flashed, enumerated over USB, and returned automatically to Vial on 2026-10-27.
+The right and both residents are unchanged; all 263 configuration checks pass.
+The earlier checkpoints below explain the implementation and recovery work.
+
 2026-10-27 continuation of the [receiver milestone](ZMK-TRIAL-LAUNCHER.md).
 The user authorized firmware installation and trial execution, then explicitly
 requested a separate permanently unlocked Vial release asset and its installation.
-The standard unlocked updater was added to Vial 0.1.7 and installed on both halves;
-all 263 native configuration getters match the fresh backup. Its application is
-91,236 bytes, CRC32 1962194226. Resident CRC32 remains 1770733249 on both halves.
+The standard unlocked updater was added to Vial 0.1.7 and initially installed on
+both halves. The right still runs that 91,236-byte application, CRC32 1962194226.
+The left now runs the experimental 95,772-byte trial updater, CRC32 44883505.
+Resident CRC32 remains 1770733249 on both halves.
 The normal locked release assets remain available.
 
 The execution backend is confined to the opt-in `trial-updater` and
@@ -38,8 +44,11 @@ Watchdog setup clears the POR-only debug freeze, enables its bus/clock and LSI,
 uses finite readiness waits, verifies prescaler/reload, and starts last. At nominal
 32 kHz LSI, prescaler /32 and reload 2999 give three seconds. This is an engineering
 setting; live return timing includes reset/startup/USB and split pause overhead.
-Setup failure before start returns to Vial. After start there is no refresh path;
-all failures await watchdog reset. The manual states that system reset stops IWDG.
+Setup failure before start returns to Vial. During trial execution there is no
+refresh path; failures await watchdog reset. After a qualified left trial return,
+Vial configures a long recovery period and services a potentially inherited
+watchdog. The observed runtime instability means reset must not be assumed to
+stop it.
 
 Handoff masks interrupts, disables SysTick/NVIC and clears pending/fault state,
 sets staging VTOR, privileged MSP, PSP=0, CONTROL=0, BASEPRI=0, FAULTMASK=0 and
@@ -231,6 +240,8 @@ no housekeeping feeds. Failed recovery setup prevents a new trial request.
 Portable MMIO and native full-adapter tests exercise these gates, current versus
 retained reset flags, and an admitted staging RUN through start and handoff. The
 host now requires 30 seconds of continuously verified INFO and terminal RESULT;
-transport retries restart that observation window. Hardware qualification of
-this revised launcher is the next step; watchdog persistence is still a
-hypothesis until stable return is observed.
+transport retries restart that observation window. The revised launcher
+subsequently passed the pre-CRT probe, staging return and
+hang fixtures, and actual ZMK USB trial with stable Vial return. Exact watchdog
+persistence is still unmeasured; the [live evidence](ZMK-LEFT-FIRST-TRIAL.md)
+records the observed recovery behavior.

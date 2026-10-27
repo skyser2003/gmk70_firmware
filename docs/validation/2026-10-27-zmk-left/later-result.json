@@ -1,0 +1,21 @@
+{
+  "at": "2026-10-27T17:57:06.388427+00:00",
+  "read_only": true,
+  "target": "left",
+  "identity": {
+    "size": 95772,
+    "crc": 44883505,
+    "abi": 2,
+    "boot_crc": 1770733249,
+    "role": 3
+  },
+  "result": {
+    "action": 1,
+    "phase": 3,
+    "reset_flags": 36,
+    "size": 27668,
+    "crc": 2635560326,
+    "role": 3
+  },
+  "retries": 0
+}

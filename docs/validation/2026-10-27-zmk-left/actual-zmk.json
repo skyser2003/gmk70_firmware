@@ -1,0 +1,99 @@
+{
+  "trial": {
+    "success": true,
+    "action": "run",
+    "target": "left",
+    "expected_reset": "watchdog",
+    "started_at": "2026-10-27T17:52:08.495481+00:00",
+    "finished_at": "2026-10-27T17:52:57.485559+00:00",
+    "elapsed_seconds": 49.0,
+    "stable_seconds": 30.264999999999418,
+    "capabilities": {
+      "bits": 7,
+      "fallback_ms": 0,
+      "ram_start": 536870976,
+      "ram_end": 536899520
+    },
+    "before": {
+      "size": 95772,
+      "crc": 44883505,
+      "abi": 2,
+      "boot_crc": 1770733249,
+      "role": 3
+    },
+    "after": {
+      "size": 95772,
+      "crc": 44883505,
+      "abi": 2,
+      "boot_crc": 1770733249,
+      "role": 3
+    },
+    "result": {
+      "action": 1,
+      "phase": 3,
+      "reset_flags": 36,
+      "size": 27668,
+      "crc": 2635560326,
+      "role": 3
+    },
+    "trace": {},
+    "package_sha256": "5f446dd208e84c27b36c05a3823812a1c542814f9359357f29cdf404932b5045",
+    "retries": 0
+  },
+  "started_utc": "2026-10-27T17:52:08.344024+00:00",
+  "finished_utc": "2026-10-27T17:52:57.487080+00:00",
+  "source_commit": "47f5f3f",
+  "zmk_commit": "4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85",
+  "zephyr_commit": "10ba6d0cb38bc3d258775d27982f707599320085",
+  "image": {
+    "format": "gmk70-staging-trial-v2",
+    "board": "zuoya/gmk70",
+    "mcu": "WB32FQ95-256K",
+    "target": "left",
+    "load_address": 134348800,
+    "ram_start": 536870976,
+    "ram_end": 536899520,
+    "size": 27668,
+    "crc32": 2635560326,
+    "sha256": "5f446dd208e84c27b36c05a3823812a1c542814f9359357f29cdf404932b5045",
+    "recovery": "no-feed-iwdg-v1"
+  },
+  "unique_usb_identity_absent_before_launch": true,
+  "usb_observations": [
+    {
+      "utc": "2026-10-27T17:52:08.353072+00:00",
+      "devices": []
+    },
+    {
+      "utc": "2026-10-27T17:52:19.237791+00:00",
+      "devices": [
+        {
+          "vendor_id": 7504,
+          "product_id": 24926,
+          "manufacturer_string": "GMK70 experimental",
+          "product_string": "GMK70 Left ZMK Trial",
+          "usage_page": 1,
+          "usage": 6,
+          "interface_number": 0
+        },
+        {
+          "vendor_id": 7504,
+          "product_id": 24926,
+          "manufacturer_string": "GMK70 experimental",
+          "product_string": "GMK70 Left ZMK Trial",
+          "usage_page": 12,
+          "usage": 1,
+          "interface_number": 0
+        }
+      ]
+    },
+    {
+      "utc": "2026-10-27T17:52:21.670794+00:00",
+      "devices": []
+    }
+  ],
+  "usb_monitor_errors": [],
+  "actual_zmk_keyboard_usb_observed": true,
+  "right_firmware_writes": 0,
+  "resident_writes": 0
+}

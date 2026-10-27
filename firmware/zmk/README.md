@@ -6,6 +6,11 @@ This is an experimental left-side staging trial. Hardware execution and USB
 operation require the separate qualification workflow; compiling the port does
 not establish those results.
 
+The [2026-10-27 live qualification](../../docs/ZMK-LEFT-FIRST-TRIAL.md) flashed this
+left trial, observed its unique keyboard/consumer USB identity, and verified
+automatic watchdog return to Vial. Physical key input and both-half ZMK operation
+remain untested. The right application and both residents were preserved.
+
 Initialize sources and build tools explicitly:
 
 ```sh

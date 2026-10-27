@@ -1,5 +1,9 @@
 # GMK70 ZMK feasibility
 
+Historical research assessment. The [2026-10-27 continuation](ZMK-LEFT-FIRST-TRIAL.md)
+now builds and runs an actual pinned left USB ZMK trial. The investigation below
+records the earlier evidence and remaining split/radio work.
+
 Investigated 2026-10-26, against repository revision
 `91131f728b3c97a1ff1f80305719c7fa534fba68`. This is a source-based feasibility
 assessment. No ZMK port, board scaffold, West workspace, dependency change,

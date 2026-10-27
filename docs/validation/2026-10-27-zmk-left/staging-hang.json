@@ -1,0 +1,41 @@
+{
+  "success": true,
+  "action": "run",
+  "target": "left",
+  "expected_reset": "watchdog",
+  "started_at": "2026-10-27T17:51:04.358803+00:00",
+  "finished_at": "2026-10-27T17:51:44.259223+00:00",
+  "elapsed_seconds": 39.89100000000326,
+  "stable_seconds": 30.203000000008615,
+  "capabilities": {
+    "bits": 7,
+    "fallback_ms": 0,
+    "ram_start": 536870976,
+    "ram_end": 536899520
+  },
+  "before": {
+    "size": 95772,
+    "crc": 44883505,
+    "abi": 2,
+    "boot_crc": 1770733249,
+    "role": 3
+  },
+  "after": {
+    "size": 95772,
+    "crc": 44883505,
+    "abi": 2,
+    "boot_crc": 1770733249,
+    "role": 3
+  },
+  "result": {
+    "action": 1,
+    "phase": 3,
+    "reset_flags": 36,
+    "size": 1024,
+    "crc": 3643299767,
+    "role": 3
+  },
+  "trace": {},
+  "package_sha256": "dbc1138ae9e522e0ba860e19d9f36b7556f0f5df0f0bdd48007d72e78f966c87",
+  "retries": 0
+}

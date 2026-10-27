@@ -1,10 +1,10 @@
 # Firmware dependency and source layout
 
-Status: QMK migration implemented; experimental Vial port builds with advanced
-configuration features enabled, 2026-10-09.
-See [the Vial port report](VIAL-PORT.md). ZMK/Studio remains a future port.
-This document incorporates the requested official-QMK submodule, latest QMK
-release tag, future Vial fork, and future ZMK/Studio port. It supersedes the
+Status, 2026-10-27: QMK migration and experimental Vial port implemented; an
+experimental [left ZMK USB trial](ZMK-LEFT-FIRST-TRIAL.md) has executed and returned
+to Vial. ZMK split/radio and Studio remain future work. See also the
+[Vial port report](VIAL-PORT.md). This document records the separately pinned
+frameworks and their maintained board sources. It supersedes the
 old-revision recommendation in the earlier [upstream comparison](QMK-UPSTREAM-COMPARISON.md).
 
 ## Dependency ownership and versions
@@ -13,7 +13,7 @@ old-revision recommendation in the earlier [upstream comparison](QMK-UPSTREAM-CO
 | --- | --- | --- | --- |
 | QMK default / VIA | `qmk/qmk_firmware` | Git submodule at `dependencies/qmk` | `0.34.4`, commit `08c662f286ddfd12a985f57b584b02eca5af0ae6` |
 | Vial | `vial-kb/vial-qmk` | Separate Git submodule at `dependencies/vial-qmk` | `dd43959ae5c08d8a28d38a1acf7b04e86b14a344`; its own library pins; no firmware tags advertised |
-| ZMK default / Studio | `zmkfirmware/zmk`, its Zephyr version and modules | West manifest and frozen revisions under `firmware/zmk` | Latest tagged release observed: `v0.3.0`, commit `edf5c0814fd3ea202e43aad2d68fd32e882a518c`; recheck when implementing the port |
+| ZMK left trial | `zmkfirmware/zmk`, its Zephyr version and modules | Exact commits in `dependencies/sources.lock.json`, verified against upstream manifests | ZMK `4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85`; Zephyr `10ba6d0cb38bc3d258775d27982f707599320085` |
 
 QMK's latest numeric tag was checked directly using `git ls-remote --tags --refs
 --sort=-version:refname https://github.com/qmk/qmk_firmware.git 'refs/tags/0.*'`.
@@ -35,12 +35,13 @@ The initial port records the exact tested 2026-07-26 snapshot in the lockfile.
 If a suitable firmware release tag becomes available, select it deliberately. Never silently follow the `vial`
 branch or substitute official QMK for Vial.
 
-ZMK uses [West](https://zmk.dev/docs/development/local-toolchain/setup/native)
-to obtain its matching Zephyr and module revisions. Keep it exclusively under
-West ownership rather than also registering the same checkouts as parent Git
-submodules. The authored manifest records the chosen release; a committed frozen
-manifest records the resolved commits for the entire dependency graph. Builds
-use those frozen revisions. [West supports generating a frozen manifest](https://docs.zephyrproject.org/latest/develop/west/manifest.html#freezing-manifests).
+ZMK's upstream West manifests select matching Zephyr and modules. The current
+left trial records exact resolved commits in the root lockfile and verifies them
+against those manifests. `make setup-zmk` explicitly creates clean, pinned
+checkouts under `dependencies/zmk`, `dependencies/zephyr` and
+`dependencies/modules`; they are ignored dependencies, not maintained board
+repositories or duplicate parent submodules. `make build-zmk` verifies and uses
+those checkouts without downloads. See [ZMK provenance](../firmware/zmk/PROVENANCE.md).
 
 QMK and Vial each retain their own upstream library pins. Do not share a mutable
 ChibiOS checkout or make both forks use one arbitrarily chosen library version.
@@ -55,6 +56,9 @@ not populated with placeholder firmware.
 dependencies/
   qmk/                         official QMK submodule
   vial-qmk/                    independent pinned Vial submodule
+  zmk/                         unmodified pinned ZMK checkout
+  zephyr/                      matching unmodified Zephyr checkout
+  modules/                     pinned CMSIS/LVGL checkouts
   sources.lock.json            upstream URLs, release labels, exact commits
 
 firmware/
@@ -71,16 +75,14 @@ firmware/
   qmk-vial/
     keymaps/vial/              keymap.c, rules.mk, config.h, vial.json
     compat/                    adaptations for the selected Vial fork
-  zmk/                         local Zephyr/ZMK module and user config (future)
-    west.yml                   authored dependency manifest
-    west.lock.yml              frozen dependency graph used for builds
-    zephyr/module.yml          module registration
-    boards/zuoya/              GMK70 board definitions and half variants
-    soc/                       WB32 support if required
-    dts/                       bindings and physical layout descriptions
-    drivers/                   Zephyr-native peripheral and radio integration
-    src/                       ZMK integration and behaviors
-    config/                    keymaps and default/Studio build configurations
+  zmk/                         maintained local Zephyr/ZMK module
+    zephyr/module.yml          module registration and roots
+    boards/zuoya/gmk70_left/   left board, defconfig and keymap
+    soc/westberry/wb32fq95/    WB32 clocks and USB electrical integration
+    dts/                       SoC and peripheral bindings
+    drivers/                   native GPIO and USB device-controller drivers
+    tools/                     pinned build tools, source/image verification
+    trial/                     separate bare return/hang fixtures
     CMakeLists.txt
     Kconfig
 
@@ -90,19 +92,20 @@ scripts/                       explicit dependency setup, external build, clean
 tests/
   qmk/                         shared QMK-family regressions
   vial/                        Vial-specific tests (future)
-  zmk/                         Zephyr/ZMK tests (future)
+  zmk/                         native USB and cold-start clock tests
   repository/                  dependency, external-source and clean checks
 tools/                         project tooling, including offline keymap migration
 
 .work/                         ignored, generated workspaces
   qmk/<variant>/<mode>/        generated QMK headers and objects per build mode
   vial/<variant>/<mode>/       generated Vial headers and objects per build mode
-  zmk/                        West workspace, dependency checkouts and build dirs
+  zmk/left-trial/normal/       generated Zephyr/ZMK build files
 artifacts/
   qmk/{release,debug}/         the two VIA distributions
   qmk/default/                 optional fixed-keymap development baseline
   vial/vial/                   experimental normal Vial distribution
-  zmk/{default,studio}/        future; separate half outputs below each variant
+  zmk/left-trial/              actual left ZMK trial and build metadata
+  zmk/trial-fixtures/          separately labeled bare return/hang programs
 ```
 
 Keep one authoritative board/radio implementation in `qmk-common`. QMK and Vial
@@ -196,4 +199,9 @@ The source layout makes room for that work without claiming the port is ready.
 7. Add and validate the independent Vial pin and port later. Then implement the
    ZMK hardware port; Studio follows as a tested variant of that port.
 
-The QMK migration is implemented by `scripts/setup.sh`, `scripts/build.sh` and `tools/build-support/project_build.py`. Current compatibility work and validation are recorded in [the migration notes](QMK-0.34-MIGRATION.md). The experimental Vial port is described in [its port report](VIAL-PORT.md); ZMK/Studio remains future work.
+The QMK migration is implemented by `scripts/setup.sh`, `scripts/build.sh` and
+`tools/build-support/project_build.py`. Current compatibility work and validation
+are recorded in [the migration notes](QMK-0.34-MIGRATION.md). The experimental
+Vial port is described in [its port report](VIAL-PORT.md). The
+[left ZMK trial](ZMK-LEFT-FIRST-TRIAL.md) now has USB execution and automatic return
+evidence; split/radio and Studio remain future work.
