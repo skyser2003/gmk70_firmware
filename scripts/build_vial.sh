@@ -2,8 +2,8 @@
 set -euo pipefail
 source "$(dirname "$0")/project.sh"
 mode="${2:-normal}"
-[[ "${1:-vial}" == vial && ( "$mode" == normal || "$mode" == updater || "$mode" == radio-diagnostic-updater || "$mode" == trial-updater ) ]] || {
-    printf 'Vial supports normal, updater, radio-diagnostic-updater, or trial-updater mode.\n' >&2
+[[ "${1:-vial}" == vial && ( "$mode" == normal || "$mode" == updater || "$mode" == radio-diagnostic-updater || "$mode" == trial-updater || "$mode" == unlocked-updater || "$mode" == unlocked-trial-updater ) ]] || {
+    printf 'Vial supports normal, updater, radio-diagnostic-updater, trial-updater, unlocked-updater, or unlocked-trial-updater mode.\n' >&2
     exit 2
 }
 for tool in arm-none-eabi-gcc qmk flock; do
@@ -18,15 +18,17 @@ build_root="$("$source_python" tools/build-support/project_build.py prepare-vial
 framework_root="$project_root/dependencies/vial-qmk"
 output=artifacts/vial/vial
 update_flags=()
+unlocked=false
+if [[ "$mode" == unlocked-updater || "$mode" == unlocked-trial-updater ]]; then
+    unlocked=true
+    update_flags+=(VIAL_INSECURE=yes)
+fi
 if [[ "$mode" != normal ]]; then
+    output="$output-$mode"
     if [[ "$mode" == radio-diagnostic-updater ]]; then
-        output="$output-radio-diagnostic-updater"
         update_flags+=(GMK70_RADIO_DIAGNOSTICS=yes)
-    elif [[ "$mode" == trial-updater ]]; then
-        output="$output-trial-updater"
+    elif [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
         update_flags+=(GMK70_VIAL_TRIAL=yes)
-    else
-        output="$output-updater"
     fi
     update_flags+=(GMK70_SPLIT_UPDATE=yes MCU_LDSCRIPT=GMK70_UPDATE USE_CHIBIOS_CONTRIB=yes)
 fi
@@ -56,7 +58,11 @@ for feature in VIALRGB_ENABLE QMK_SETTINGS TAP_DANCE_ENABLE COMBO_ENABLE KEY_OVE
         printf 'Missing Vial feature: %s\n' "$feature" >&2; exit 1;
     }
 done
-if grep -q -- '-DVIAL_INSECURE' "$output/cflags.txt"; then
+if [[ "$unlocked" == true ]]; then
+    grep -q -- '-DVIAL_INSECURE' "$output/cflags.txt" || {
+        printf 'Unlocked Vial requires VIAL_INSECURE\n' >&2; exit 1;
+    }
+elif grep -q -- '-DVIAL_INSECURE' "$output/cflags.txt"; then
     printf 'Vial physical unlock was disabled\n' >&2; exit 1
 fi
 if grep -q -- '-DGMK70_DEBUG_USB_BOOTLOADER\|-DGMK70_SPLIT_DIAGNOSTICS\|-DGMK70_PERSISTENT_DIAGNOSTICS' "$output/cflags.txt"; then
@@ -69,7 +75,7 @@ else
         printf 'Normal Vial unexpectedly contains radio capture\n' >&2; exit 1
     fi
 fi
-if [[ "$mode" == trial-updater ]]; then
+if [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
     grep -q -- '-DGMK70_VIAL_TRIAL' "$output/cflags.txt"
     arm-none-eabi-nm "$output/$target.elf" > "$output/trial-symbols.txt"
     grep -q ' gmk_trial_process$' "$output/trial-symbols.txt"
@@ -97,8 +103,14 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
 {
     printf 'Platform: vial\nKeyboard: zuoya/gmk70\nKeymap: vial\n'
     printf 'Build mode: %s\nEXPERIMENTAL port: no hardware validation.\n' "$mode"
+    if [[ "$unlocked" == true ]]; then
+        printf 'PERMANENTLY UNLOCKED: upstream VIAL_INSECURE=yes; host configuration and firmware writes do not require physical unlock.\n'
+    fi
     if [[ "$mode" != normal ]]; then
-        printf 'Updater: ABI 1, existing resident installer; direct USB left master relays to right slave. Firmware writes require Vial physical unlock. EEPROM queries and persistent logs disabled.\n'
+        printf 'Updater: ABI 1, existing resident installer; direct USB left master relays to right slave. EEPROM queries and persistent logs disabled.\n'
+        if [[ "$unlocked" != true ]]; then
+            printf 'Firmware writes require Vial physical unlock.\n'
+        fi
     else
         printf 'Normal image; use the separate vial-updater package with the resident split updater.\n'
     fi
@@ -106,7 +118,10 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
         printf 'Exception: optional RAM radio counters and read-only USB snapshot enabled. Matching native storage schema retains installed EEPROM magic; no per-build settings reset.\n'
     fi
     printf 'Storage: native Vial layout, schema 0x564D4702 at 0xFFC. Stock/prior Vial EEPROM data is not imported; back up settings before installation.\n'
-    printf 'Unlock: Escape + left Shift. Four layers, one encoder, 16 macros (2123 bytes).\n'
+    if [[ "$unlocked" != true ]]; then
+        printf 'Unlock: Escape + left Shift.\n'
+    fi
+    printf 'Four layers, one encoder, 16 macros (2123 bytes).\n'
     printf 'Dynamic entries: 32 tap dances, 32 combos, 32 key overrides, 32 alternate-repeat rules.\n'
     printf 'Features: live QMK settings (Auto Shift, tap/hold, Quick Tap, Flow Tap, one-shots, mouse keys), Caps Word, Layer Lock, Repeat/Alternate Repeat, extended macros, VialRGB/direct LED control.\n'
     printf 'Defaults: empty dynamic tables; Auto Shift and Flow Tap off until configured in Vial.\n'
@@ -129,7 +144,6 @@ resets dynamic mappings and macros even when the layout schema is unchanged.
 Export your configuration in the Vial GUI before updating.
 
 Use the Vial GUI. Identification/layout is embedded; vial.json is also included.
-Unlock by holding Escape + left Shift when prompted by Vial.
 Knob rotation: in Keymap, choose a layer and either circular control above the
 top-left knob button. Left is counterclockwise, right is clockwise. Assign any
 supported keycode; the knob's press action is a separate rectangular button.
@@ -142,20 +156,29 @@ See build-info.txt for feature details and dependency pins. Verify this package
 with: sha256sum -c FIRMWARE-SHA256SUMS
 Complete sources, ELF/map and full checksums are exported beside this package.
 EOF
+if [[ "$unlocked" == true ]]; then
+    cat >> "$output/README.txt" <<'EOF_UNLOCKED'
+
+PERMANENTLY UNLOCKED (VIAL_INSECURE=yes).
+Host software can change settings and request firmware writes without holding
+Escape + left Shift. Vial physical unlock protection is disabled in this image.
+The native settings schema and native per-build EEPROM magic are unchanged.
+EOF_UNLOCKED
+else
+    printf '\nUnlock by holding Escape + left Shift when prompted by Vial.\n' >> "$output/README.txt"
+fi
 images=("$target.bin" "$target.hex")
 extras=()
 support=()
 archive=gmk70-vial.zip
 if [[ "$mode" != normal ]]; then
-    archive=gmk70-vial-updater.zip
+    archive="gmk70-vial-$mode.zip"
     images=(application.bin application.hex resident.bin install.bin install.hex update.json)
     extras=(update.py requirements.txt)
     if [[ "$mode" == radio-diagnostic-updater ]]; then
-        archive=gmk70-vial-radio-diagnostic-updater.zip
         extras+=(read_radio.py)
     fi
-    if [[ "$mode" == trial-updater ]]; then
-        archive=gmk70-vial-trial-updater.zip
+    if [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
         cp docs/ZMK-TRIAL-LAUNCHER.md "$output/TRIAL-LAUNCHER.md"
         cp tools/firmware-update/trial.py "$output/"
         extras+=(TRIAL-LAUNCHER.md trial.py)
@@ -171,8 +194,17 @@ Updater images:
 
 With an existing compatible debug USB updater, select wired mode, connect only
 the left USB half, keep the right powered and linked, and close VIA/Vial.
+EOF
+    if [[ "$unlocked" == true ]]; then
+        printf 'Subsequent updates from this PERMANENTLY UNLOCKED build need no physical unlock.\n' >> "$output/README.txt"
+        printf 'Installing from a secure Vial build still requires unlocking that installed firmware first.\n' >> "$output/README.txt"
+    else
+        cat >> "$output/README.txt" <<'EOF'
 For subsequent Vial updates, first unlock in the Vial GUI (Escape + left Shift),
 then close Vial without unplugging or resetting the keyboard.
+EOF
+    fi
+    cat >> "$output/README.txt" <<'EOF'
 Install Python dependencies: python -m pip install -r requirements.txt
 Read-only check: python update.py . --target both --inspect
 Explicit installation: python update.py . --target both --install
@@ -190,7 +222,7 @@ Use the separate gmk70-vial-updater.zip for the resident split updater.
 Do not submit this normal image as application.bin to that updater.
 EOF
 fi
-if [[ "$mode" == trial-updater ]]; then
+if [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
     cat >> "$output/README.txt" <<'EOF_TRIAL'
 
 Experimental staging trial receiver (namespace 0x71).

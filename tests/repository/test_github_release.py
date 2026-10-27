@@ -34,7 +34,9 @@ class ReleaseTests(unittest.TestCase):
             set(via["variants"]),
             {"via-release", "via-debug", "via-release-updater", "via-debug-updater"},
         )
-        self.assertEqual(set(vial["variants"]), {"vial", "vial-updater"})
+        self.assertEqual(
+            set(vial["variants"]), {"vial", "vial-updater", "vial-unlocked-updater"}
+        )
         self.assertTrue(set(via["variants"]).isdisjoint(vial["variants"]))
 
     def test_pull_requests_and_manual_runs_cannot_publish(self) -> None:
@@ -64,9 +66,26 @@ class ReleaseTests(unittest.TestCase):
 
     def test_main_builds_every_variant_without_publication(self) -> None:
         main = self.release.plan("push", "refs/heads/main")
-        self.assertEqual(len(main["variants"]), 7)
+        self.assertEqual(len(main["variants"]), 8)
         self.assertIn("qmk-default", main["variants"])
         self.assertFalse(main["publish"])
+
+    def test_experimental_trial_and_diagnostic_builds_are_not_releases(self) -> None:
+        vial = self.release.plan("push", "refs/heads/release/vial")
+        self.assertIn("vial-unlocked-updater", vial["variants"])
+        for experiment in (
+            "vial-trial-updater",
+            "vial-unlocked-trial-updater",
+            "vial-radio-diagnostic-updater",
+        ):
+            self.assertNotIn(experiment, vial["variants"])
+
+    def test_trial_artifacts_block_normal_vial_publication(self) -> None:
+        output = self.assets("vial")
+        (output / "gmk70-vial-unlocked-trial-updater.zip").write_text("experiment")
+        with self.assertRaisesRegex(ValueError, "Unexpected release assets"):
+            self.release.verify_assets(output, "vial")
+        self.assertFalse((output / "SHA256SUMS").exists())
 
     def test_patch_versions_are_independent_and_sorted_numerically(self) -> None:
         tags = [

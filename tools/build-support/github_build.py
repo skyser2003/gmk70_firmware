@@ -18,12 +18,13 @@ VARIANTS = {
     "via-debug-updater": ("qmk", "debug", "updater"),
     "vial": ("vial", "vial", "normal"),
     "vial-updater": ("vial", "vial", "updater"),
+    "vial-unlocked-updater": ("vial", "vial", "unlocked-updater"),
 }
 
 
 def package_variant(root: Path, variant: str) -> None:
     platform, keymap, mode = VARIANTS[variant]
-    folder = keymap + ("-updater" if mode == "updater" else "")
+    folder = keymap + (f"-{mode}" if mode != "normal" else "")
     source = root / "artifacts" / platform / folder
     target = f"zuoya_gmk70_{keymap}"
     stem = f"gmk70-{variant}"
@@ -54,7 +55,7 @@ def package_variant(root: Path, variant: str) -> None:
         "ldflags.txt",
         "vial.json" if platform == "vial" else "ZUOYA_GMK70.json",
     }
-    if mode == "updater":
+    if mode != "normal":
         required.update(
             {
                 "application.bin",

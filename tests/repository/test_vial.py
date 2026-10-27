@@ -19,6 +19,30 @@ SPEC.loader.exec_module(BUILD)
 
 
 class VialTests(unittest.TestCase):
+    def test_unlocked_builds_use_independent_caches_and_reject_qmk(self) -> None:
+        modes = (
+            "normal",
+            "updater",
+            "radio-diagnostic-updater",
+            "trial-updater",
+            "unlocked-updater",
+            "unlocked-trial-updater",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(BUILD, "verify"):
+                paths = [BUILD.prepare_vial(root, mode) for mode in modes]
+            self.assertEqual(len(set(paths)), 6)
+            for mode, path in zip(modes, paths, strict=True):
+                self.assertEqual(path, root / ".work/vial/vial" / mode)
+                self.assertTrue((path / "gmk70-source-origins.json").is_file())
+            for mode in ("unlocked-updater", "unlocked-trial-updater"):
+                with (
+                    self.subTest(mode=mode),
+                    self.assertRaisesRegex(ValueError, "Unsupported build mode"),
+                ):
+                    BUILD.prepare(root, "debug", mode)
+
     def test_radio_diagnostic_build_has_separate_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

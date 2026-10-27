@@ -18,6 +18,8 @@ build-vial:
 	bash ./scripts/build.sh vial
 build-vial-updater:
 	bash ./scripts/build.sh vial vial updater
+build-vial-unlocked-updater:
+	bash ./scripts/build.sh vial vial unlocked-updater
 build-vial-radio-diagnostic:
 	bash ./scripts/build.sh vial vial radio-diagnostic-updater
 .PHONY: build-vial-radio-diagnostic
@@ -31,7 +33,7 @@ format:
 	bash ./scripts/format.sh
 test:
 	bash ./scripts/test.sh
-.PHONY: build build-release build-debug build-qmk-via build-diagnostic build-default build-qmk-default build-vial build-vial-updater build-zmk clean rebuild format test
+.PHONY: build build-release build-debug build-qmk-via build-diagnostic build-default build-qmk-default build-vial build-vial-updater build-vial-unlocked-updater build-zmk clean rebuild format test
 
 setup:
 	bash ./scripts/setup.sh
@@ -45,6 +47,8 @@ setup-vial:
 
 build-vial-trial-updater:
 	bash ./scripts/build.sh vial vial trial-updater
+build-vial-unlocked-trial-updater:
+	bash ./scripts/build.sh vial vial unlocked-trial-updater
 build-zmk-trial-fixtures:
 	bash ./scripts/build_zmk_trial_fixtures.sh
-.PHONY: build-vial-trial-updater build-zmk-trial-fixtures
+.PHONY: build-vial-trial-updater build-vial-unlocked-trial-updater build-zmk-trial-fixtures

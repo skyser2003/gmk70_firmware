@@ -17,6 +17,7 @@ VARIANTS = {
     "via-debug-updater": ("qmk", "debug", "updater"),
     "vial": ("vial", "vial", "normal"),
     "vial-updater": ("vial", "vial", "updater"),
+    "vial-unlocked-updater": ("vial", "vial", "unlocked-updater"),
 }
 
 
@@ -34,7 +35,7 @@ class GitHubPackageTests(unittest.TestCase):
 
     def fixture(self, variant: str) -> Path:
         platform, keymap, mode = VARIANTS[variant]
-        folder = keymap + ("-updater" if mode == "updater" else "")
+        folder = keymap + (f"-{mode}" if mode != "normal" else "")
         output = self.root / "artifacts" / platform / folder
         output.mkdir(parents=True)
         target = f"zuoya_gmk70_{keymap}"
@@ -49,7 +50,7 @@ class GitHubPackageTests(unittest.TestCase):
             "ldflags.txt",
             "vial.json" if platform == "vial" else "ZUOYA_GMK70.json",
         ]
-        if mode == "updater":
+        if mode != "normal":
             names += [
                 "application.bin",
                 "application.hex",
@@ -88,7 +89,7 @@ class GitHubPackageTests(unittest.TestCase):
                     self.assertIn("SHA256SUMS", names)
                     self.assertIn("build.log", names)
                     self.assertNotIn("stale-image.bin", names)
-                    if mode == "updater":
+                    if mode != "normal":
                         self.assertIn("install.bin", names)
                         self.assertIn("application.bin", names)
                         self.assertIn("update.json", names)
@@ -107,7 +108,20 @@ class GitHubPackageTests(unittest.TestCase):
                     self.assertEqual(
                         hashlib.sha256((dist / name).read_bytes()).hexdigest(), digest
                     )
-        self.assertEqual(len(list((self.root / "dist").glob("*.tar.gz"))), 7)
+        self.assertEqual(len(list((self.root / "dist").glob("*.tar.gz"))), 8)
+
+    def test_unlocked_updater_cannot_publish_without_its_own_archive(self) -> None:
+        source = self.fixture("vial-unlocked-updater")
+        manifest = source / "SHA256SUMS"
+        manifest.write_text(
+            "".join(
+                line + "\n"
+                for line in manifest.read_text().splitlines()
+                if not line.endswith("  gmk70-vial-unlocked-updater.zip")
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "Missing required"):
+            self.build.package_variant(self.root, "vial-unlocked-updater")
 
     def test_corruption_preserves_previous_bundle(self) -> None:
         source = self.fixture("via-release")

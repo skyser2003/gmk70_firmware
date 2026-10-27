@@ -11,7 +11,7 @@ from typing import Any, TypedDict, cast
 
 FAMILIES = {
     "via": ("via-release", "via-debug", "via-release-updater", "via-debug-updater"),
-    "vial": ("vial", "vial-updater"),
+    "vial": ("vial", "vial-updater", "vial-unlocked-updater"),
 }
 PREFIXES = {"via": "via-v", "vial": "vial-"}
 VERSION = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"

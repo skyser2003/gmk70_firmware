@@ -10,3 +10,11 @@
 - Load the root `.env`/`.envrc` through `scripts/project.sh` before runtime/build commands. Format edited C files, run `make test`, and compile the affected supported QMK variants. Check Python tooling with its uv project, formatter, strict mypy, and dedicated tests.
 - The separate opt-in `make build-vial-radio-diagnostic` updater is an exception to normal Vial's diagnostics exclusion: RAM radio counters and a read-only USB getter only, no payload logging or EEPROM/log queries. Preserve its native settings schema and installed EEPROM magic for a diagnostic round trip; normal Vial initialization remains unchanged. Never publish it as a normal Vial artifact.
 - Build, test, and migration tools must not flash, reset, or write to the connected keyboard. Physical device operations are separate from this workflow.
+
+- User-authorized development exception (2026-10-27): explicitly named Vial
+  `unlocked-updater` and `unlocked-trial-updater` builds use upstream
+  `VIAL_INSECURE` and stay unlocked across resets. Label/package them separately;
+  ordinary Vial/updater builds retain native physical unlock. Only the unlocked
+  updater is an additional Vial release asset; trial builds remain experimental.
+  Resident preservation, native settings schema, wired/role gates and separation
+  of device operations from build/test commands still apply.
