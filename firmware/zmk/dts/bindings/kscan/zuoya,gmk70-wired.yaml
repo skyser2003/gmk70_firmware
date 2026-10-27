@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+description: GMK70 universal-role wired 10 by 9 matrix and UART split transport
+compatible: "zuoya,gmk70-wired"
+include: kscan.yaml

@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+config KSCAN_GMK70_WIRED
+    bool "GMK70 wired universal-role 10x9 matrix"
+    depends on KSCAN && SOC_WB32FQ95
+    default y if DT_HAS_ZUOYA_GMK70_WIRED_ENABLED
+    help
+      Native five-row local scan and Vial-compatible UART1 split transport.
+      Right physical rows are delivered as logical rows 5..9. No radio support.
