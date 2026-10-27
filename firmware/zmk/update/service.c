@@ -35,21 +35,33 @@ void gmk_zmk_update_reset(void) {
     sys_reboot(SYS_REBOOT_COLD);
 }
 
+/* Worker-owned telemetry; callbacks use gates() and the receiver's cache. */
+static gmk_zmk_update_env_t worker_environment(bool peer) {
+    gmk_zmk_update_env_t env = gates();
+    env.peer                 = peer;
+    env.uptime_ms            = k_uptime_get_32();
+    env.feed_calls           = feed_calls;
+    /* No key-event counter is exposed by the scanner yet. Zero means
+     * unavailable, not a transport transaction or polling count. */
+    env.matrix_events = 0;
+    return env;
+}
+
 static void worker(void *a, void *b, void *c) {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
     ARG_UNUSED(c);
     for (;;) {
-        gmk_zmk_update_env_t   env = gates();
         struct gmk_wired_stats stats;
-        gmk_wired_get_stats(&stats);
-        env.peer       = stats.peer;
-        env.uptime_ms  = k_uptime_get_32();
-        env.feed_calls = feed_calls;
-        /* No key-event counter is exposed by the scanner yet. Zero means
-         * unavailable, not a transport transaction or polling count. */
-        env.matrix_events = 0;
+        /* Never enqueue this worker behind the responder/scanner mutex.
+         * Contention means unknown peer state, represented by a cleared flag;
+         * do not reuse an earlier connected indication indefinitely. */
+        bool                 peer = gmk_wired_try_get_stats(&stats) && stats.peer;
+        gmk_zmk_update_env_t env  = worker_environment(peer);
         gmk_zmk_raw_hid_poll(&env);
+        /* Admission and execution are distinct boundaries: resample physical
+         * mode/USB/role after USB work, immediately before protocol dispatch. */
+        env = worker_environment(peer);
         gmk_zmk_receiver_step(&env);
 #ifndef CONFIG_GMK70_STAGING_QUALIFICATION
         /* Feed only after this live worker completed its current flash/relay

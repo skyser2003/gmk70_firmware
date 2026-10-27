@@ -23,7 +23,7 @@ int               k_msgq_get(struct k_msgq *, void *, int);
 int               k_msgq_put(struct k_msgq *, const void *, int);
 void              k_msgq_purge(struct k_msgq *);
 static inline int k_mutex_lock(struct k_mutex *m, int timeout) {
-    ARG_UNUSED(timeout);
+    if (timeout == K_NO_WAIT && m->locked) return -EBUSY;
     ++m->locked;
     return 0;
 }

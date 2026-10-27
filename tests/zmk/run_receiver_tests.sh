@@ -24,3 +24,9 @@ for profile in permanent qualification; do
         tests/zmk/service_test.c -o "artifacts/tests/zmk/update-service-$profile"
     "artifacts/tests/zmk/update-service-$profile"
 done
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -fno-pie -no-pie \
+    -Itests/zmk/receiver_stubs -Ifirmware/zmk/update -Ifirmware/zmk/wired -Ifirmware/qmk-common/keyboards/zuoya/gmk70/update \
+    tests/zmk/service_boundary_test.c firmware/zmk/update/receiver.c firmware/qmk-common/keyboards/zuoya/gmk70/update/{image,protocol}.c \
+    -o artifacts/tests/zmk/service-boundary
+artifacts/tests/zmk/service-boundary
+artifacts/tests/zmk/service-boundary gates

@@ -186,15 +186,24 @@ bool gmk_wired_remote_matrix(uint16_t rows[5]) {
     k_mutex_unlock(&wired_lock);
     return ok;
 }
-void gmk_wired_get_stats(struct gmk_wired_stats *stats) {
-    k_mutex_lock(&wired_lock, K_FOREVER);
+static void stats_locked(struct gmk_wired_stats *stats) {
     *stats           = counters;
     stats->rx_errors = (uint32_t)atomic_get(&rx_errors);
     stats->uptime_ms = k_uptime_get_32();
     uint16_t rows[5];
     stats->peer = left ? gmk_peer_rows(&peer, stats->uptime_ms, rows) : (have_last_rx && (uint32_t)(stats->uptime_ms - last_rx_seen) < GMK_PEER_TIMEOUT_MS);
     if (!gmk_wired_mode()) stats->peer = false;
+}
+void gmk_wired_get_stats(struct gmk_wired_stats *stats) {
+    k_mutex_lock(&wired_lock, K_FOREVER);
+    stats_locked(stats);
     k_mutex_unlock(&wired_lock);
+}
+bool gmk_wired_try_get_stats(struct gmk_wired_stats *stats) {
+    if (k_mutex_lock(&wired_lock, K_NO_WAIT) != 0) return false;
+    stats_locked(stats);
+    k_mutex_unlock(&wired_lock);
+    return true;
 }
 static void serial_thread(void *a, void *b, void *c) {
     ARG_UNUSED(a);

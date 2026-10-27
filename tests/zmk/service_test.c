@@ -30,6 +30,10 @@ void gmk_wired_set_update_handler(void (*handler)(const uint8_t[32], uint8_t[32]
 void gmk_wired_get_stats(struct gmk_wired_stats *stats) {
     *stats = (struct gmk_wired_stats){.peer = true};
 }
+bool gmk_wired_try_get_stats(struct gmk_wired_stats *stats) {
+    gmk_wired_get_stats(stats);
+    return true;
+}
 bool zmk_usb_is_hid_ready(void) {
     return true;
 }

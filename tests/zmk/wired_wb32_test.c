@@ -122,6 +122,23 @@ int main(void) {
     gmk_wired_scan(rows);
     assert(rows[0] == 0x1ff);
     assert(!gmk_wired_update(request, response));
+    struct gmk_wired_stats stats, unchanged;
+    memset(&stats, 0xa5, sizeof(stats));
+    memcpy(&unchanged, &stats, sizeof(stats));
+    wired_lock.locked = 1;
+    start             = fake_ms;
+    assert(!gmk_wired_try_get_stats(&stats));
+    assert(wired_lock.locked == 1 && fake_ms == start && !memcmp(&stats, &unchanged, sizeof(stats)));
+    wired_lock.locked     = 0;
+    counters.transactions = 7;
+    have_last_rx          = true;
+    last_rx_seen          = (uint32_t)fake_ms;
+    assert(gmk_wired_try_get_stats(&stats) && stats.transactions == 7 && stats.peer && wired_lock.locked == 0);
+    fake_ms += 100;
+    assert(gmk_wired_try_get_stats(&stats) && !stats.peer);
+    last_rx_seen = (uint32_t)fake_ms;
+    c->idr &= ~(1U << 14);
+    assert(gmk_wired_try_get_stats(&stats) && !stats.peer);
     assert(munmap((void *)0x40000000, 0x20000) == 0);
     puts("native real WB32 UART MMIO/IRQ/finite timeout/role/matrix tests passed");
 }

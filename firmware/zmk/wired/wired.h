@@ -19,3 +19,6 @@ struct gmk_wired_stats {
     bool     peer;
 };
 void gmk_wired_get_stats(struct gmk_wired_stats *stats);
+
+/* Nonblocking telemetry: false means contended and leaves *stats unchanged. */
+bool gmk_wired_try_get_stats(struct gmk_wired_stats *stats);
