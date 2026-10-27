@@ -1345,12 +1345,9 @@ void bat_indicators(void) {
         return;
     }
 
-    if (confinfo.flag && (bat_full_flag)) {
+    if (confinfo.flag) {
         battery_process_time = 0;
-        if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 0x00, 80, 0x00);
-    } else if (confinfo.flag) {
-        battery_process_time = 0;
-        if (stock_battery_charging_requested()) rgb_matrix_set_color(HS_MATRIX_BLINK_INDEX_BAT, 80, 0x00, 0x00);
+        stock_battery_render_charging(true, bat_full_flag);
     } else if (pov <= BATTERY_CAPACITY_LOW) {
         rgb_matrix_hs_bat_set(HS_MATRIX_BLINK_INDEX_BAT, (RGB){0xFF, 0x00, 0x00}, 250, 1);
 

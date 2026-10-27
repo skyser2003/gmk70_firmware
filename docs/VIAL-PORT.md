@@ -99,8 +99,13 @@ replacing the stock default keymap. VialRGB uses the native fork's lighting API;
 matching every stock lighting control or animation across forks is unverified.
 
 During normal operation, each half reconciles its LED power switches with the
-native synchronized RGB enable and suspend state. This lets the right half
-recover automatically if its local startup setting had RGB disabled, and lets
+native synchronized RGB enable and suspend state. Held battery-level and
+charging-status queries also power the LEDs and render their indicators when
+RGB is off. Releasing the query clears the temporary frame and restores darkness
+without changing the saved RGB enable state, effect or brightness. Sleep and
+USB suspend retain ownership of LED power; queries do not override them.
+This lets the right half recover automatically if its local startup setting had
+RGB disabled, and lets
 VialRGB Off/On control the physical LED supply. Stock sleep/wake callbacks retain
 control of the supply during sleep preparation, STOP and wake recovery.
 
