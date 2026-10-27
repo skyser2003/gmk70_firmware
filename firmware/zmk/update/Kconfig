@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+config GMK70_ZMK_UPDATER
+    bool "GMK70 native raw HID firmware updater"
+    depends on SOC_WB32FQ95 && KSCAN_GMK70_WIRED && ZMK_USB
+    select REBOOT
+    help
+      Development updater using the installed GMK70 resident ABI and wired
+      relay. Requires two USB HID interfaces, interrupt OUT, and 32-byte HID
+      endpoint buffers. Host writes require left USB, wired mode, and a ready
+      permanent watchdog. This build is explicitly unlocked.
+
+config GMK70_STAGING_QUALIFICATION
+    bool "GMK70 restricted staging qualification receiver"
+    depends on GMK70_ZMK_UPDATER
+    help
+      Executing from staging: do not initialize or feed the permanent watchdog.
+      Permit read-only identity/health and local BEGIN/ABORT only; BEGIN may
+      erase the isolated commit page. Never stage DATA, SEAL, INSTALL or relay
+      peer mutations. This image is experimental, not a permanent artifact.
+
+config GMK70_ZMK_PEER_TRIAL_RELAY
+    bool "GMK70 relay for qualification of an installed Vial right peer"
+    depends on GMK70_ZMK_UPDATER && !GMK70_STAGING_QUALIFICATION
+    help
+      Forward validated trial ABI2 packets from left USB to target1 only.
+      This enables staging qualification of a still-Vial right peer before
+      replacing its application. No local trial execution or watchdog handoff
+      is provided. Peer mutations require the permanent watchdog and the same
+      left/configured-USB/wired gates as the normal updater.

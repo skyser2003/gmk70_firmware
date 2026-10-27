@@ -8,6 +8,7 @@
  */
 #include "image.h"
 #include <string.h>
+#include <zephyr/arch/cpu.h>
 #include <zephyr/sys/sys_io.h>
 #include <wb32_flash_lowlevel.h>
 

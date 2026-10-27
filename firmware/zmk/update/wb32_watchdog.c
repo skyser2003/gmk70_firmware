@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "wb32_watchdog.h"
 #include <stdint.h>
+#include <zephyr/arch/cpu.h>
 #include <zephyr/sys/sys_io.h>
 
 #ifndef CONFIG_GMK70_STAGING_QUALIFICATION
