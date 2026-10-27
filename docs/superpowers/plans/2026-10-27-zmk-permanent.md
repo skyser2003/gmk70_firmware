@@ -28,40 +28,51 @@
 **Files:** Create `firmware/zmk/update/wb32_flash.c`, `wb32_watchdog.c/.h`, native test seams and `tests/zmk/run_update_platform_tests.sh`; update provenance for vendor-derived code.
 **Interfaces:** Export common `gmk_flash_view`, `gmk_flash_page`, `gmk_running_size` signatures from `image.h`; `bool gmk_zmk_watchdog_init(void)` and `void gmk_zmk_watchdog_feed(void)` for permanent builds. Integrator supplies a linked image-end symbol; adapter size includes file padding to four bytes.
 
-- [ ] Add/run failing native tests: resident/app/unaligned/out-of-range writes rejected; allowed256-byte staging and commit pages; failed operations/readback mismatch; IRQ/FHSI/PCLK state restored.
-- [ ] Add/run failing watchdog tests for inherited running watchdog, finite readiness failures and correct long-period configuration/feed ordering. Staging builds must not refresh it.
-- [ ] Implement native adapters from pinned vendor sequences without changing common/QMK/resident code. No protection or option-byte changes.
-- [ ] Format and run native sanitizer tests; report tests and source provenance. Commit task files and review.
+- [x] Add/run failing native tests: resident/app/unaligned/out-of-range writes rejected; allowed256-byte staging and commit pages; failed operations/readback mismatch; IRQ/FHSI/PCLK state restored.
+- [x] Add/run failing watchdog tests for inherited running watchdog, finite readiness failures and correct long-period configuration/feed ordering. Staging builds must not refresh it.
+- [x] Implement native adapters from pinned vendor sequences without changing common/QMK/resident code. No protection or option-byte changes.
+- [x] Format and run native sanitizer tests; report tests and source provenance. Commit task files and review.
 
 ### Task 2: Wired matrix and Vial-compatible transport
 
-**Files:** Create `firmware/zmk/wired/` C/header sources, native tests under `tests/zmk/`, and kscan integration/binding under `firmware/zmk/drivers/kscan/`, `firmware/zmk/dts/bindings/`.
-**Interfaces:** `bool gmk_wired_is_left(void)`, `void gmk_wired_set_update_handler(void (*)(const uint8_t[32], uint8_t[32]))`, `bool gmk_wired_update(const uint8_t[32], uint8_t[32])`, `bool gmk_wired_remote_matrix(uint16_t rows[5])`. Native UART/kscan module starts automatically at Zephyr init; polling and RPC share a mutex. Handler must queue work and return promptly, never flash in serial processing.
+**Files:** Create `firmware/zmk/wired/` C/header sources, native tests under `tests/zmk/`, and kscan integration/binding under `firmware/zmk/drivers/kscan/`, `firmware/zmk/dts/bindings/`. Generate native pin declarations from maintained `keyboard.json` with `firmware/zmk/tools/wired_pins.py`; do not add a third independently maintained copy of the matrix pins.
+**Interfaces:** `bool gmk_wired_is_left(void)`, `bool gmk_wired_mode(void)`, `void gmk_wired_set_update_handler(void (*)(const uint8_t[32], uint8_t[32]))`, `bool gmk_wired_update(const uint8_t[32], uint8_t[32])`, `bool gmk_wired_remote_matrix(uint16_t rows[5])`. Native UART/kscan module starts automatically at Zephyr init; polling and RPC share a mutex. Handler must queue work and return promptly, never flash in serial processing. B9 high means left; C14/C15 both high means wired, matching maintained sources.
 
-- [ ] Derive exact19-entry installed Vial transaction profile from pinned source and full trial ELF; save reproducible compatibility evidence. Matrix payload is five little-endian uint16 rows; updater RPC ID18, RPC framing IDs13..16.
-- [ ] Write/run failing native tests for handshake XOR19, CRC8 from actual upstream implementation, RPC validation/bounds, partial frames/timeouts, wrong ID/lengths, stale output, and matrix disconnect releases.
-- [ ] Implement native WB32 UART1 A9/A10 1152008N1 full duplex with finite transactions and correct clock/pin/FIFO setup. Preserve vendor attribution.
-- [ ] Implement 5ms-debounced role-sensitive local matrix and combined10x9 kscan delivery, sharing existing maintained pin/key facts. Right serves matrix and updater RPC; left polls and forwards. No EEPROM/radio writes.
-- [ ] Run native tests and compile checks; commit task files and review. Root CMake/Kconfig/board hookup is Task3.
+- [x] Derive exact19-entry installed Vial transaction profile from pinned source and full trial ELF; save reproducible compatibility evidence. Matrix payload is five little-endian uint16 rows; updater RPC ID18, RPC framing IDs13..16. The actual linked CRC8 uses initialFF, polynomial31 (not the optional upstream table implementation).
+- [x] Write/run failing native tests for handshake XOR19, CRC8 from actual upstream implementation, RPC validation/bounds, partial frames/timeouts, wrong ID/lengths, stale output, and matrix disconnect releases.
+- [x] Implement native WB32 UART1 A9/A10 1152008N1 full duplex with finite transactions and correct clock/pin/FIFO setup. Preserve vendor attribution.
+- [x] Implement 5ms-debounced role-sensitive local matrix and combined10x9 kscan delivery, sharing existing maintained pin/key facts. Right serves matrix and updater RPC; left polls and forwards. No EEPROM/radio writes.
+- [x] Run native tests and compile checks; commit task files and review. Root CMake/Kconfig/board hookup is Task3.
 
-### Task 3: Actual permanent ZMK receiver, board, build and host packages
+### Task 3: Native ZMK update receiver and raw HID service
 
-**Files:** Create `firmware/zmk/update/` receiver/rawHID integration, `boards/zuoya/gmk70_wired/`, build/package/image checking support, dedicated test cases. Modify module CMake/Kconfig, `scripts/build_zmk.sh`, Makefile, host `tools/firmware-update/update.py` and its tests.
-**Interfaces:** Consume Task1/2 exports. `gmk_wired_set_update_handler` registers a nonblocking protocol receive/cache function; a dedicated worker executes common protocol state machine and 300ms delayed install reset. Reuse normal updater namespace0x70/ABI1. Host `profile=zmk` accepts only validated application-slot images and the exact resident hash, with retained debug/Vial support.
+**Files:** Create `firmware/zmk/update/` receiver/rawHID integration, its CMake/Kconfig and focused native tests. Fix Task1 architecture MMIO include integration and test stubs if required. Root module/board/build/host hookup belongs to Task4.
+**Interfaces:** Consume Task1/2 exports. `gmk_wired_set_update_handler` registers a nonblocking protocol receive/cache function; a dedicated worker executes common protocol state machine and 300ms delayed install reset. Reuse normal updater namespace0x70/ABI1. Register raw HID1 before ZMK enables USB at APPLICATION96. No flash or blocking peer RPC in USB/IRQ callbacks.
 
 - [ ] Add/run failing tests for duplicate/busy/correlated requests, invalid/mutating USB role/mode gates, staging write exclusion, flash failure, reset after committed ACK and housekeeping timeout.
-- [ ] Add keyboard+32-byte raw HID USB, VID342D PID E491 manufacturerHS usageFF60/61; reuse host discovery. Include read-only runtime uptime/boot continuity evidence without changing ABI1 INFO.
+- [ ] Add 32-byte raw HID1 alongside ZMK keyboard HID0; usageFF60/61. USB mutations require left role, configured USB, wired mode and verified permanent watchdog; right wire requests inherit master authorization. Staging qualification permits only local BEGIN clearing metadata and ABORT, with target1 read-only; never DATA/SEAL/INSTALL.
+- [ ] Runtime health namespace0x72/ABI1/op0x20 uses nonce8, magic0x4B4D5A47 at12, then uptime/feedcalls/flags/events at16; flags ready1/wired2/peer4/staging8. It is read-only on both targets, with normal updater INFO unchanged. Return cached responses without blocking serial callbacks.
+- [ ] Integrate early permanent watchdog init and live worker feeds/health; no feeds in staging. Define CONFIG_GMK70_ZMK_UPDATER and CONFIG_GMK70_STAGING_QUALIFICATION in update/Kconfig. Fix real ARM compile failure from missing zephyr/arch/cpu.h MMIO definitions in Task1 sources and cover native/real-header compilation.
+- [ ] Format/run focused sanitizer and actual-header object checks; report integration requirements. Commit and review the receiver before full-board integration.
+
+### Task 4: Actual permanent board, reproducible build and host packages
+
+**Files:** Create `boards/zuoya/gmk70_wired/`, build/package/image checking support and dedicated tests. Modify module CMake/Kconfig, `scripts/build_zmk.sh`, Makefile, host `tools/firmware-update/update.py`, new read-only status tooling and tests.
+**Interfaces:** Consume Task1/2/3 report contracts. Host `profile=zmk` accepts only validated application-slot images and the exact resident hash, retaining debug/Vial support. USB VID342D PID E491 manufacturerHS, product GMK70 ZMK Wired, usageFF60/61; two HID instances. Define __gmk_image_end from the entire Zephyr load range (__rom_region_start + _flash_used), not just text. Preserve experimental trial targets.
+
+- [ ] Add/run failing build/image/package tests: wrong link range, wrong resident, malformed health replies, unsupported profile and accidental staging install all rejected.
 - [ ] Add universal board, actual10x9 keymap and function layer, handedness, wired switch detection, permanent watchdog, application-slot linking and bounded staging-qualification variant. Staging variant permits no running-code write or durable install.
 - [ ] Add explicit `make build-zmk-wired-updater` and staging qualification targets with separate caches/artifacts and clear labels. Existing trial builds remain unchanged. Package reviewed resident bytes from pinned QMK/Vial output with exact identity validation; builds never flash.
-- [ ] Add `zmk` host package profile and migration/rollback tests. Validate actual ELF vectors/load segments, combined matrix, receiver/native adapter symbols and no main-return wrapper in permanent target.
+- [ ] Add `zmk` host package profile and migration/rollback tests, plus read-only namespace0x72 runtime health tooling for both halves. Retain resident/vector/CRC/role checks.
+- [ ] Validate actual ELF vectors/load segments, complete image-end symbol, combined matrix, receiver/native symbols and absent main-return wrapper in permanent target. Existing trial hashes must stay unchanged.
 - [ ] Run make test/test-zmk/check-tools and affected supported builds; review implementation and whole branch before hardware writes.
 
-### Task 4: Staging proof, permanent installation and update round trips
+### Task 5: Staging proof, permanent installation and update round trips
 
 **Files:** Separate ignored device scripts/reports; tracked `docs/ZMK-PERMANENT-WIRED.md`, validation evidence and updated handoff/status.
 
 - [ ] Freeze reviewed packages and resident identities; fresh backup and read-only running identities. Prove bounded left staging USB/receiver and right Vial transport; do not overwrite executing staging code.
-- [ ] Install permanent left only; verify both INFO identities, stable uptime and unchanged residents before dependent writes. Retain right Vial while proving left staging flash/self-update or rollback.
+- [ ] Install permanent left only; verify both INFO identities, stable uptime and unchanged residents before dependent writes. Retain right Vial while proving a different-image left ZMK-to-frozen-Vial-to-ZMK rollback round trip and native configuration readback.
 - [ ] Install permanent right through left; verify both genuine ZMK applications, wired matrix/USB behavior and no reboot loop. Preserve resident/configuration evidence and physical limitations honestly.
-- [ ] Prove right update and left self-update through left USB, final identities/uptime and resident preservation. Diagnose failures without blind retries or right-only recovery requests.
+- [ ] Prove right update and left self-update through left USB using two reviewed builds with an explicitly recorded USB device-version difference; an identical-image resident skip is insufficient. Verify final identities/uptime and resident preservation. Diagnose failures without blind retries or right-only recovery requests.
 - [ ] Commit/push reviewed evidence and report current firmware, working features, deferred features and any unresolved limitation.

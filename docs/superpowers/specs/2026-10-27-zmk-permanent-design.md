@@ -72,6 +72,16 @@ profile `zmk` denotes a genuine application-slot ZMK build; the host must still
 reject wrong addresses, vectors, resident hashes or payloads. Both halves use the
 same binary, permitting normal right-first updates after migration.
 
+Continuous runtime evidence uses a separate read-only namespace `0x72`, ABI1,
+operation `0x20`, with nonzero nonce at byte8 and no other request payload.
+The response echoes the header/nonce, reports normal role bits at byte7 and
+magic `0x4B4D5A47` at byte12, then uptime_ms, feed-call count, health flags and
+matrix-event count as four little-endian words at byte16. Flags are watchdog
+ready bit0, wired mode bit1, peer connected bit2, staging qualification bit3.
+This leaves normal INFO and updater ABI1 unchanged and permits either ZMK half
+to supply runtime health through the same left USB relay. It is not supported
+by the older Vial application and must not be mistaken for its trial health ABI.
+
 The development build is explicitly labeled unlocked. Only a left unit with
 configured USB and the wired-mode switch selected may accept host mutations;
 right requests inherit that master's authorization. Normal Vial lock behavior
@@ -95,6 +105,13 @@ right Vial until the ZMK left exposes verified INFO for both halves and proves
 its staging flash path. Verify a ZMK-left software update/rollback path before
 installing right ZMK. Stop dependent hardware writes on failed identity/transport
 checks and diagnose; do not blindly retry or ask for right-only physical recovery.
+
+Prefer an actual left ZMK-to-frozen-Vial-to-ZMK rollback round trip before
+replacing the right: this proves installation of different content, permits
+native configuration readback, and retains a working right receiver. Freeze two
+reviewed ZMK build revisions with an explicitly recorded USB device-version
+difference for the later right update and left self-update proof; do not count
+an identical-image resident page skip as a different-image update test.
 
 After both run ZMK, verify a right application update through left USB, a left
 self-update, stable boot/uptime, unchanged residents, and matrix/HID behavior.
