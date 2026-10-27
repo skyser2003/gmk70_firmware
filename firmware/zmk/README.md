@@ -1,4 +1,4 @@
-# GMK70 ZMK left USB trial
+# GMK70 ZMK staging trials
 
 `make build-zmk` builds the actual pinned `dependencies/zmk/app` for
 `gmk70_left`, using this repository's WB32FQ95 SoC, GPIO and USB integration.
@@ -6,16 +6,17 @@ This is an experimental left-side staging trial. Hardware execution and USB
 operation require the separate qualification workflow; compiling the port does
 not establish those results.
 
-The [2026-10-27 live qualification](../../docs/ZMK-LEFT-FIRST-TRIAL.md) flashed this
+The [2026-10-27 left qualification](../../docs/ZMK-LEFT-FIRST-TRIAL.md) flashed this
 left trial, observed its unique keyboard/consumer USB identity, and verified
 automatic watchdog return to Vial. Physical key input and both-half ZMK operation
-remain untested. The right application and both residents were preserved.
+remain untested. That left sequence preserved the right application and both residents.
 
 Initialize sources and build tools explicitly:
 
 ```sh
 make setup-zmk
 make build-zmk
+make build-zmk-right-trial
 ```
 
 `make setup` provides the shared pinned ARM toolchain if it is not installed.
@@ -25,7 +26,7 @@ or connected-device operations. ZMK, Zephyr, CMSIS and LVGL stay unmodified unde
 `dependencies/`. See [PROVENANCE.md](PROVENANCE.md) for their upstream manifests,
 licenses and vendor register references.
 
-The initial target uses a 96 MHz Cortex-M3, awake polling of the physical left
+Both targets use a 96 MHz Cortex-M3. The left target uses awake polling of its physical
 5-by-8 ROW2COL matrix, and native USB HID. It has no radio adapter, wired split,
 settings storage, RGB, encoder rotation, low-power support or Studio integration.
 Stock radio firmware stays unchanged. Ordinary left keys follow the maintained
@@ -33,7 +34,8 @@ board's physical matrix; stock macro positions are unbound.
 
 The image links directly at staging address `0x08020000` with a 120 KiB maximum.
 RAM begins at `0x20000040`; Zephyr's KiB-granularity linker configuration uses
-27 KiB, ending at `0x20006C40`, below the retained record at `0x20006FC0`.
+27 KiB, ending at `0x20006C40`, below the excluded upper range at `0x20006FC0`.
+The launcher record occupies the excluded first 64 bytes at `0x20000000`.
 The image checker enforces all ELF load segments, initialized data sources,
 initial stack and reset vector against the flash/RAM bounds, and requires real
 ZMK keymap/USB and WB32 symbols. The trial leaves the launcher's watchdog active
@@ -44,6 +46,31 @@ under `artifacts/zmk/left-trial/`, including BIN/HEX/ELF/map, configuration,
 devicetree, exact dependency lock, compiler inputs, image-check results and
 hashes. These are staging trial artifacts, not ordinary application/updater
 release images. Build and test commands do not flash, reset or write to a keyboard.
+
+## Right-side main-return trial
+
+`make build-zmk-right-trial` builds the actual ZMK application for `gmk70_right`,
+using the maintained right 5-by-9 matrix and the same SoC/GPIO/USB drivers. Output
+is under `artifacts/zmk/right-trial/` and `.work/zmk/right-trial/normal/`.
+
+This target enables `CONFIG_GMK70_TRIAL_MAIN_RETURN`. Zephyr calls an opt-in
+linker wrapper which calls real ZMK main. Only after main returns zero and the
+chosen matrix device is ready does it sleep for 500 ms and request a software
+reset. An earlier hang or initialization failure leaves IWDG to expire. The
+image checker verifies startup calls the wrapper and the wrapper calls real main.
+The left target excludes this wrapper and returns through the watchdog instead.
+
+This provides execution proof through the right trial RESULT over left USB.
+It does not establish right USB typing, physical matrix events or native split
+operation. The right trial never feeds IWDG or writes settings/flash.
+
+The [2026-10-27 right qualification](../../docs/ZMK-RIGHT-FIRST-TRIAL.md) flashed
+and ran this image through left USB, observed the expected post-main software
+reset, and verified 60 seconds of continuous recovery uptime/feed activity.
+Watchdog, bare return and bare hang checks also passed. Both halves returned to
+Vial. The right updater upgrade needed one joined-left USB reconnect; no pad
+bridge or direct right USB flashing was needed. The left application and both
+residents stayed unchanged throughout the right qualification.
 
 The [feasibility investigation](../../docs/ZMK-FEASIBILITY.md) records future
 split/radio work and hardware constraints. The

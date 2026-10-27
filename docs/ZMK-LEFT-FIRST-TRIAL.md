@@ -11,6 +11,10 @@ Vial, with the trial image retained in staging. Permanent ZMK operation, physica
 key input, right-side ZMK, wired split, radio, settings, RGB, encoders and Studio
 are not established by this test.
 
+A later [right qualification](ZMK-RIGHT-FIRST-TRIAL.md) executed a separate ZMK
+trial through left USB and updated the right application. The identities below
+record the first left checkpoint; consult that report for the latest state.
+
 ## Live evidence
 
 The exact trial was built from `dependencies/zmk/app`, not the bare assembly
@@ -48,7 +52,7 @@ The full launcher records ENTERED only after watchdog setup returns. These check
 therefore cover both pre-CRT progress and the assembly staging handoff. The
 fixtures are separately labeled and are not counted as ZMK execution.
 
-## Current keyboard and preservation
+## Keyboard and preservation at the left checkpoint
 
 After the ZMK trial, both applications and resident identities were read through
 left USB, and all 263 native configuration getters matched the fresh backup.
@@ -57,7 +61,7 @@ contains counts and identities, without private keymap or macro contents. A
 [later read-only RESULT](validation/2026-10-27-zmk-left/later-result.json) also
 confirmed continued Vial availability and the same completed ZMK trial record.
 
-| Region | Current identity |
+| Region | Identity at the left checkpoint |
 | --- | --- |
 | Left application | Experimental unlocked trial updater, 95,772 bytes, CRC32 `44883505` |
 | Left application SHA256 | `92b93fb4f46db684950a937cdfae6a0d6081d975b0db5780c6e23193ebaedf11` |
@@ -97,4 +101,5 @@ USB control callbacks, SoC clock gates and the complete new port.
 
 The next development work can use this left staging path for input validation
 and WB32 UART integration while preserving the working right application.
-Right-side launch qualification remains a separate milestone.
+The subsequent [right-side launch qualification](ZMK-RIGHT-FIRST-TRIAL.md) is
+recorded separately.

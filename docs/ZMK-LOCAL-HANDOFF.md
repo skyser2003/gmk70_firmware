@@ -137,18 +137,28 @@ The [execution continuation](ZMK-TRIAL-EXECUTION.md) now implements the ABI 2
 pre-CRT launcher and watchdog backend, with the explicitly requested unlocked
 Vial release variant. Consult that document for current validation status.
 
-The latest checkpoint is the [first actual left ZMK trial](ZMK-LEFT-FIRST-TRIAL.md).
-Pinned ZMK was flashed into left staging, enumerated as a USB keyboard, and
-returned automatically to Vial. The full launcher also passed watchdog, staging
-return and staging hang tests. The left now runs the experimental unlocked trial
-updater; the right remains on published unlocked Vial 0.1.7. Both residents and
-all 263 saved-configuration getters verify. No right firmware write or physical
-recovery was needed during this sequence.
+The latest checkpoint is the [first actual right ZMK trial](ZMK-RIGHT-FIRST-TRIAL.md),
+following the [left USB trial](ZMK-LEFT-FIRST-TRIAL.md). Right staging was flashed
+through left USB; actual ZMK main and matrix readiness preceded the expected
+software reset. Watchdog, bare return, bare hang and actual ZMK all returned
+automatically to Vial and passed 60 seconds of continuous uptime/feed checks.
+Short right relay retries are allowed only within bounded observation gaps;
+transport interruptions and reboot/stopped-feed evidence are not waived.
+
+The left application is unchanged at 95,772 bytes / CRC32 `44883505`. The right
+now runs the experimental health-capable trial updater, 95,908 bytes / CRC32
+`2635584202`, source `5308274`. Both resident CRCs remain `1770733249`; all 263
+saved-configuration getters match without writes. Upgrading the right updater
+required one left USB reconnect with both halves joined after its warm restart
+timed out. That restart cause is unmeasured. No pad bridge or direct right USB
+flashing was required during the right qualification.
 
 Current sources are on `codex/zmk-trial-launcher`. Maintained ZMK integration is
 under `firmware/zmk/`, with exact dependencies in the root lockfile and explicit
 `make setup-zmk`. `make build-zmk` builds the real application without device
-operations. This is a bounded left USB trial; physical input, right-side launch,
-native split/radio and permanent ZMK installation remain future work. Use the
-qualified left staging path for further development and preserve the user's
-preference to avoid right-only physical recovery.
+operations; `make build-zmk-right-trial` builds the right main-return target.
+These are separate bounded trials: physical input, simultaneous ZMK split/radio
+and permanent ZMK operation remain future work. Both halves currently run Vial;
+ZMK stays in staging and does not launch at power-on. Preserve the user's
+preference to avoid right-only physical recovery, and keep the updater warm
+restart limitation explicit before any further application upgrade.

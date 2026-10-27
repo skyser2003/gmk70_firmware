@@ -1,16 +1,20 @@
 # Staging execution and watchdog recovery
 
-Current result: the [first actual left ZMK trial](ZMK-LEFT-FIRST-TRIAL.md) was
-flashed, enumerated over USB, and returned automatically to Vial on 2026-10-27.
-The right and both residents are unchanged; all 263 configuration checks pass.
+Current result: separate actual [left USB](ZMK-LEFT-FIRST-TRIAL.md) and
+[right main-return](ZMK-RIGHT-FIRST-TRIAL.md) ZMK staging trials executed and
+returned automatically to Vial on 2026-10-27. The right was flashed through left
+USB and passed 60 seconds of recovery uptime/feed checks. The left application
+and both residents were preserved during right qualification; all 263
+configuration checks pass. Both halves currently run experimental Vial updaters.
 The earlier checkpoints below explain the implementation and recovery work.
 
 2026-10-27 continuation of the [receiver milestone](ZMK-TRIAL-LAUNCHER.md).
 The user authorized firmware installation and trial execution, then explicitly
 requested a separate permanently unlocked Vial release asset and its installation.
 The standard unlocked updater was added to Vial 0.1.7 and initially installed on
-both halves. The right still runs that 91,236-byte application, CRC32 1962194226.
-The left now runs the experimental 95,772-byte trial updater, CRC32 44883505.
+both halves. The right now runs the experimental health-capable 95,908-byte trial
+updater, CRC32 2635584202. The left runs the experimental 95,772-byte trial
+updater, CRC32 44883505.
 Resident CRC32 remains 1770733249 on both halves.
 The normal locked release assets remain available.
 
@@ -45,8 +49,8 @@ uses finite readiness waits, verifies prescaler/reload, and starts last. At nomi
 32 kHz LSI, prescaler /32 and reload 2999 give three seconds. This is an engineering
 setting; live return timing includes reset/startup/USB and split pause overhead.
 Setup failure before start returns to Vial. During trial execution there is no
-refresh path; failures await watchdog reset. After a qualified left trial return,
-Vial configures a long recovery period and services a potentially inherited
+refresh path; failures await watchdog reset. After a qualified trial return on
+either role, Vial configures a long recovery period and services a potentially inherited
 watchdog. The observed runtime instability means reset must not be assumed to
 stop it.
 
@@ -229,8 +233,9 @@ restored Vial and 35 seconds of read-only identity checks passed; the right and
 both resident identities remained unchanged.
 
 The full launcher now handles the possibility of an inherited running IWDG.
-Only a valid left ENTERED/RETURNED record with a current software/IWDG reset
-(optionally PIN) qualifies. Before CRT it configures the longest watchdog period
+At this left qualification checkpoint, only a valid left ENTERED/RETURNED record
+with a current software/IWDG reset (optionally PIN) qualifies. Before CRT it
+configures the longest watchdog period
 and reloads without issuing a start key. Vial initialization repeats that setup,
 clears the current reset flags, and enables reloads in updater housekeeping.
 Ordinary, power, corrupt, rejected and right-side recovery records do not touch
@@ -245,3 +250,21 @@ subsequently passed the pre-CRT probe, staging return and
 hang fixtures, and actual ZMK USB trial with stable Vial return. Exact watchdog
 persistence is still unmeasured; the [live evidence](ZMK-LEFT-FIRST-TRIAL.md)
 records the observed recovery behavior.
+
+### Right-role recovery and continuous health qualification (2026-10-27)
+
+The full launcher now admits either valid role for recovery servicing, preserving
+the checksum, phase and current-reset gates. Ordinary, power, corrupt and rejected
+records still cannot qualify. The runtime-only watchdog profile remains left-only.
+Full builds advertise HEALTH capability bit64 (total71); read-only TRACE page1
+exposes uptime, successful feed calls, active/failure flags and schema magic.
+The older left forwards these right requests without an application update.
+
+The host requires 60 continuous seconds of advancing counters, matching
+INFO/RESULT and active nonfailed service, with completed health samples less than
+two seconds apart. Short relay UNAVAILABLE replies are counted separately;
+transport/correlation interruptions restart the window and reboot or stopped-feed
+evidence fails qualification. Older profiles keep their strict 30-second check.
+See the [right hardware report](ZMK-RIGHT-FIRST-TRIAL.md) for passed watchdog,
+return, hang and actual ZMK checks, the separate updater warm-restart limitation,
+and final identities/settings preservation. No normal release asset changed.

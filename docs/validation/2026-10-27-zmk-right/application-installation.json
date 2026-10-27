@@ -1,0 +1,73 @@
+{
+  "automatic_restart_verified": false,
+  "verified_after_joined_left_USB_reconnect": true,
+  "verified_after_reconnect_utc": "2026-10-27T19:07:50.126928+00:00",
+  "before": {
+    "left": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 3,
+      "session": 0,
+      "received": 0,
+      "size": 95772,
+      "crc": 44883505,
+      "abi": 1,
+      "boot_crc": 1770733249
+    },
+    "right": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 0,
+      "session": 0,
+      "received": 0,
+      "size": 95772,
+      "crc": 3175559714,
+      "abi": 1,
+      "boot_crc": 1770733249
+    }
+  },
+  "after": {
+    "left": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 3,
+      "session": 0,
+      "received": 0,
+      "size": 95772,
+      "crc": 44883505,
+      "abi": 1,
+      "boot_crc": 1770733249
+    },
+    "right": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 0,
+      "session": 0,
+      "received": 0,
+      "size": 95908,
+      "crc": 2635584202,
+      "abi": 1,
+      "boot_crc": 1770733249
+    }
+  },
+  "left_application_unchanged": true,
+  "resident_writes": 0,
+  "right_package": {
+    "format": 1,
+    "board": "zuoya/gmk70",
+    "mcu": "WB32FQ95-256K",
+    "profile": "vial",
+    "app_address": 134225920,
+    "app_size": 95908,
+    "app_crc": 2635584202,
+    "app_sha256": "9de53c3eec05f6bdcd0b55fb91f257390c0eaf500818a7bb202554c7e99b6131",
+    "boot_crc": 1770733249,
+    "boot_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a",
+    "install_sha256": "ee6e8858bf2d4e44bd08ea69b23e26fb0af4b8b34b1caf1f8fd8ac85ca706260"
+  },
+  "limitation": "Application warm restart did not verify until the user reconnected left USB with both halves joined. Cause remains unmeasured; no right-only USB or pad recovery was used."
+}

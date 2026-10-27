@@ -1,0 +1,42 @@
+{
+  "at": "2026-10-27T19:14:50.244254+00:00",
+  "halves": {
+    "left": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 3,
+      "session": 0,
+      "received": 0,
+      "size": 95772,
+      "crc": 44883505,
+      "abi": 1,
+      "boot_crc": 1770733249
+    },
+    "right": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 0,
+      "session": 0,
+      "received": 0,
+      "size": 95908,
+      "crc": 2635584202,
+      "abi": 1,
+      "boot_crc": 1770733249
+    }
+  },
+  "vial_uid": "b691d7277fc88251",
+  "native_unlocked": true,
+  "configuration_getters_checked": 263,
+  "configuration_matches_backup": true,
+  "different_getter_count": 0,
+  "configuration_writes": 0,
+  "backup": "artifacts\\recovery\\2026-10-27T184922Z-vial-before-update.json",
+  "backup_sha256": "82627a906a7a76715ba60d0cc97a8cecbb94027608a1b9e5c78645cb73f67dd5",
+  "launcher_source_commit": "5308274",
+  "right_package_sha256": "9de53c3eec05f6bdcd0b55fb91f257390c0eaf500818a7bb202554c7e99b6131",
+  "right_application_installations": 2,
+  "resident_writes": 0,
+  "left_unchanged": true
+}

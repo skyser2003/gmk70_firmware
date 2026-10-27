@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "read_only": true,
+  "seconds": 10.328000000008615,
+  "samples": 23,
+  "first": {
+    "uptime_ms": 58218,
+    "feed_count": 0,
+    "flags": 0,
+    "magic": 826821959
+  },
+  "last": {
+    "uptime_ms": 68011,
+    "feed_count": 0,
+    "flags": 0,
+    "magic": 826821959
+  },
+  "relay_retries": 6,
+  "transport_retries": 0
+}

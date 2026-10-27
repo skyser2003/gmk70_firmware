@@ -1,0 +1,49 @@
+{
+  "success": true,
+  "action": "run",
+  "target": "right",
+  "expected_reset": "watchdog",
+  "started_at": "2026-10-27T19:11:19.252248+00:00",
+  "finished_at": "2026-10-27T19:12:31.003807+00:00",
+  "elapsed_seconds": 71.75,
+  "stable_seconds": 60.46899999999732,
+  "capabilities": {
+    "bits": 71,
+    "fallback_ms": 0,
+    "ram_start": 536870976,
+    "ram_end": 536899520
+  },
+  "before": {
+    "size": 95908,
+    "crc": 2635584202,
+    "abi": 2,
+    "boot_crc": 1770733249,
+    "role": 0
+  },
+  "after": {
+    "size": 95908,
+    "crc": 2635584202,
+    "abi": 2,
+    "boot_crc": 1770733249,
+    "role": 0
+  },
+  "result": {
+    "action": 1,
+    "phase": 3,
+    "reset_flags": 36,
+    "size": 1024,
+    "crc": 3643299767,
+    "role": 0
+  },
+  "trace": {},
+  "package_sha256": "dbc1138ae9e522e0ba860e19d9f36b7556f0f5df0f0bdd48007d72e78f966c87",
+  "retries": 114,
+  "relay_retries": 114,
+  "transport_retries": 0,
+  "health": {
+    "uptime_ms": 66228,
+    "feed_count": 31108,
+    "flags": 1,
+    "magic": 826821959
+  }
+}

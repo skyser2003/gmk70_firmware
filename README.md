@@ -6,7 +6,7 @@ Bluetooth and 2.4 GHz.
 ## Base versions
 
 - **QMK/VIA:** official [QMK 0.34.4](https://github.com/qmk/qmk_firmware/tree/0.34.4).
-- **ZMK trial:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), experimental left USB staging target.
+- **ZMK trials:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), experimental left and right staging targets.
 - **Vial:** [vial-qmk at `dd43959ae5c0`](https://github.com/vial-kb/vial-qmk/commit/dd43959ae5c08d8a28d38a1acf7b04e86b14a344).
 
 Upstream dependencies remain unmodified. Exact framework, library and
@@ -31,8 +31,9 @@ integration are selected separately from `firmware/qmk-via/` and
   a separate [radio diagnostic build](docs/RADIO-DIAGNOSTICS.md) provides RAM counters.
 
 Complete stock equivalence and hardware validation of the latest Vial/updater
-changes remain unverified. An experimental [left ZMK USB trial](docs/ZMK-LEFT-FIRST-TRIAL.md)
-has run and returned automatically to Vial; full ZMK split/radio support is pending.
+changes remain unverified. Experimental [left USB](docs/ZMK-LEFT-FIRST-TRIAL.md)
+and [right main-return](docs/ZMK-RIGHT-FIRST-TRIAL.md) ZMK trials have run separately
+and returned automatically to Vial; full ZMK split/radio support is pending.
 
 ## Build
 
@@ -57,10 +58,11 @@ Choose a build target:
 | `make build-vial-updater` | Vial firmware with split updater |
 | `make build-vial-radio-diagnostic` | Optional Vial updater with RAM radio capture |
 | `make build-zmk` | Experimental left ZMK staging trial; requires `make setup-zmk` |
+| `make build-zmk-right-trial` | Experimental right ZMK trial with post-main reset proof |
 
 Builds write firmware, checksums and matching source archives to
 `artifacts/qmk/<variant>/` or `artifacts/vial/<variant>/`. ZMK trial outputs are
-under `artifacts/zmk/left-trial/`; see its [build instructions](firmware/zmk/README.md).
+under `artifacts/zmk/{left-trial,right-trial}/`; see the [build instructions](firmware/zmk/README.md).
 Builds read `dependencies/` and `firmware/` directly, without copying or symlinking
 source trees. Generated headers and objects live under `.work/`; `make clean`
 removes them. See [external-source builds](docs/EXTERNAL-BUILD.md).
@@ -79,8 +81,9 @@ artifacts. See [release instructions](docs/RELEASING.md).
 ## Using the firmware
 
 For normal QMK/Vial releases, back up your configuration before updating and
-install the same build on both halves. The experimental left ZMK trial has its
-own [staging workflow](docs/ZMK-LEFT-FIRST-TRIAL.md). Stock/VIA and Vial use different EEPROM layouts; independently rebuilt
+install the same build on both halves. The experimental ZMK trials have separate
+[left](docs/ZMK-LEFT-FIRST-TRIAL.md) and [right](docs/ZMK-RIGHT-FIRST-TRIAL.md)
+staging workflows. Stock/VIA and Vial use different EEPROM layouts; independently rebuilt
 Vial images reset dynamic mappings and macros.
 
 - **VIA:** load the [original GMK70 definition](definitions/via/ZUOYA_GMK70.json)

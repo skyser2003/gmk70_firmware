@@ -1,0 +1,72 @@
+{
+  "read_only": true,
+  "successful_identity_result_samples": 12,
+  "elapsed_seconds": 7.515,
+  "relay_unavailable_replies": 5,
+  "transport_exception_count": 0,
+  "unavailable_exchanges": [
+    {
+      "t": 1.515,
+      "duration": 0.016,
+      "op": 18,
+      "reply_op": 18,
+      "code": 7,
+      "state": 0,
+      "role": 0
+    },
+    {
+      "t": 2.843,
+      "duration": 0.016,
+      "op": 18,
+      "reply_op": 18,
+      "code": 7,
+      "state": 0,
+      "role": 0
+    },
+    {
+      "t": 3.984,
+      "duration": 0.016,
+      "op": 7,
+      "reply_op": 7,
+      "code": 7,
+      "state": 0,
+      "role": 0
+    },
+    {
+      "t": 4.25,
+      "duration": 0.015,
+      "op": 18,
+      "reply_op": 18,
+      "code": 7,
+      "state": 0,
+      "role": 0
+    },
+    {
+      "t": 4.75,
+      "duration": 0.031,
+      "op": 7,
+      "reply_op": 7,
+      "code": 7,
+      "state": 0,
+      "role": 0
+    }
+  ],
+  "identities_all_match": true,
+  "terminal_results_all_match": true,
+  "identity": {
+    "size": 95772,
+    "crc": 3175559714,
+    "abi": 2,
+    "boot_crc": 1770733249,
+    "role": 0
+  },
+  "result": {
+    "action": 2,
+    "phase": 3,
+    "reset_flags": 36,
+    "size": 0,
+    "crc": 0,
+    "role": 0
+  },
+  "limitation": "Terminal results alone cannot establish that no later reboot occurred; runtime health witness is needed."
+}

@@ -1,8 +1,9 @@
 # Firmware dependency and source layout
 
 Status, 2026-10-27: QMK migration and experimental Vial port implemented; an
-experimental [left ZMK USB trial](ZMK-LEFT-FIRST-TRIAL.md) has executed and returned
-to Vial. ZMK split/radio and Studio remain future work. See also the
+experimental [left USB](ZMK-LEFT-FIRST-TRIAL.md) and
+[right main-return](ZMK-RIGHT-FIRST-TRIAL.md) ZMK trials have executed separately
+and returned to Vial. ZMK split/radio and Studio remain future work. See also the
 [Vial port report](VIAL-PORT.md). This document records the separately pinned
 frameworks and their maintained board sources. It supersedes the
 old-revision recommendation in the earlier [upstream comparison](QMK-UPSTREAM-COMPARISON.md).
@@ -13,7 +14,7 @@ old-revision recommendation in the earlier [upstream comparison](QMK-UPSTREAM-CO
 | --- | --- | --- | --- |
 | QMK default / VIA | `qmk/qmk_firmware` | Git submodule at `dependencies/qmk` | `0.34.4`, commit `08c662f286ddfd12a985f57b584b02eca5af0ae6` |
 | Vial | `vial-kb/vial-qmk` | Separate Git submodule at `dependencies/vial-qmk` | `dd43959ae5c08d8a28d38a1acf7b04e86b14a344`; its own library pins; no firmware tags advertised |
-| ZMK left trial | `zmkfirmware/zmk`, its Zephyr version and modules | Exact commits in `dependencies/sources.lock.json`, verified against upstream manifests | ZMK `4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85`; Zephyr `10ba6d0cb38bc3d258775d27982f707599320085` |
+| ZMK staging trials | `zmkfirmware/zmk`, its Zephyr version and modules | Exact commits in `dependencies/sources.lock.json`, verified against upstream manifests | ZMK `4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85`; Zephyr `10ba6d0cb38bc3d258775d27982f707599320085` |
 
 QMK's latest numeric tag was checked directly using `git ls-remote --tags --refs
 --sort=-version:refname https://github.com/qmk/qmk_firmware.git 'refs/tags/0.*'`.
@@ -78,11 +79,12 @@ firmware/
   zmk/                         maintained local Zephyr/ZMK module
     zephyr/module.yml          module registration and roots
     boards/zuoya/gmk70_left/   left board, defconfig and keymap
+    boards/zuoya/gmk70_right/  right board, defconfig and keymap
     soc/westberry/wb32fq95/    WB32 clocks and USB electrical integration
     dts/                       SoC and peripheral bindings
     drivers/                   native GPIO and USB device-controller drivers
     tools/                     pinned build tools, source/image verification
-    trial/                     separate bare return/hang fixtures
+    trial/                     main-return adapter and separate bare fixtures
     CMakeLists.txt
     Kconfig
 
@@ -99,12 +101,12 @@ tools/                         project tooling, including offline keymap migrati
 .work/                         ignored, generated workspaces
   qmk/<variant>/<mode>/        generated QMK headers and objects per build mode
   vial/<variant>/<mode>/       generated Vial headers and objects per build mode
-  zmk/left-trial/normal/       generated Zephyr/ZMK build files
+  zmk/{left-trial,right-trial}/normal/  generated Zephyr/ZMK build files
 artifacts/
   qmk/{release,debug}/         the two VIA distributions
   qmk/default/                 optional fixed-keymap development baseline
   vial/vial/                   experimental normal Vial distribution
-  zmk/left-trial/              actual left ZMK trial and build metadata
+  zmk/{left-trial,right-trial}/ actual ZMK trials and build metadata
   zmk/trial-fixtures/          separately labeled bare return/hang programs
 ```
 
@@ -203,5 +205,6 @@ The QMK migration is implemented by `scripts/setup.sh`, `scripts/build.sh` and
 `tools/build-support/project_build.py`. Current compatibility work and validation
 are recorded in [the migration notes](QMK-0.34-MIGRATION.md). The experimental
 Vial port is described in [its port report](VIAL-PORT.md). The
-[left ZMK trial](ZMK-LEFT-FIRST-TRIAL.md) now has USB execution and automatic return
-evidence; split/radio and Studio remain future work.
+[left ZMK trial](ZMK-LEFT-FIRST-TRIAL.md) has USB execution evidence; the separate
+[right trial](ZMK-RIGHT-FIRST-TRIAL.md) has post-main software reset and continuous
+recovery evidence through left USB. Split/radio and Studio remain future work.
