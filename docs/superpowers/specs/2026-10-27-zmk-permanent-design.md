@@ -72,6 +72,14 @@ profile `zmk` denotes a genuine application-slot ZMK build; the host must still
 reject wrong addresses, vectors, resident hashes or payloads. Both halves use the
 same binary, permitting normal right-first updates after migration.
 
+An optional permanent-development-only `CONFIG_GMK70_ZMK_PEER_TRIAL_RELAY`
+forwards validated namespace0x71/ABI2 packets solely to target1, using the common
+trial packet validator directly. It never executes a local trial or changes the
+resident. Separate namespace ACK caches prevent STATUS from exposing replies
+from another protocol. The same USB role/mode/watchdog authorization applies.
+This permits right staging qualification while native ZMK runs on the left,
+before replacing the right application. It is disabled in staging qualification.
+
 Continuous runtime evidence uses a separate read-only namespace `0x72`, ABI1,
 operation `0x20`, with nonzero nonce at byte8 and no other request payload.
 The response echoes the header/nonce, reports normal role bits at byte7 and
@@ -102,16 +110,25 @@ stage over running code or make an install durable.
 
 Install the left application first through the working Vial updater; retain
 right Vial until the ZMK left exposes verified INFO for both halves and proves
-its staging flash path. Verify a ZMK-left software update/rollback path before
+its staging flash path. Verify a ZMK-left software update path before
 installing right ZMK. Stop dependent hardware writes on failed identity/transport
 checks and diagnose; do not blindly retry or ask for right-only physical recovery.
 
-Prefer an actual left ZMK-to-frozen-Vial-to-ZMK rollback round trip before
-replacing the right: this proves installation of different content, permits
-native configuration readback, and retains a working right receiver. Freeze two
-reviewed ZMK build revisions with an explicitly recorded USB device-version
-difference for the later right update and left self-update proof; do not count
-an identical-image resident page skip as a different-image update test.
+Freeze two reviewed ZMK builds with a recorded USB product-string difference
+for update proofs: normal `GMK70 ZMK Wired` and `GMK70 ZMK Wired Update Test`.
+The pinned legacy USB stack has no device-version Kconfig; this string difference
+gives different image content without changing keyboard/updater behavior.
+Qualify a left self-update while
+the right still runs Vial, then launch a right staging qualification using the
+peer trial relay and observe right ZMK INFO/health before replacing its app.
+Do not count an identical-image resident page skip as a different-image update.
+
+An IWDG started by permanent ZMK may survive a warm firmware replacement. Frozen
+Vial services it only when its retained trial recovery gates qualify. General
+automatic Vial rollback after arbitrary cold boots is therefore not established;
+it may require a joined-left power cycle. Keep its exact recovery images and
+native backup, but do not introduce fabricated trial records or modify residents
+to claim a seamless handover. This milestone qualifies ZMK-to-ZMK updates.
 
 After both run ZMK, verify a right application update through left USB, a left
 self-update, stable boot/uptime, unchanged residents, and matrix/HID behavior.
