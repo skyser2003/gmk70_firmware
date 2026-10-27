@@ -1,18 +1,75 @@
 import hashlib
 import json
+import os
 import struct
 import tempfile
 import unittest
 import zlib
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 from test_update import FakeLink as OriginalFakeLink
 from test_update import package as fixture_package
 
+import update
+import zmk_package
 from update import ZMK_BOOT_CRC, ZMK_BOOT_SHA256, Op, Package, Updater
 from zmk_package import build
 
 ROOT = Path(__file__).resolve().parents[3]
+SYNTHETIC_RESIDENT = bytes(range(256)) * 2
+SYNTHETIC_BOOT = SYNTHETIC_RESIDENT.ljust(0x2000, b"\xff")
+
+
+@contextmanager
+def synthetic_resident_identity() -> Iterator[None]:
+    """Replace only the identity inputs, leaving validation/hash code real."""
+    sha = hashlib.sha256(SYNTHETIC_BOOT).hexdigest()
+    crc = zlib.crc32(SYNTHETIC_BOOT)
+    with (
+        patch.object(update, "ZMK_BOOT_SHA256", sha),
+        patch.object(update, "ZMK_BOOT_CRC", crc),
+        patch.object(zmk_package, "ZMK_BOOT_SHA256", sha),
+        patch.object(zmk_package, "ZMK_BOOT_CRC", crc),
+    ):
+        yield
+
+
+class ZmkFixtureIndependenceTests(unittest.TestCase):
+    def test_mandatory_package_checks_work_without_ignored_resident(self) -> None:
+        read_bytes = Path.read_bytes
+        artifact = ROOT / "artifacts/qmk/debug-updater/resident.bin"
+        artifact_reads: list[Path] = []
+
+        def missing_artifact(path: Path) -> bytes:
+            if path == artifact:
+                artifact_reads.append(path)
+                raise FileNotFoundError(
+                    "Simulated initialized checkout without resident build output"
+                )
+            return read_bytes(path)
+
+        cases = unittest.TestSuite(
+            [
+                ZmkPackageTests(
+                    "test_offline_packaging_requires_validated_permanent_range_and_exact_resident"
+                ),
+                ZmkPackageTests(
+                    "test_zmk_accepts_only_pinned_resident_and_application_vectors"
+                ),
+            ]
+        )
+        result = unittest.TestResult()
+        with patch.object(
+            Path, "read_bytes", autospec=True, side_effect=missing_artifact
+        ):
+            cases.run(result)
+        self.assertTrue(result.wasSuccessful(), str(result.errors + result.failures))
+        self.assertEqual(result.testsRun, 2)
+        self.assertEqual(result.skipped, [])
+        self.assertEqual(artifact_reads, [])
 
 
 def package(profile: str = "debug") -> Package:
@@ -31,14 +88,39 @@ class FakeLink(OriginalFakeLink):
 
 
 class ZmkPackageTests(unittest.TestCase):
+    def test_production_pins_are_the_reviewed_resident_identity(self) -> None:
+        expected_sha = (
+            "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a"
+        )
+        for module in (update, zmk_package):
+            self.assertEqual(module.ZMK_BOOT_SHA256, expected_sha)
+            self.assertEqual(module.ZMK_BOOT_CRC, 1770733249)
+        value = package("zmk")
+        value.manifest["boot_crc"] = zlib.crc32(SYNTHETIC_BOOT)
+        value.manifest["boot_sha256"] = hashlib.sha256(SYNTHETIC_BOOT).hexdigest()
+        with self.assertRaisesRegex(ValueError, "exact reviewed resident"):
+            value.validate_application()
+
+    @unittest.skipUnless(
+        os.environ.get("GMK70_TEST_BUILT_ZMK_RESIDENT") == "1",
+        "optional built-resident integration; set GMK70_TEST_BUILT_ZMK_RESIDENT=1",
+    )
+    def test_optional_built_resident_matches_production_pins(self) -> None:
+        resident = (ROOT / "artifacts/qmk/debug-updater/resident.bin").read_bytes()
+        self.assertTrue(64 <= len(resident) <= 0x2000)
+        padded = resident.ljust(0x2000, b"\xff")
+        self.assertEqual(hashlib.sha256(padded).hexdigest(), update.ZMK_BOOT_SHA256)
+        self.assertEqual(zlib.crc32(padded), update.ZMK_BOOT_CRC)
+
     def test_offline_packaging_requires_validated_permanent_range_and_exact_resident(
         self,
     ) -> None:
-        with tempfile.TemporaryDirectory() as directory:
+        with synthetic_resident_identity(), tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image = root / "zmk.bin"
             image.write_bytes(package("zmk").image)
-            resident = ROOT / "artifacts/qmk/debug-updater/resident.bin"
+            resident = root / "synthetic-resident.bin"
+            resident.write_bytes(SYNTHETIC_RESIDENT)
             report = root / "image-check.json"
             checked: dict[str, object] = {
                 "board": "gmk70_wired",
@@ -90,13 +172,12 @@ class ZmkPackageTests(unittest.TestCase):
         self.assertEqual(link.operations, [])
 
     def test_zmk_accepts_only_pinned_resident_and_application_vectors(self) -> None:
-        # The reviewed prerequisite is deliberately not rebuilt by this test.
-        resident = (ROOT / "artifacts/qmk/debug-updater/resident.bin").read_bytes()
-        boot = resident.ljust(0x2000, b"\xff")
+        resident = SYNTHETIC_RESIDENT
+        boot = SYNTHETIC_BOOT
         value = package("zmk")
         value.manifest["boot_crc"] = zlib.crc32(boot)
         value.manifest["boot_sha256"] = hashlib.sha256(boot).hexdigest()
-        with tempfile.TemporaryDirectory() as directory:
+        with synthetic_resident_identity(), tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             (output / "application.bin").write_bytes(value.image)
             (output / "resident.bin").write_bytes(resident)
