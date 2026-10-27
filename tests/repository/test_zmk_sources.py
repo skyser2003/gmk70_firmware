@@ -129,6 +129,44 @@ class ZmkImageTests(unittest.TestCase):
                 struct.pack("<II", 0x20006C40, 0x08020401) + bytes(120 * 1024)
             )
 
+    def test_right_requires_actual_main_and_wrapped_startup(self) -> None:
+        checker = self.checker()
+        valid = "00000000 <bg_thread_main>:\n  0: bl 10 <__wrap_main>\n00000010 <__wrap_main>:\n  10: bl 20 <main>\n00000020 <main>:\n  20: bx lr\n"
+        checker.validate_main_wrapping(valid)
+        for broken in (
+            valid.replace("<__wrap_main>\n", "<main>\n"),
+            valid.replace("bl 20 <main>", "bl 20 <fake_main>"),
+        ):
+            with self.assertRaises(ValueError):
+                checker.validate_main_wrapping(broken)
+
+    def test_right_matrix_matches_maintained_board_pins(self) -> None:
+        import re
+
+        board = json.loads(
+            (
+                PROJECT / "firmware/qmk-common/keyboards/zuoya/gmk70/keyboard.json"
+            ).read_text()
+        )
+        dts = (
+            PROJECT / "firmware/zmk/boards/zuoya/gmk70_right/gmk70_right.dts"
+        ).read_text()
+        for kind in ("row", "col"):
+            declaration = dts.split(f"{kind}-gpios =", 1)[1].split(";", 1)[0]
+            actual = [
+                bank.upper() + pin
+                for bank, pin in re.findall(r"<&gpio([abc]) (\d+)", declaration)
+            ]
+            self.assertEqual(actual, board["split"]["matrix_pins"]["right"][kind + "s"])
+        self.assertIn("columns = <9>", dts)
+
+    def test_build_routes_explicit_right_without_changing_left_default(self) -> None:
+        build = (PROJECT / "scripts/build_zmk.sh").read_text()
+        self.assertIn("${1:-left-trial}", build)
+        self.assertIn('"$variant" == right-trial', build)
+        self.assertIn("artifacts/zmk/$variant", build)
+        self.assertIn('--board "$board"', build)
+
 
 class ZmkElfTests(unittest.TestCase):
     def checker(self) -> ModuleType:

@@ -10,7 +10,7 @@
 static uint8_t  stage[4096], commit_page[GMK_PAGE_SIZE];
 static bool     launch;
 static jmp_buf  handoff;
-static uint32_t flags;
+static uint32_t flags, hardware_role;
 static unsigned recoveries, feeds, writes, roles;
 static bool     recovery_ok;
 uint32_t        gmk_trial_platform_read(uint32_t address) {
@@ -27,7 +27,7 @@ void gmk_trial_platform_barrier(void) {}
 bool gmk_trial_platform_role(uint32_t *role) {
     ++roles;
     if (launch) {
-        *role = 0;
+        *role = hardware_role;
         return true;
     }
     assert(!"Recovery must not sample role GPIO");
@@ -84,7 +84,7 @@ int main(void) {
                 if (phase == 4) assert(gmk_trial_boot_prepare(&gmk_trial_record, 2, (gmk_image_t){0}, role));
                 recoveries = feeds = writes = roles = 0;
                 recovery_ok                         = true;
-                bool expected                       = phase > 0 && phase < 3 && role == 0 && (flags == 4 || flags == 8 || flags == 12 || flags == 36 || flags == 40 || flags == 44);
+                bool expected                       = phase > 0 && phase < 3 && (flags == 4 || flags == 8 || flags == 12 || flags == 36 || flags == 40 || flags == 44);
                 // REQUESTED may sample GPIO on software admission, tested by
                 // boot core separately; only run its unexpected-reset path.
                 if (phase == 4 && (flags == 8 || flags == 40)) continue;
@@ -115,13 +115,16 @@ int main(void) {
     gmk_write_u32(stage, GMK_TRIAL_BOOT_RAM_END);
     for (unsigned i = 1; i <= 3; ++i)
         gmk_write_u32(stage + i * 4, GMK_STAGE_BASE + 65);
-    assert(gmk_trial_boot_prepare(&gmk_trial_record, 1, (gmk_image_t){sizeof(stage), gmk_crc32(stage, sizeof(stage))}, 0));
-    flags = 8;
-    feeds = recoveries = 0;
-    if (!setjmp(handoff)) {
-        gmk_trial_early_boot();
-        assert(false);
+    for (hardware_role = 0; hardware_role < 2; ++hardware_role) {
+        assert(gmk_trial_boot_prepare(&gmk_trial_record, 1, (gmk_image_t){sizeof(stage), gmk_crc32(stage, sizeof(stage))}, hardware_role));
+        flags = 8;
+        feeds = recoveries = roles = 0;
+        if (!setjmp(handoff)) {
+            gmk_trial_early_boot();
+            assert(false);
+        }
+        assert(!feeds && !recoveries && roles == 1);
+        assert(gmk_trial_record.role == hardware_role);
     }
-    assert(!feeds && !recoveries);
     puts("trial platform recovery tests passed");
 }

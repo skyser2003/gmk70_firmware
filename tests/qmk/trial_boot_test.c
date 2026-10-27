@@ -665,6 +665,15 @@ static void test_watchdog_recovery_gate(void) {
     gmk_trial_boot_record_t  record;
     gmk_trial_boot_request_t request;
     assert(!gmk_trial_boot_watchdog_recovery(NULL, 4));
+    for (unsigned invalid = 0; invalid < 2; ++invalid) {
+        prepare(&record, GMK_TRIAL_BOOT_RUN, 0);
+        assert(gmk_trial_boot_consume(&record, 8, 0, &request));
+        assert(gmk_trial_boot_enter(&record));
+        record.role = invalid ? UINT32_MAX : 2;
+        seal_fixture(&record);
+        assert(!gmk_trial_boot_watchdog_recovery(&record, 4));
+        assert(!gmk_trial_boot_watchdog_recovery(&record, 8));
+    }
     for (unsigned role = 0; role < 2; ++role) {
         for (unsigned phase = 1; phase <= 4; ++phase) {
             prepare(&record, GMK_TRIAL_BOOT_RUN, role);
@@ -674,7 +683,7 @@ static void test_watchdog_recovery_gate(void) {
             if (phase == 4) assert(gmk_trial_boot_complete(&record, 8));
             for (unsigned flags = 0; flags < 128; ++flags) {
                 bool reset    = flags == 4 || flags == 8 || flags == 12 || flags == 36 || flags == 40 || flags == 44;
-                bool expected = role == 0 && (phase == 2 || phase == 3) && reset;
+                bool expected = (phase == 2 || phase == 3) && reset;
                 assert(gmk_trial_boot_watchdog_recovery(&record, flags) == expected);
             }
             gmk_trial_boot_record_t saved = record;

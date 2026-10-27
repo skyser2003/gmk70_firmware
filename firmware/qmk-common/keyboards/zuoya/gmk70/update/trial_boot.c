@@ -218,5 +218,5 @@ bool gmk_trial_boot_watchdog_recovery(const volatile gmk_trial_boot_record_t *re
     const uint32_t causes = GMK_TRIAL_BOOT_RESET_SOFTWARE | GMK_TRIAL_BOOT_RESET_WATCHDOG;
     if (!(reset_flags & causes) || (reset_flags & ~(causes | GMK_TRIAL_BOOT_RESET_PIN))) return false;
     gmk_trial_boot_record_t copy;
-    return record && snapshot(record, &copy) && valid(&copy) && copy.role == GMK_TRIAL_BOOT_ROLE_LEFT && (copy.phase == GMK_TRIAL_BOOT_ENTERED || copy.phase == GMK_TRIAL_BOOT_RETURNED);
+    return record && snapshot(record, &copy) && valid(&copy) && (copy.phase == GMK_TRIAL_BOOT_ENTERED || copy.phase == GMK_TRIAL_BOOT_RETURNED);
 }

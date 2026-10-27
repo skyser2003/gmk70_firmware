@@ -60,6 +60,11 @@ setup-zmk:
 .PHONY: setup-zmk
 
 test-zmk:
+	bash ./tests/zmk/run_main_return_tests.sh
 	bash ./tests/zmk/run_usb_dc_tests.sh
 	bash ./tests/zmk/run_soc_clock_tests.sh
 .PHONY: test-zmk
+
+build-zmk-right-trial:
+	bash ./scripts/build.sh zmk right-trial
+.PHONY: build-zmk-right-trial

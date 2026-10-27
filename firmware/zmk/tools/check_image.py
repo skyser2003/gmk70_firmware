@@ -48,7 +48,9 @@ def validate_elf(data: bytes, reset: int) -> None:
             raise ValueError("ELF initialized data loads from outside staging")
 
 
-def check(elf: Path, image: Path) -> dict[str, str | int]:
+def check(elf: Path, image: Path, board: str = "gmk70_left") -> dict[str, str | int]:
+    if board not in ("gmk70_left", "gmk70_right"):
+        raise ValueError(f"Unsupported board {board}")
     result = validate_vectors(image.read_bytes())
     validate_elf(elf.read_bytes(), int(str(result["reset"]), 16))
     symbols = subprocess.check_output(
@@ -64,18 +66,43 @@ def check(elf: Path, image: Path) -> dict[str, str | int]:
             line.split()[-1] == name for line in symbols.splitlines() if line.split()
         ):
             raise ValueError(f"Missing actual ZMK/WB32 symbol {name}")
+    if board == "gmk70_right":
+        for name in ("main", "__wrap_main"):
+            if not any(line.split()[-1] == name for line in symbols.splitlines()):
+                raise ValueError(f"Missing right trial symbol {name}")
+        disassembly = subprocess.check_output(
+            ["arm-none-eabi-objdump", "-d", str(elf)], text=True
+        )
+        validate_main_wrapping(disassembly)
+        result["main_return"] = "successful real main + ready kscan + 500ms + SW reset"
     result["application"] = "dependencies/zmk/app"
-    result["board"] = "gmk70_left"
+    result["board"] = board
     return result
+
+
+def validate_main_wrapping(disassembly: str) -> None:
+    """Require startup to invoke the wrapper and wrapper to invoke actual ZMK main."""
+    import re
+
+    functions = re.split(r"(?m)^[0-9a-f]+ <([^>]+)>:\n", disassembly)
+    bodies = dict(zip(functions[1::2], functions[2::2], strict=True))
+    branch = r"\bblx?\s+[^\n]*"
+    if not re.search(branch + r"<main>", bodies.get("__wrap_main", "")):
+        raise ValueError("Right trial wrapper does not call actual main")
+    if not re.search(branch + r"<__wrap_main>", bodies.get("bg_thread_main", "")):
+        raise ValueError("Zephyr startup does not call right trial wrapper")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("elf", type=Path)
     parser.add_argument("image", type=Path)
+    parser.add_argument(
+        "--board", choices=("gmk70_left", "gmk70_right"), default="gmk70_left"
+    )
     args = parser.parse_args()
     try:
-        print(json.dumps(check(args.elf, args.image), indent=2))
+        print(json.dumps(check(args.elf, args.image, args.board), indent=2))
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"ZMK staging check failed: {error}\n")
 

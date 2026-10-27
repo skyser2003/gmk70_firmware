@@ -1,3 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 rsource "drivers/gpio/Kconfig"
 rsource "drivers/usb/device/Kconfig"
+
+config GMK70_TRIAL_MAIN_RETURN
+	bool "Experimental software-reset proof after successful ZMK main"
+	depends on BOARD_GMK70_RIGHT
+	default n

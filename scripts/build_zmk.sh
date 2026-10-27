@@ -2,28 +2,29 @@
 set -euo pipefail
 source "$(dirname "$0")/project.sh"
 variant="${1:-left-trial}"
-[[ "$variant" == left-trial ]] || { printf 'Unsupported experimental ZMK target: %s\n' "$variant" >&2; exit 2; }
+[[ "$variant" == left-trial || "$variant" == right-trial ]] || { printf 'Unsupported experimental ZMK target: %s\n' "$variant" >&2; exit 2; }
+board="gmk70_${variant%-trial}"
 python3 firmware/zmk/tools/workspace.py verify
 zmk_tools="$project_root/firmware/zmk/tools/.venv/bin"
 for tool in python cmake ninja; do
     [[ -x "$zmk_tools/$tool" ]] || { printf 'Missing pinned ZMK build tools; run make setup-zmk\n' >&2; exit 2; }
 done
 command -v arm-none-eabi-gcc >/dev/null || { printf 'Missing ARM toolchain; run make setup\n' >&2; exit 2; }
-for path in .work .work/locks .work/zmk .work/zmk/left-trial .work/zmk/left-trial/normal artifacts artifacts/zmk artifacts/zmk/left-trial; do
+for path in .work .work/locks .work/zmk .work/zmk/$variant .work/zmk/$variant/normal artifacts artifacts/zmk artifacts/zmk/$variant; do
     [[ ! -L "$path" ]] || { printf 'Refusing redirected ZMK output: %s\n' "$path" >&2; exit 2; }
 done
-mkdir -p .work/zmk/left-trial/normal artifacts/zmk/left-trial .work/locks
-exec 9>.work/locks/zmk-left-trial.lock
+mkdir -p .work/zmk/$variant/normal artifacts/zmk/$variant .work/locks
+exec 9>.work/locks/zmk-$variant.lock
 flock 9
 export PATH="$zmk_tools:$PATH"
 export ZEPHYR_BASE="$project_root/dependencies/zephyr"
 export ZEPHYR_TOOLCHAIN_VARIANT=cross-compile
 export CROSS_COMPILE="$(dirname "$(command -v arm-none-eabi-gcc)")/arm-none-eabi-"
 export PYTHONDONTWRITEBYTECODE=1
-build_dir="$project_root/.work/zmk/left-trial/normal"
-output="$project_root/artifacts/zmk/left-trial"
+build_dir="$project_root/.work/zmk/$variant/normal"
+output="$project_root/artifacts/zmk/$variant"
 cmake -S dependencies/zmk/app -B "$build_dir" -G Ninja \
-    -DBOARD=gmk70_left \
+    -DBOARD="$board" \
     -DZephyr_DIR="$ZEPHYR_BASE/share/zephyr-package/cmake" \
     -DZEPHYR_MODULES="$project_root/dependencies/modules/hal/cmsis;$project_root/dependencies/modules/lib/gui/lvgl" \
     -DZMK_EXTRA_MODULES="$project_root/firmware/zmk" \
@@ -39,10 +40,10 @@ cp "$build_dir/zephyr/.config" "$output/zmk.config"
 cp "$build_dir/compile_commands.json" "$output/"
 cp "$build_dir/zephyr/zephyr.dts" "$output/"
 cp dependencies/sources.lock.json "$output/"
-python3 firmware/zmk/tools/check_image.py "$output/zmk.elf" "$output/zmk.bin" > "$output/image-check.json"
+python3 firmware/zmk/tools/check_image.py "$output/zmk.elf" "$output/zmk.bin" --board "$board" > "$output/image-check.json"
 {
-    printf 'EXPERIMENTAL actual ZMK left USB staging trial; not a normal updater image.\n'
-    printf 'Source: dependencies/zmk/app\nBoard: gmk70_left\nFlash: 0x08020000, maximum 120 KiB\n'
+    printf 'EXPERIMENTAL actual ZMK %s staging trial; not a normal updater image.\n' "$variant"
+    printf 'Source: dependencies/zmk/app\nBoard: %s\nFlash: 0x08020000, maximum 120 KiB\n' "$board"
     printf 'RAM admitted: 0x20000040..0x20006FC0; upper retained record excluded.\n'
     printf 'The launcher watchdog is not fed; successful trial must return by reset.\n'
     printf 'No radio, EEPROM, split transport, flash writes, or device operations.\n'

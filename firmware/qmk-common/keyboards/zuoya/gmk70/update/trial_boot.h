@@ -82,5 +82,6 @@ bool gmk_trial_boot_trace_fault(volatile gmk_trial_boot_record_t *record, uint32
 // Read address, value, CFSR, PC, flags (fault kind low 8 bits; write bit 8).
 bool gmk_trial_boot_trace_report(const volatile gmk_trial_boot_record_t *record, uint32_t words[5]);
 
-// Current reset cause, never the retained report, controls watchdog recovery.
+// Both valid roles qualify; the current reset cause, never the retained report,
+// controls watchdog recovery.
 bool gmk_trial_boot_watchdog_recovery(const volatile gmk_trial_boot_record_t *record, uint32_t reset_flags);
