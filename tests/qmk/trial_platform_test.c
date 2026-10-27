@@ -12,8 +12,10 @@ static bool     launch;
 static jmp_buf  handoff;
 static uint32_t flags, hardware_role;
 static unsigned recoveries, feeds, writes, roles;
-static bool     recovery_ok;
+static bool     recovery_ok, feed_ok = true;
+static unsigned reads;
 uint32_t        gmk_trial_platform_read(uint32_t address) {
+    ++reads;
     assert(address == 0x40010D00);
     return flags;
 }
@@ -46,7 +48,7 @@ bool gmk_trial_watchdog_recover(const gmk_trial_mmio_t *io) {
 bool gmk_trial_watchdog_feed(const gmk_trial_mmio_t *io) {
     assert(io);
     ++feeds;
-    return true;
+    return feed_ok;
 }
 bool gmk_trial_watchdog_start(const gmk_trial_mmio_t *io) {
     if (launch) {
@@ -72,7 +74,50 @@ static void entered(uint32_t role) {
     assert(gmk_trial_boot_consume(&gmk_trial_record, 8, role, &request));
     assert(gmk_trial_boot_enter(&gmk_trial_record));
 }
+static void health(uint32_t uptime, uint32_t count, uint32_t status) {
+    uint8_t  result[16];
+    unsigned before_reads = reads, before_writes = writes, before_feeds = feeds;
+    gmk_trial_platform_health(uptime, result);
+    assert(gmk_read_u32(result) == uptime);
+    assert(gmk_read_u32(result + 4) == count);
+    assert(gmk_read_u32(result + 8) == status);
+    assert(gmk_read_u32(result + 12) == 0x31484D47);
+    assert(reads == before_reads && writes == before_writes && feeds == before_feeds);
+}
+
+static void test_health(void) {
+    for (unsigned role = 0; role < 2; ++role) {
+        entered(role);
+        flags       = 4;
+        recovery_ok = true;
+        gmk_trial_platform_init();
+        health(0, 0, 1);
+        gmk_trial_platform_task();
+        health(UINT32_MAX, 1, 1);
+        feed_ok = false;
+        gmk_trial_platform_task();
+        health(123, 1, 1);
+        feed_ok = true;
+        gmk_trial_platform_task();
+        health(124, 2, 1);
+        flags = 4;
+        gmk_trial_platform_init();
+        health(125, 0, 1);
+        flags       = 4;
+        recovery_ok = false;
+        gmk_trial_platform_init();
+        gmk_trial_platform_task();
+        health(126, 0, 2);
+    }
+    memset((void *)&gmk_trial_record, 0, sizeof(gmk_trial_record));
+    flags = 0;
+    gmk_trial_platform_init();
+    gmk_trial_platform_task();
+    health(127, 0, 0);
+}
+
 int main(void) {
+    test_health();
     for (unsigned phase = 0; phase < 5; ++phase) {
         for (unsigned role = 0; role < 2; ++role) {
             for (unsigned current_flags = 0; current_flags < 128; ++current_flags) {

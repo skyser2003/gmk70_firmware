@@ -82,10 +82,12 @@ static bool staged_image_valid(gmk_image_t image) {
     return gmk_trial_vectors(staged, image.size) && gmk_crc32(staged, image.size) == image.crc;
 }
 
-static bool watchdog_service;
-static bool watchdog_service_failed;
+static bool     watchdog_service;
+static bool     watchdog_service_failed;
+static uint32_t watchdog_feed_count;
 
 void gmk_trial_platform_init(void) {
+    watchdog_feed_count     = 0;
     watchdog_service        = false;
     watchdog_service_failed = false;
     if (gmk_trial_boot_watchdog_recovery(&gmk_trial_record, read_register(RCC_RSTSTAT))) {
@@ -97,7 +99,14 @@ void gmk_trial_platform_init(void) {
 }
 
 void gmk_trial_platform_task(void) {
-    if (watchdog_service) (void)gmk_trial_watchdog_feed(&io);
+    if (watchdog_service && gmk_trial_watchdog_feed(&io)) ++watchdog_feed_count;
+}
+
+void gmk_trial_platform_health(uint32_t uptime_ms, uint8_t result[16]) {
+    gmk_write_u32(result, uptime_ms);
+    gmk_write_u32(result + 4, watchdog_feed_count);
+    gmk_write_u32(result + 8, (watchdog_service ? 1U : 0U) | (watchdog_service_failed ? 2U : 0U));
+    gmk_write_u32(result + 12, 0x31484D47);
 }
 
 bool gmk_trial_platform_prepare(uint32_t action, gmk_image_t image, uint32_t role) {

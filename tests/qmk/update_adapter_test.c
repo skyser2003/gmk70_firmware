@@ -56,7 +56,14 @@ void gmk_trial_runtime_fallback_test(bool enabled) {
 #    endif
 #    ifndef GMK70_TRIAL_RUNTIME
 static unsigned platform_inits, platform_tasks;
-void            gmk_trial_platform_init(void) {
+void            gmk_trial_platform_health(uint32_t uptime_ms, uint8_t result[16]) {
+    assert(uptime_ms == now);
+    gmk_write_u32(result, uptime_ms);
+    gmk_write_u32(result + 4, 1234);
+    gmk_write_u32(result + 8, 1);
+    gmk_write_u32(result + 12, 0x31484D47);
+}
+void gmk_trial_platform_init(void) {
     ++platform_inits;
 }
 void gmk_trial_platform_task(void) {
@@ -857,7 +864,7 @@ static void test_trial_capabilities(void) {
 #    ifdef GMK70_TRIAL_RUNTIME
     assert(gmk_read_u32(packet + 16) == 57 && gmk_read_u32(packet + 20) == 12000);
 #    else
-    assert(gmk_read_u32(packet + 16) == 7 && gmk_read_u32(packet + 20) == 0);
+    assert(gmk_read_u32(packet + 16) == 71 && gmk_read_u32(packet + 20) == 0);
 #    endif
     assert(gmk_read_u32(packet + 24) == 0x20000040 && gmk_read_u32(packet + 28) == 0x20006FC0);
     assert(!flash_writes && !resets && !trial_preparations);
@@ -916,6 +923,27 @@ static void test_runtime_right_is_unqualified(void) {
 }
 #    endif
 
+#    ifndef GMK70_TRIAL_RUNTIME
+static void test_trial_health_relay(void) {
+    for (unsigned target = 0; target < 2; ++target) {
+        fixture();
+        relay         = target == 1;
+        vial_unlocked = false;
+        uint8_t packet[32];
+        query(packet, target, 0x15, 0xFEDCBA98, 1, 0);
+        packet[1] = 0x71;
+        packet[2] = 2;
+        trial_command(packet, target);
+        assert(packet[5] == GMK_OK && packet[7] == (target ? 0 : 3));
+        assert(gmk_read_u32(packet + 8) == 0xFEDCBA98 && gmk_read_u32(packet + 12) == 1);
+        assert(gmk_read_u32(packet + 16) == now && gmk_read_u32(packet + 20) == 1234);
+        assert(gmk_read_u32(packet + 24) == 1 && gmk_read_u32(packet + 28) == 0x31484D47);
+        assert(!trial_preparations && !resets && !flash_writes && !eeprom_reads);
+        assert((rpc_calls > 0) == (target == 1));
+    }
+}
+#    endif
+
 static void test_trial_trace_and_fault(void) {
     fixture();
     memset(memory, 0xFF, sizeof(memory));
@@ -934,7 +962,16 @@ static void test_trial_trace_and_fault(void) {
         assert(packet[5] == GMK_OK && gmk_read_u32(packet + 16) == 0x1000 + page);
         assert(gmk_read_u32(packet + 8) == 123 && gmk_read_u32(packet + 12) == page);
 #    else
-        assert(packet[5] == GMK_UNAVAILABLE);
+        if (page == 0) {
+            assert(packet[5] == GMK_UNAVAILABLE);
+        } else {
+            assert(packet[5] == GMK_OK);
+            assert(gmk_read_u32(packet + 16) == now);
+            assert(gmk_read_u32(packet + 20) == 1234);
+            assert(gmk_read_u32(packet + 24) == 1);
+            assert(gmk_read_u32(packet + 28) == 0x31484D47);
+            assert(gmk_read_u32(packet + 8) == 123 && gmk_read_u32(packet + 12) == page);
+        }
 #    endif
     }
     assert(!trial_preparations && !resets && !flash_writes);
@@ -1009,6 +1046,9 @@ int main(void) {
 #ifdef GMK70_VIAL_TRIAL
 #    ifdef GMK70_TRIAL_RUNTIME
     test_runtime_right_is_unqualified();
+#    endif
+#    ifndef GMK70_TRIAL_RUNTIME
+    test_trial_health_relay();
 #    endif
     test_trial_trace_and_fault();
     test_trial_capabilities();

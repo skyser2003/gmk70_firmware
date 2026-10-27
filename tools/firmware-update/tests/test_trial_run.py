@@ -4,6 +4,7 @@ import io
 import json
 import struct
 import unittest
+from collections.abc import Callable
 from unittest.mock import patch
 
 from test_update import HidFixture
@@ -120,10 +121,160 @@ class Device:
         pass
 
 
+class HealthDevice(Device):
+    def __init__(self, clock: Clock) -> None:
+        super().__init__()
+        self.clock = clock
+        self.capabilities = (71, 0, 0x20000040, 0x20006FC0)
+        self.health_words: Callable[[], tuple[int, int, int, int]] = lambda: (
+            int(clock.value * 1000) & 0xFFFFFFFF,
+            int(clock.value * 100) & 0xFFFFFFFF,
+            1,
+            0x31484D47,
+        )
+
+    def exchange(self, request: bytes) -> bytes:
+        if request[4] == TrialOp.TRACE:
+            assert struct.unpack_from("<I", request, 12)[0] == 1
+            reply = bytearray(response(request))
+            struct.pack_into("<IIII", reply, 16, *self.health_words())
+            return bytes(reply)
+        return super().exchange(request)
+
+
 class TrialClientTests(unittest.TestCase):
     def client(self, device: Device, clock: Clock | None = None) -> TrialClient:
         timer = clock or Clock()
         return TrialClient(device, now=timer.now, sleep=timer.sleep)
+
+    def test_health_qualifies_sixty_seconds_despite_short_relay_retries(self) -> None:
+        clock = Clock()
+        device = HealthDevice(clock)
+        exchange = device.exchange
+        last_retry = [0.0]
+
+        def relay(request: bytes) -> bytes:
+            if clock.value > 10 and clock.value - last_retry[0] > 1:
+                last_retry[0] = clock.value
+                return response(request, result=7)
+            return exchange(request)
+
+        device.exchange = relay  # type: ignore[method-assign]
+        report = self.client(device, clock).probe(1)
+        self.assertGreaterEqual(report["stable_seconds"], 60)
+        self.assertGreater(report["relay_retries"], 30)
+        self.assertEqual(report["health"]["flags"], 1)
+
+    def test_health_rejects_reboot_or_stuck_watchdog_feeds(self) -> None:
+        for broken in ("reboot", "feeds"):
+            with self.subTest(broken=broken):
+                clock = Clock()
+                device = HealthDevice(clock)
+                original = device.health_words
+
+                def words(
+                    original: Callable[[], tuple[int, int, int, int]] = original,
+                    broken: str = broken,
+                    clock: Clock = clock,
+                ) -> tuple[int, int, int, int]:
+                    uptime, feeds, flags, magic = original()
+                    if broken == "reboot" and clock.value > 15:
+                        uptime = 100
+                    if broken == "feeds":
+                        feeds = 10
+                    return uptime, feeds, flags, magic
+
+                device.health_words = words
+                with self.assertRaisesRegex(RuntimeError, "uptime|feed"):
+                    self.client(device, clock).probe(1)
+
+    def test_health_gap_and_hidden_retries_restart_window(self) -> None:
+        for failure in ("gap", "usb", "correlation"):
+            with self.subTest(failure=failure):
+                clock = Clock()
+                device = HealthDevice(clock)
+                exchange = device.exchange
+                interrupted: list[float] = []
+
+                def interrupt(
+                    request: bytes,
+                    clock: Clock = clock,
+                    interrupted: list[float] = interrupted,
+                    failure: str = failure,
+                    exchange: Callable[[bytes], bytes] = exchange,
+                ) -> bytes:
+                    if clock.value > 15 and not interrupted:
+                        interrupted.append(clock.value)
+                        if failure == "gap":
+                            clock.sleep(2)
+                        elif failure == "usb":
+                            raise OSError("hidden retry")
+                        else:
+                            bad = bytearray(response(request))
+                            bad[1] ^= 1
+                            return bytes(bad)
+                    return exchange(request)
+
+                device.exchange = interrupt  # type: ignore[method-assign]
+                report = self.client(device, clock).probe(1)
+                self.assertGreaterEqual(report["stable_seconds"], 60)
+                self.assertGreaterEqual(clock.value - interrupted[0], 60)
+
+    def test_health_repeated_two_second_gaps_never_qualify(self) -> None:
+        clock = Clock()
+        device = HealthDevice(clock)
+        original = device.health_words
+
+        def slow_words() -> tuple[int, int, int, int]:
+            clock.sleep(2)
+            return original()
+
+        device.health_words = slow_words
+        client = self.client(device, clock)
+        with self.assertRaises(TimeoutError):
+            client.probe(1)
+        self.assertLess(float(str(client.last_report["stable_seconds"])), 60)
+        self.assertLess(clock.value, 120)
+
+    def test_health_initial_uptime_must_exceed_two_seconds(self) -> None:
+        clock = Clock()
+        device = HealthDevice(clock)
+        device.health_words = lambda: (
+            max(0, int((clock.value - 9) * 1000)),
+            int(clock.value * 100),
+            1,
+            0x31484D47,
+        )
+        report = self.client(device, clock).probe(1)
+        self.assertGreater(report["elapsed_seconds"], 71)
+
+    def test_health_accepts_modular_uptime_and_feed_wrap(self) -> None:
+        clock = Clock()
+        device = HealthDevice(clock)
+        device.health_words = lambda: (
+            (0xFFFFC000 + int(clock.value * 1000)) & 0xFFFFFFFF,
+            (0xFFFFF000 + int(clock.value * 100)) & 0xFFFFFFFF,
+            1,
+            0x31484D47,
+        )
+        self.assertGreaterEqual(
+            self.client(device, clock).probe(1)["stable_seconds"], 60
+        )
+
+    def test_health_rejects_bad_magic_or_flags(self) -> None:
+        for flags, magic in ((1, 0), (4, 0x31484D47), (0, 0x31484D47), (3, 0x31484D47)):
+            with self.subTest(flags=flags, magic=magic):
+                clock = Clock()
+                device = HealthDevice(clock)
+
+                def invalid_words(
+                    flags: int = flags, magic: int = magic
+                ) -> tuple[int, int, int, int]:
+                    return 9000, 100, flags, magic
+
+                device.health_words = invalid_words
+                with self.assertRaises(RuntimeError):
+                    self.client(device, clock).probe(1)
 
     def test_fault_test_requires_capability_and_captured_undefined_instruction(
         self,
@@ -465,6 +616,7 @@ class TrialClientTests(unittest.TestCase):
             reply = self.client_with_usb(link).command(1, TrialOp.PROBE, 42)
             self.assertEqual(reply.session, 42)
             self.assertFalse(backend.incoming)
+            self.assertEqual(link.observation_errors, 3)
             link.close()
 
     @staticmethod

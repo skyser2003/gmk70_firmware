@@ -12,6 +12,8 @@ bool                           gmk_trial_platform_prepare(uint32_t action, gmk_i
 __attribute__((noreturn)) void gmk_trial_platform_reset(void);
 // Four little-endian words: action | phase << 8, reset flags, image size, CRC.
 void gmk_trial_platform_result(uint8_t result[16]);
+// Read-only runtime witness: uptime, successful feeds, service flags, magic.
+void gmk_trial_platform_health(uint32_t uptime_ms, uint8_t result[16]);
 
 #ifdef GMK70_TRIAL_RUNTIME
 // Called after normal CRT/framework initialization, never from Reset_Handler.

@@ -37,3 +37,27 @@ Success means the exact real right image is staged, admitted, executes through
 ZMK main and returns via software reset; the application/resident identities and
 263 saved-configuration getters then verify. Stop physical trials on an
 unexpected result, diagnose and preserve a working updater before retrying.
+
+## Evidence-driven recovery health extension
+
+The first right PROBE returned the correct IWDG result, but strict host observation
+restarted on short relay UNAVAILABLE replies. A read-only raw timeline found
+completed matching INFO/RESULT samples with isolated code7 failures lasting
+15–31ms, without USB exceptions. Terminal retained results cannot distinguish
+later resets, so add a runtime witness before continuing physical trials.
+
+Full trial builds advertise capability bit64. Their existing TRACE page1 returns
+four uint32 words: timer uptime_ms, successful watchdog-feed count, flags
+(bit0 servicing active, bit1 recovery failed), magic/version `0x31484D47`.
+Initialize count zero each boot; increment only on successful feed writes.
+Full TRACE page0 remains unavailable; runtime TRACE/CAP57 remains unchanged.
+This uses an operation/page already forwarded by the installed left firmware,
+so no left application update is needed. The64-byte retained ABI is unchanged.
+
+For a health-capable return, host qualification requires60seconds of matching
+identity/RESULT plus active nonfailed health. Begin after uptime>2000ms; require
+monotonic modular32-bit uptime and progressing feed count, with less than2s
+between completed health samples. Report code7 relay retries separately and allow
+them within that bound. USB exceptions, correlation failures and timeouts still
+invalidate the observation window; reboot evidence fails qualification. This
+measures application execution and feed writes, not hardware countdown readback.

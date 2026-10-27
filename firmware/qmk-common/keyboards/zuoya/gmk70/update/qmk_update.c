@@ -248,7 +248,7 @@ void gmk_update_task(void) {
         gmk_write_u32(response + 16, is_keyboard_left() ? 57 : 0); // Left-only qualification.
         gmk_write_u32(response + 20, is_keyboard_left() ? 12000 : 0);
 #    else
-        gmk_write_u32(response + 16, 7); // PROBE, staging RUN, early startup.
+        gmk_write_u32(response + 16, 71); // PROBE, staging RUN, early startup, runtime health.
         gmk_write_u32(response + 20, 0);
 #    endif
         gmk_write_u32(response + 24, GMK_TRIAL_RAM_BASE);
@@ -258,7 +258,11 @@ void gmk_update_task(void) {
 #    ifdef GMK70_TRIAL_RUNTIME
         gmk_trial_runtime_trace(gmk_read_u32(request + 12), response + 16);
 #    else
-        response[5] = GMK_UNAVAILABLE;
+        if (gmk_read_u32(request + 12) == 1) {
+            gmk_trial_platform_health(timer_read32(), response + 16);
+        } else {
+            response[5] = GMK_UNAVAILABLE;
+        }
 #    endif
     }
     if (request[1] == GMK_TRIAL_NAMESPACE && request[4] == GMK_TRIAL_RESULT && result == GMK_OK) gmk_trial_platform_result(response + 16);

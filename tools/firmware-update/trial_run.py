@@ -40,6 +40,7 @@ class TrialCapability(IntFlag):
     FALLBACK = 8
     FALLBACK_TEST = 16
     FAULT_TEST = 32
+    HEALTH = 64
 
 
 def nonce() -> int:
@@ -97,6 +98,7 @@ class TrialUsbLink(UsbLink):
                 break
             if correlated(response, original, packet):
                 return response
+            self.observation_errors = getattr(self, "observation_errors", 0) + 1
         raise OSError("Trial USB response timed out")
 
 
@@ -151,6 +153,14 @@ class TrialTrace:
 
 
 @dataclass(frozen=True)
+class TrialHealth:
+    uptime_ms: int
+    feed_count: int
+    flags: int
+    magic: int
+
+
+@dataclass(frozen=True)
 class TrialResult:
     action: int
     phase: int
@@ -190,6 +200,9 @@ class TrialReport(TypedDict):
     trace: dict[str, int]
     package_sha256: str | None
     retries: int
+    relay_retries: int
+    transport_retries: int
+    health: dict[str, int]
 
 
 class TrialClient:
@@ -202,6 +215,8 @@ class TrialClient:
     ) -> None:
         self._link, self._now, self._sleep = link, now, sleep
         self.retries = 0
+        self.relay_retries = 0
+        self.transport_retries = 0
         self.last_report: dict[str, object] = {}
 
     @staticmethod
@@ -240,13 +255,23 @@ class TrialClient:
         deadline = self._now() + timeout
         while self._now() < deadline:
             try:
-                raw = self._link.exchange(current)
+                errors_before = getattr(self._link, "observation_errors", 0)
+                try:
+                    raw = self._link.exchange(current)
+                finally:
+                    hidden_errors = (
+                        getattr(self._link, "observation_errors", 0) - errors_before
+                    )
+                    self.transport_retries += hidden_errors
+                    self.retries += hidden_errors
             except OSError:
+                self.transport_retries += 1
                 self.retries += 1
                 current = original
                 self._sleep(0.02)
                 continue
             if not correlated(raw, original, current):
+                self.transport_retries += 1
                 self.retries += 1
                 current = original
                 self._sleep(0.005)
@@ -257,6 +282,7 @@ class TrialClient:
                 self._sleep(0.002)
                 continue
             if reply.result == 7:
+                self.relay_retries += 1
                 self.retries += 1
                 current = original
                 self._sleep(0.05)
@@ -314,6 +340,13 @@ class TrialClient:
         if reserved1 or reserved2 or reserved3 or flags & ~0x1FF or flags & 0xFF > 5:
             raise RuntimeError("Invalid retained fault trace")
         return TrialTrace(address, value, cfsr, pc, flags)
+
+    def health(self, target: int) -> TrialHealth:
+        reply = self.command(target, TrialOp.TRACE, nonce(), 1)
+        health = TrialHealth(*struct.unpack("<IIII", reply.payload))
+        if health.magic != 0x31484D47 or health.flags & ~3:
+            raise RuntimeError("Invalid recovery health encoding")
+        return health
 
     def fault(self, target: int) -> TrialReport:
         return self._execute(target, None, "software", TrialOp.FAULT_TEST)
@@ -401,7 +434,10 @@ class TrialClient:
             # A brief USB return can precede another watchdog reset. Require
             # a full observation window, with the original reconnect allowance
             # still available before that window starts.
-            stable_required = 30.0
+            health_mode = bool(capabilities.bits & TrialCapability.HEALTH)
+            stable_required = 60.0 if health_mode else 30.0
+            previous_health: TrialHealth | None = None
+            previous_health_at: float | None = None
             deadline = self._now() + 45 + stable_required
             stable_since: float | None = None
             self.last_report["stable_seconds"] = 0.0
@@ -416,7 +452,9 @@ class TrialClient:
                             self._sleep(0.25)
                             continue
                         reconnect = False
-                    retries_before = self.retries
+                    retries_before = (
+                        self.transport_retries if health_mode else self.retries
+                    )
                     after, status = self.inspect(target)
                     self.last_report["after"] = asdict(after)
                     if after != before:
@@ -431,10 +469,50 @@ class TrialClient:
                         else None
                     )
                     self.last_report["trace"] = asdict(trace) if trace else {}
-                    if self.retries != retries_before:
+                    health = self.health(target) if health_mode else None
+                    self.last_report["health"] = asdict(health) if health else {}
+                    observed_at = self._now()
+                    if health is not None:
+                        if health.flags != 1:
+                            raise RuntimeError(
+                                "Recovery health servicing is inactive or failed"
+                            )
+                        if previous_health is not None:
+                            uptime_delta = (
+                                health.uptime_ms - previous_health.uptime_ms
+                            ) & 0xFFFFFFFF
+                            feeds_delta = (
+                                health.feed_count - previous_health.feed_count
+                            ) & 0xFFFFFFFF
+                            if not 0 < uptime_delta < 0x80000000:
+                                raise RuntimeError(
+                                    "Recovery health uptime regressed or stopped"
+                                )
+                            if not 0 < feeds_delta < 0x80000000:
+                                raise RuntimeError(
+                                    "Recovery health watchdog feed count regressed or stopped"
+                                )
+                        if (
+                            previous_health_at is not None
+                            and observed_at - previous_health_at >= 2
+                        ):
+                            stable_since = None
+                        previous_health, previous_health_at = health, observed_at
+                    retries_after = (
+                        self.transport_retries if health_mode else self.retries
+                    )
+                    if retries_after != retries_before:
                         stable_since = None
                         self.last_report["stable_seconds"] = 0.0
-                    if status.state != 0 or result.phase in (1, 2):
+                    if (
+                        status.state != 0
+                        or result.phase in (1, 2)
+                        or (
+                            health is not None
+                            and stable_since is None
+                            and health.uptime_ms <= 2000
+                        )
+                    ):
                         stable_since = None
                         self.last_report["stable_seconds"] = 0.0
                         self._sleep(0.25)
@@ -477,6 +555,9 @@ class TrialClient:
                         if package
                         else None,
                         "retries": self.retries,
+                        "relay_retries": self.relay_retries,
+                        "transport_retries": self.transport_retries,
+                        "health": asdict(health) if health else {},
                     }
                     self.last_report = dict(report)
                     return report
@@ -484,15 +565,18 @@ class TrialClient:
                     stable_since = None
                     self.last_report["stable_seconds"] = 0.0
                     self.retries += 1
+                    self.transport_retries += 1
                     reconnect = True
                     self._sleep(0.25)
             raise TimeoutError(
-                "Trial recovery did not remain stable for 30 seconds before the deadline"
+                f"Trial recovery did not remain stable for {stable_required:g} seconds before the deadline"
             )
         except (OSError, RuntimeError, TimeoutError, ValueError) as error:
             self.last_report.update(
                 error=str(error),
                 retries=self.retries,
+                relay_retries=self.relay_retries,
+                transport_retries=self.transport_retries,
                 elapsed_seconds=self._now() - started,
                 finished_at=datetime.now(UTC).isoformat(),
             )
