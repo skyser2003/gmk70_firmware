@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TypedDict
 
 STAGE = 0x08020000
+RAM_START = 0x20000040
 RAM_END = 0x20006FC0
 
 
@@ -20,6 +21,7 @@ class TrialManifest(TypedDict):
     mcu: str
     target: str
     load_address: int
+    ram_start: int
     ram_end: int
     size: int
     crc32: int
@@ -45,7 +47,7 @@ class TrialPackage:
         if not 1024 <= len(image) <= 0x1E000 or len(image) % 4:
             raise ValueError("Trial size must be 1024..122880 bytes, multiple of four")
         stack, *vectors = struct.unpack_from("<16I", image)
-        if not 0x20000000 < stack <= RAM_END or stack % 8:
+        if not RAM_START < stack <= RAM_END or stack % 8:
             raise ValueError("Trial stack overlaps reserved RAM or is unaligned")
         for index, vector in enumerate(vectors):
             if vector == 0 and index > 2:
@@ -59,11 +61,12 @@ class TrialPackage:
         return cls(
             image,
             {
-                "format": "gmk70-staging-trial-v1",
+                "format": "gmk70-staging-trial-v2",
                 "board": "zuoya/gmk70",
                 "mcu": "WB32FQ95-256K",
                 "target": target,
                 "load_address": STAGE,
+                "ram_start": RAM_START,
                 "ram_end": RAM_END,
                 "size": len(image),
                 "crc32": zlib.crc32(image),
@@ -107,7 +110,7 @@ def upload_packets(package: TrialPackage, session: int) -> tuple[bytes, ...]:
 
     def packet(op: TrialOp, offset: int = 0, data: bytes = b"") -> bytes:
         return (
-            bytes((0x7F, 0x71, 1, target, op, len(data), 0, 0))
+            bytes((0x7F, 0x71, 2, target, op, len(data), 0, 0))
             + struct.pack("<II", session, offset)
             + data.ljust(16, b"\0")
         )

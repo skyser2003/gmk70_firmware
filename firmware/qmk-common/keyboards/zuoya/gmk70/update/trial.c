@@ -3,16 +3,19 @@
 #include <string.h>
 
 bool gmk_trial_packet_valid(const uint8_t request[GMK_PACKET_SIZE]) {
-    if (request[1] != GMK_TRIAL_NAMESPACE) return false;
+    if (request[1] != GMK_TRIAL_NAMESPACE || request[2] != GMK_TRIAL_ABI) return false;
     uint8_t normal[GMK_PACKET_SIZE];
     memcpy(normal, request, sizeof(normal));
     normal[1] = 0x70;
+    normal[2] = GMK_UPDATE_ABI;
     switch (request[4]) {
         case GMK_BEGIN:
             if (request[5] != 16) return false;
             normal[5] = 12;
             memset(normal + 28, 0, 4);
             break;
+        case GMK_TRIAL_WATCHDOG:
+        case GMK_TRIAL_RESULT:
         case GMK_TRIAL_RUN:
             normal[4] = GMK_SEAL;
             break;
@@ -31,7 +34,7 @@ bool gmk_trial_packet_valid(const uint8_t request[GMK_PACKET_SIZE]) {
 bool gmk_trial_vectors(const uint8_t *data, uint32_t size) {
     if (!gmk_image_bounds(size)) return false;
     uint32_t stack = gmk_read_u32(data);
-    if (stack <= GMK_RAM_BASE || stack > GMK_TRIAL_RAM_END || stack % 8) return false;
+    if (stack <= GMK_TRIAL_RAM_BASE || stack > GMK_TRIAL_RAM_END || stack % 8) return false;
     for (unsigned i = 1; i < 16; ++i) {
         uint32_t vector = gmk_read_u32(data + 4 * i);
         if (!vector && i > 3) continue;
@@ -58,6 +61,7 @@ gmk_update_result_t gmk_trial_buffer_data(gmk_update_t *update, const uint8_t re
     uint8_t normal[GMK_PACKET_SIZE];
     memcpy(normal, request, sizeof(normal));
     normal[1] = 0x70;
+    normal[2] = GMK_UPDATE_ABI;
     return gmk_update_buffer_data(update, normal);
 }
 
@@ -65,7 +69,11 @@ gmk_update_result_t gmk_trial_process(gmk_update_t *update, gmk_trial_launch_t *
     if (!gmk_trial_packet_valid(request)) return GMK_BAD_REQUEST;
     uint8_t  op      = request[4];
     uint32_t session = gmk_read_u32(request + 8);
-    if (op == GMK_STATUS || op == GMK_INFO) return GMK_OK;
+    if (op == GMK_STATUS || op == GMK_INFO || op == GMK_TRIAL_RESULT) return GMK_OK;
+    if (op == GMK_TRIAL_WATCHDOG) {
+        if (!session || update->state != GMK_IDLE || launch->armed || !commit_erased()) return GMK_BAD_STATE;
+        return recovery_ready ? GMK_OK : GMK_UNAVAILABLE;
+    }
     if (update->state == GMK_COMMITTED) return GMK_BAD_STATE;
     if (op == GMK_BEGIN) {
         gmk_image_t image = {gmk_read_u32(request + 16), gmk_read_u32(request + 20)};
@@ -87,6 +95,7 @@ gmk_update_result_t gmk_trial_process(gmk_update_t *update, gmk_trial_launch_t *
         uint8_t normal[GMK_PACKET_SIZE];
         memcpy(normal, request, sizeof(normal));
         normal[1] = 0x70;
+        normal[2] = GMK_UPDATE_ABI;
         return gmk_update_process(update, normal);
     }
     if (op == GMK_SEAL) {

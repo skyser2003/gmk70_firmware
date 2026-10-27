@@ -28,8 +28,10 @@ class VialBuildTests(unittest.TestCase):
             "firmware/qmk-vial/keymaps/vial/vial.json": "{}",
             "tools/firmware-update/update.py": "# updater tool\n",
             "tools/firmware-update/trial.py": "# offline trial tool\n",
+            "tools/firmware-update/trial_run.py": "# explicit device trial tool\n",
             "tools/firmware-update/read_radio.py": "# read-only radio tool\n",
             "docs/ZMK-TRIAL-LAUNCHER.md": "Trial receiver experiment\n",
+            "docs/ZMK-TRIAL-EXECUTION.md": "Trial execution experiment\n",
             "docs/RADIO-DIAGNOSTICS.md": "Radio experiment\n",
         }.items():
             path = self.root / name
@@ -60,6 +62,8 @@ class VialBuildTests(unittest.TestCase):
                              'resident.elf', 'resident.map', 'install.bin',
                              'install.hex', 'update.json'):
                     (output / name).write_text(name)
+            elif sys.argv[1].endswith('check_trial_elf.py'):
+                pass  # This boundary fixture substitutes for the ARM compiler.
             else:
                 sys.exit(8)
             """,

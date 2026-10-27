@@ -2,7 +2,7 @@
 ENTRY(trial_reset)
 MEMORY {
     trial (rx) : ORIGIN = 0x08020000, LENGTH = 120K
-    ram (rwx) : ORIGIN = 0x20000000, LENGTH = 0x6FC0
+    ram (rwx) : ORIGIN = 0x20000040, LENGTH = 0x6F80
 }
 SECTIONS {
     .vectors : { KEEP(*(.vectors)) } > trial

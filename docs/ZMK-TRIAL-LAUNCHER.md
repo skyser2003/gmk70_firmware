@@ -1,5 +1,9 @@
 # Staging trial launcher: software milestone
 
+**Historical ABI 1 milestone.** The [ABI 2 execution continuation](ZMK-TRIAL-EXECUTION.md)
+adds the early-startup/watchdog backend and supersedes the pending-work statements
+below. The original receiver validation remains recorded here.
+
 2026-10-26. Implements the first offline milestone of [the handoff](ZMK-LOCAL-HANDOFF.md).
 The opt-in Vial trial updater can receive and validate a trial. RUN is deliberately
 UNAVAILABLE: no watchdog register writes, reset trampoline or CPU handoff exists

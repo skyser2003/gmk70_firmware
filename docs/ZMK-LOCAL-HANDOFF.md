@@ -132,3 +132,7 @@ and validated the trial receiver on both halves through left USB after explicit
 user authorization. Saved native configuration was restored and verified, Vial
 was relocked, and resident CRCs stayed unchanged. RUN remains disabled; the next
 work is still the startup/watchdog backend, followed by its separate recovery proof.
+
+The [execution continuation](ZMK-TRIAL-EXECUTION.md) now implements the ABI 2
+pre-CRT launcher and watchdog backend, with the explicitly requested unlocked
+Vial release variant. Consult that document for current validation status.

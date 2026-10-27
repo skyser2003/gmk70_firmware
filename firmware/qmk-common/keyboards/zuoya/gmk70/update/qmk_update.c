@@ -6,6 +6,9 @@
 #        error "The trial receiver requires native Vial authorization"
 #    endif
 #    include "trial.h"
+#    include "trial_platform.h"
+#    include "trial_peer.h"
+static bool               trial_reset_pending;
 static bool               trial_mode;
 static gmk_trial_launch_t trial_launch;
 #endif
@@ -37,7 +40,21 @@ static uint32_t      last_request;
 static uint32_t      reset_at;
 
 bool gmk_update_active(void) {
+#ifdef GMK70_VIAL_TRIAL
+    if (trial_reset_pending || gmk_trial_peer_active(timer_read32())) return true;
+#endif
     return pending || update.state == GMK_RECEIVING || update.state == GMK_SEALED || update.state == GMK_COMMITTED;
+}
+
+static void update_response(const uint8_t request[GMK_PACKET_SIZE], gmk_update_result_t result, uint8_t response[GMK_PACKET_SIZE]) {
+    gmk_update_response(&update, request, result, response);
+#ifdef GMK70_VIAL_TRIAL
+    if (request[1] == GMK_TRIAL_NAMESPACE) gmk_write_u32(response + 24, GMK_TRIAL_ABI);
+    if (request[1] == GMK_TRIAL_NAMESPACE && (request[4] == GMK_TRIAL_WATCHDOG || request[4] == GMK_TRIAL_RESULT) && result == GMK_OK) {
+        // These operations have no transfer session; still correlate their ACK.
+        memcpy(response + 8, request + 8, 8);
+    }
+#endif
 }
 
 // The split transport calls this in its high-priority thread. Only copy RAM here;
@@ -48,6 +65,10 @@ static void receive(const uint8_t *request, uint8_t *response) {
     if (!packet_valid(request)) {
         memcpy(response, request, GMK_PACKET_SIZE);
         response[5] = GMK_BAD_REQUEST;
+#ifdef GMK70_VIAL_TRIAL
+    } else if (trial_reset_pending && (request[1] != GMK_TRIAL_NAMESPACE || request[4] != GMK_STATUS)) {
+        update_response(request, GMK_BAD_STATE, response);
+#endif
     } else if (pending) {
         // Housekeeping mutates update outside this lock. While pending, only
         // queued/cached packets are published; never inspect transfer state.
@@ -64,10 +85,10 @@ static void receive(const uint8_t *request, uint8_t *response) {
             response[5] = GMK_BUSY;
         }
 #ifdef GMK70_VIAL_TRIAL
-    } else if (update.state != GMK_IDLE && request[4] != GMK_INFO && request[4] != GMK_STATUS && (request[1] == GMK_TRIAL_NAMESPACE) != trial_mode) {
-        gmk_update_response(&update, request, GMK_BAD_STATE, response);
+    } else if (update.state != GMK_IDLE && request[4] != GMK_INFO && request[4] != GMK_STATUS && request[4] != GMK_TRIAL_RESULT && (request[1] == GMK_TRIAL_NAMESPACE) != trial_mode) {
+        update_response(request, GMK_BAD_STATE, response);
     } else if (request[4] == GMK_STATUS && request[1] != last_response[1]) {
-        gmk_update_response(&update, request, GMK_OK, response);
+        update_response(request, GMK_OK, response);
 #endif
     } else if (request[4] == GMK_STATUS) {
         memcpy(response, last_response, GMK_PACKET_SIZE);
@@ -81,7 +102,7 @@ static void receive(const uint8_t *request, uint8_t *response) {
 #endif
                 result = gmk_update_buffer_data(&update, request);
         }
-        gmk_update_response(&update, request, result, response);
+        update_response(request, result, response);
         response[7] = (is_keyboard_left() ? 1 : 0) | (is_keyboard_master() ? 2 : 0);
         if (result == GMK_OK || result == GMK_BUSY) last_request = timer_read32();
         if (result == GMK_BUSY) {
@@ -113,8 +134,10 @@ static void peer_handler(uint8_t in_size, const void *in, uint8_t out_size, void
 
 void gmk_update_init(void) {
 #ifdef GMK70_VIAL_TRIAL
-    trial_mode   = false;
-    trial_launch = (gmk_trial_launch_t){0};
+    gmk_trial_peer_init();
+    trial_reset_pending = false;
+    trial_mode          = false;
+    trial_launch        = (gmk_trial_launch_t){0};
 #endif
     update                                 = (gmk_update_t){0};
     pending                                = false;
@@ -126,6 +149,12 @@ void gmk_update_init(void) {
 }
 
 void gmk_update_task(void) {
+#ifdef GMK70_VIAL_TRIAL
+    if (trial_reset_pending) {
+        if (timer_elapsed32(reset_at) >= 300) gmk_trial_platform_reset();
+        return;
+    }
+#endif
     if (update.state == GMK_COMMITTED) {
         if (timer_elapsed32(reset_at) >= 300) mcu_reset();
         return;
@@ -176,9 +205,18 @@ void gmk_update_task(void) {
 #ifdef GMK70_VIAL_TRIAL
             bool trial = request[1] == GMK_TRIAL_NAMESPACE;
             if (trial) {
-                // No watchdog/startup backend has been proven. Never arm or
-                // execute a device trial through this offline milestone.
-                result = gmk_trial_process(&update, &trial_launch, request, false);
+                result = gmk_trial_process(&update, &trial_launch, request, true);
+                if (result == GMK_OK && (request[4] == GMK_TRIAL_RUN || request[4] == GMK_TRIAL_WATCHDOG)) {
+                    gmk_image_t image  = {0};
+                    bool        ready  = request[4] == GMK_TRIAL_WATCHDOG || gmk_trial_take_launch(&trial_launch, &image);
+                    uint32_t    action = request[4] == GMK_TRIAL_RUN ? GMK_TRIAL_BOOT_RUN : GMK_TRIAL_BOOT_PROBE;
+                    if (ready && gmk_trial_platform_prepare(action, image, !is_keyboard_left())) {
+                        reset_at            = timer_read32();
+                        trial_reset_pending = true;
+                    } else {
+                        result = GMK_UNAVAILABLE;
+                    }
+                }
             } else
 #endif
                 result = gmk_update_process(&update, request);
@@ -186,8 +224,11 @@ void gmk_update_task(void) {
             if (request[4] == GMK_BEGIN && result == GMK_OK) trial_mode = trial;
 #endif
         }
-        gmk_update_response(&update, request, result, response);
+        update_response(request, result, response);
     }
+#ifdef GMK70_VIAL_TRIAL
+    if (request[1] == GMK_TRIAL_NAMESPACE && request[4] == GMK_TRIAL_RESULT && result == GMK_OK) gmk_trial_platform_result(response + 16);
+#endif
     response[7] = (is_keyboard_left() ? 1 : 0) | (is_keyboard_master() ? 2 : 0);
     if (request[4] == GMK_INFO && result == GMK_OK) {
         // Explicit INFO only; no periodic integrity scan or background traffic.
@@ -223,9 +264,17 @@ bool gmk_update_usb(uint8_t *data, uint8_t length) {
 #    endif
         if (data[3] == 0) {
             receive(data, response);
-        } else if (!transaction_rpc_exec(GMK_UPDATE_RPC, GMK_PACKET_SIZE, data, GMK_PACKET_SIZE, response)) {
-            memcpy(response, data, sizeof(response));
-            response[5] = GMK_UNAVAILABLE;
+        } else {
+            bool delivered = transaction_rpc_exec(GMK_UPDATE_RPC, GMK_PACKET_SIZE, data, GMK_PACKET_SIZE, response);
+            if (!delivered) {
+                memcpy(response, data, sizeof(response));
+                response[5] = GMK_UNAVAILABLE;
+            }
+#    ifdef GMK70_VIAL_TRIAL
+            else if (data[1] == GMK_TRIAL_NAMESPACE && (data[4] == GMK_TRIAL_RUN || data[4] == GMK_TRIAL_WATCHDOG) && response[1] == GMK_TRIAL_NAMESPACE && response[4] == data[4] && (response[5] == GMK_OK || response[5] == GMK_BUSY)) {
+                gmk_trial_peer_start(timer_read32());
+            }
+#    endif
         }
     }
     memcpy(data, response, sizeof(response));

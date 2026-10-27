@@ -48,10 +48,16 @@ void __wrap_via_init(void) {
 #    include "vial.h"
 #    include "update/qmk_update.h"
 #    include "update/protocol.h"
+#    ifdef GMK70_VIAL_TRIAL
+#        include "update/trial.h"
+#    endif
 
 bool gmk_update_usb_authorized(uint8_t operation) {
     // Authorize at the USB master. The slave inherits that authorization over
     // the split link; it cannot perform Vial's USB unlock handshake itself.
+#    ifdef GMK70_VIAL_TRIAL
+    if (operation == GMK_TRIAL_RESULT) return true;
+#    endif
     return operation == GMK_INFO || operation == GMK_STATUS || vial_unlocked;
 }
 #endif

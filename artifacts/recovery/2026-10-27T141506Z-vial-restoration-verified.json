@@ -1,0 +1,17 @@
+{
+  "completed_utc": "2026-10-27T14:15:09.440747+00:00",
+  "backup": "artifacts\\recovery\\2026-10-27T140600Z-vial-before-update.json",
+  "backup_sha256": "8ab6979fb545c768e3958b44c12d91adfbcb8e8f947de8d9cf9720095ef36bc9",
+  "before_restore": "artifacts\\recovery\\2026-10-27T141506Z-vial-before-restore.json",
+  "verified_native_getters": 263,
+  "configuration_write_count": 10,
+  "vial_relocked": false,
+  "restored": {
+    "key_positions": 360,
+    "encoder_assignments": 8,
+    "macros": 16,
+    "dynamic_entries": 128,
+    "qmk_settings": 26,
+    "board_settings": 3
+  }
+}

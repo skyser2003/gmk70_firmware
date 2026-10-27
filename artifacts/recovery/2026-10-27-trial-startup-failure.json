@@ -1,0 +1,46 @@
+{
+  "at": "2026-10-27T14:28:50.588865+00:00",
+  "halves": {
+    "left": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 3,
+      "session": 0,
+      "received": 0,
+      "size": 91236,
+      "crc": 1962194226,
+      "abi": 1,
+      "boot_crc": 1770733249
+    },
+    "right": {
+      "error": "Target 1: INFO timed out; no automatic fallback or protection changes"
+    }
+  },
+  "watchdog_probe_issued": false,
+  "staging_run_issued": false,
+  "direct_usb_checks": {
+    "normal_mode": {
+      "vial_hid_interfaces": 0,
+      "dfu_found": false
+    },
+    "standalone_mode": {
+      "vial_hid_interfaces": 0,
+      "dfu_found": false
+    },
+    "standalone_after_usb_reconnect": {
+      "vial_hid_interfaces": 0,
+      "dfu_found": false
+    }
+  },
+  "software_recovery_available": false,
+  "physical_recovery_pending": true,
+  "fixed_backend": {
+    "installed": false,
+    "app_size": 95188,
+    "app_crc": 914615140,
+    "app_sha256": "528fc71bdf0f9cc77f8b2c64a06c6c0da8883a78f56221ecd74185b065d96344",
+    "offline_tests_pass": true
+  },
+  "updated_at": "2026-10-27T14:46:02.455253+00:00"
+}

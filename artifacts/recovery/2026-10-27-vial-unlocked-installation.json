@@ -1,0 +1,79 @@
+{
+  "before_halves": {
+    "right": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 0,
+      "session": 0,
+      "received": 0,
+      "size": 92548,
+      "crc": 3819352190,
+      "abi": 1,
+      "boot_crc": 1770733249
+    },
+    "left": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 3,
+      "session": 0,
+      "received": 0,
+      "size": 92548,
+      "crc": 3819352190,
+      "abi": 1,
+      "boot_crc": 1770733249
+    }
+  },
+  "backup": "artifacts/recovery/2026-10-27T140600Z-vial-before-update.json",
+  "backup_sha256": "8ab6979fb545c768e3958b44c12d91adfbcb8e8f947de8d9cf9720095ef36bc9",
+  "package": ".work/device-updates/zmk-execution-2026-10-27/unlocked-package",
+  "manifest": {
+    "format": 1,
+    "board": "zuoya/gmk70",
+    "mcu": "WB32FQ95-256K",
+    "profile": "vial",
+    "app_address": 134225920,
+    "app_size": 91236,
+    "app_crc": 1962194226,
+    "app_sha256": "4365bca28938d27615d84c68ec1adb0b70d7af136eb0476c2400d670a58c23b8",
+    "boot_crc": 1770733249,
+    "boot_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a",
+    "install_sha256": "296680b2f410a82d2b22d134a4b904409ae2c28286a5a911a168a1dad6dddf4c"
+  },
+  "published_release": "https://github.com/skyser2003/gmk70_firmware/releases/tag/vial-0.1.7",
+  "last_physical_unlock_utc": "2026-10-27T14:10:53.920368+00:00",
+  "source_commit": "70d1ea8",
+  "install_started_utc": "2026-10-27T14:11:02.887080+00:00",
+  "after_install_halves": {
+    "right": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 0,
+      "session": 0,
+      "received": 0,
+      "size": 91236,
+      "crc": 1962194226,
+      "abi": 1,
+      "boot_crc": 1770733249
+    },
+    "left": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 3,
+      "session": 0,
+      "received": 0,
+      "size": 91236,
+      "crc": 1962194226,
+      "abi": 1,
+      "boot_crc": 1770733249
+    }
+  },
+  "install_finished_utc": "2026-10-27T14:14:34.631562+00:00",
+  "permanent_unlock_verified_utc": "2026-10-27T14:15:34.611895+00:00",
+  "unlock_before_lock_command": "0100ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "unlock_after_lock_command": "0100ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "configuration_restoration": "artifacts/recovery/2026-10-27T141506Z-vial-restoration-verified.json"
+}

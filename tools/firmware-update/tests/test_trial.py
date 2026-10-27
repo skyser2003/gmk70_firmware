@@ -56,6 +56,19 @@ class TrialTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "link address"):
                 Package.load(root)
 
+    def test_new_memory_contract_rejects_legacy_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = TrialPackage.create(image(), "right")
+            self.assertEqual(package.manifest["format"], "gmk70-staging-trial-v2")
+            self.assertEqual(package.manifest["ram_start"], 0x20000040)
+            package.write(root)
+            manifest = dict(package.manifest)
+            manifest["format"] = "gmk70-staging-trial-v1"
+            (root / "trial.json").write_text(json.dumps(manifest))
+            with self.assertRaises(ValueError):
+                TrialPackage.load(root)
+
     def test_manifest_corruption_and_identity_rejection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -81,6 +94,8 @@ class TrialTests(unittest.TestCase):
             (0, 0x20007000),
             (0, 0x20006FBC),
             (0, 0x20000000),
+            (0, 0x20000040),
+            (0, 0x20000020),
             (4, 0x08002201),
             (4, 0x08020200),
             (4, 0),
@@ -104,7 +119,7 @@ class TrialTests(unittest.TestCase):
             package = TrialPackage.create(image(), target)
             packets = upload_packets(package, 42)
             self.assertEqual(
-                packets[0][:8], bytes((0x7F, 0x71, 1, role, TrialOp.BEGIN, 16, 0, 0))
+                packets[0][:8], bytes((0x7F, 0x71, 2, role, TrialOp.BEGIN, 16, 0, 0))
             )
             self.assertEqual(
                 struct.unpack_from("<IIII", packets[0], 16),

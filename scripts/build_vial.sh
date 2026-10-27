@@ -80,6 +80,7 @@ if [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
     arm-none-eabi-nm "$output/$target.elf" > "$output/trial-symbols.txt"
     grep -q ' gmk_trial_process$' "$output/trial-symbols.txt"
     rm "$output/trial-symbols.txt"
+    "$source_python" tools/build-support/check_trial_elf.py "$output/$target.elf"
 else
     if grep -q -- '-DGMK70_VIAL_TRIAL' "$output/cflags.txt"; then
         printf 'Normal Vial unexpectedly contains the trial receiver\n' >&2; exit 1
@@ -180,8 +181,9 @@ if [[ "$mode" != normal ]]; then
     fi
     if [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
         cp docs/ZMK-TRIAL-LAUNCHER.md "$output/TRIAL-LAUNCHER.md"
-        cp tools/firmware-update/trial.py "$output/"
-        extras+=(TRIAL-LAUNCHER.md trial.py)
+        cp docs/ZMK-TRIAL-EXECUTION.md "$output/ZMK-TRIAL-EXECUTION.md"
+        cp tools/firmware-update/trial.py tools/firmware-update/trial_run.py "$output/"
+        extras+=(TRIAL-LAUNCHER.md ZMK-TRIAL-EXECUTION.md trial.py trial_run.py)
     fi
     support=(resident.elf resident.map)
     cat >> "$output/README.txt" <<'EOF'
@@ -226,13 +228,15 @@ if [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
     cat >> "$output/README.txt" <<'EOF_TRIAL'
 
 Experimental staging trial receiver (namespace 0x71).
-RUN is disabled: no watchdog/startup handoff backend is implemented or proven.
+Trial ABI 2 includes a pre-CRT one-shot launcher and independent watchdog.
+RAM 0x20000000..0x2000003F is reserved for its retained intent/result record.
 This is an updater application, NOT a staging trial binary. Its ordinary update
 package still installs at 0x08002000 and keeps the existing resident unchanged.
 Trial fixtures use separate trial.json/trial.bin packages. Never INSTALL them.
 Use Python 3.12+ and the included dependency-free trial.py to inspect or plan
 trial packages offline. It never opens USB and has no RUN command.
-See TRIAL-LAUNCHER.md for the recovery design and remaining hardware proof.
+The separate trial_run.py performs explicit device probe/run/result operations.
+See ZMK-TRIAL-EXECUTION.md for the contract and hardware validation status.
 EOF_TRIAL
 fi
 if [[ "$mode" == radio-diagnostic-updater ]]; then

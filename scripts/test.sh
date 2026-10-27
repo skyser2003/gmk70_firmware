@@ -20,6 +20,12 @@ cc "${common_flags[@]}" tests/qmk/trial_test.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
     -o artifacts/tests/qmk/trial
 artifacts/tests/qmk/trial
+for component in watchdog boot peer role; do
+    cc "${common_flags[@]}" "tests/qmk/trial_${component}_test.c" \
+        "firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_${component}.c" \
+        -o "artifacts/tests/qmk/trial-$component"
+    "artifacts/tests/qmk/trial-$component"
+done
 cc "${common_flags[@]}" -Itests/qmk/module_stubs \
     '-DPRODUCT="ZUOYA GMK70"' '-DMANUFACTURER="HS"' \
     -DVENDOR_ID=0x342d -DPRODUCT_ID=0xe491 \

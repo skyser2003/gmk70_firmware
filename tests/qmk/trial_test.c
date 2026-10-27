@@ -40,7 +40,7 @@ static void request(uint8_t packet[32], uint8_t op) {
     memset(packet, 0, 32);
     packet[0] = GMK_UPDATE_COMMAND;
     packet[1] = GMK_TRIAL_NAMESPACE;
-    packet[2] = 1;
+    packet[2] = 2;
     packet[4] = op;
     gmk_write_u32(packet + 8, 42);
     if (op == GMK_BEGIN) {
@@ -84,12 +84,16 @@ static void test_separation_and_one_shot(void) {
     uint8_t            packet[32];
     request(packet, GMK_SEAL);
     assert(gmk_trial_process(&update, &launch, packet, false) == GMK_OK);
+    request(packet, GMK_STATUS);
+    packet[2] = 1; // ABI1 cannot promise the retained RAM exclusion.
+    assert(!gmk_trial_packet_valid(packet));
     assert(!gmk_image_valid(GMK_STAGE_BASE, update.image)); // ordinary INSTALL cannot accept trial vectors
     request(packet, GMK_INSTALL);
     assert(!gmk_trial_packet_valid(packet));
     assert(gmk_trial_process(&update, &launch, packet, true) == GMK_BAD_REQUEST);
     assert(gmk_update_process(&update, packet) == GMK_BAD_REQUEST);
     packet[1] = 0x70;
+    packet[2] = 1;
     assert(gmk_update_process(&update, packet) == GMK_BAD_IMAGE);
     request(packet, GMK_TRIAL_RUN);
     assert(gmk_trial_process(&update, &launch, packet, false) == GMK_UNAVAILABLE);
@@ -107,7 +111,7 @@ static void test_separation_and_one_shot(void) {
 static void test_vectors_and_commit(void) {
     fixture();
     assert(gmk_trial_vectors(payload, sizeof(payload)));
-    const uint32_t stacks[] = {GMK_RAM_BASE, GMK_TRIAL_RAM_END + 8, GMK_TRIAL_RAM_END - 4, UINT32_MAX};
+    const uint32_t stacks[] = {GMK_RAM_BASE, 0x20000020, 0x20000040, GMK_TRIAL_RAM_END + 8, GMK_TRIAL_RAM_END - 4, UINT32_MAX};
     for (unsigned i = 0; i < sizeof(stacks) / sizeof(stacks[0]); ++i) {
         gmk_write_u32(payload, stacks[i]);
         assert(!gmk_trial_vectors(payload, sizeof(payload)));

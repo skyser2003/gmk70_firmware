@@ -19,6 +19,7 @@ bool via_command_kb(uint8_t *data, uint8_t length) {
 #endif
 #include <assert.h>
 #include <stdio.h>
+#include <setjmp.h>
 
 static bool             left, master;
 static transport_t      transport;
@@ -30,6 +31,44 @@ static uint32_t         now;
 static slave_callback_t rpc;
 static uint8_t          memory[0x40000];
 static uint8_t          logical_eeprom[4096];
+#ifdef GMK70_VIAL_TRIAL
+#    include "update/trial_platform.h"
+static bool        trial_prepare_ok, trial_peer_paused;
+static unsigned    trial_preparations, trial_peer_starts;
+static uint32_t    trial_prepared_action, trial_prepared_role;
+static gmk_image_t trial_prepared_image;
+static jmp_buf     trial_reset_jump;
+bool               gmk_trial_platform_prepare(uint32_t action, gmk_image_t image, uint32_t role) {
+    assert(!locks);
+    ++trial_preparations;
+    trial_prepared_action = action;
+    trial_prepared_image  = image;
+    trial_prepared_role   = role;
+    return trial_prepare_ok;
+}
+__attribute__((noreturn)) void gmk_trial_platform_reset(void) {
+    assert(!locks);
+    ++resets;
+    longjmp(trial_reset_jump, 1);
+}
+void gmk_trial_platform_result(uint8_t result[16]) {
+    gmk_write_u32(result, 0x302);
+    gmk_write_u32(result + 4, 4);
+    gmk_write_u32(result + 8, 0);
+    gmk_write_u32(result + 12, 0);
+}
+void gmk_trial_peer_init(void) {
+    trial_peer_paused = false;
+}
+void gmk_trial_peer_start(uint32_t at) {
+    assert(at == now);
+    ++trial_peer_starts;
+    trial_peer_paused = true;
+}
+bool gmk_trial_peer_active(uint32_t at) {
+    return trial_peer_paused;
+}
+#endif
 #ifdef GMK70_PERSISTENT_DIAGNOSTICS
 static unsigned log_reads;
 uint32_t        sleep_log_status(void) {
@@ -153,6 +192,10 @@ static void fixture(void) {
 #endif
     for (unsigned i = 0; i < sizeof(logical_eeprom); ++i)
         logical_eeprom[i] = (uint8_t)(i * 13 + i / 256);
+#ifdef GMK70_VIAL_TRIAL
+    trial_prepare_ok   = true;
+    trial_preparations = trial_peer_starts = 0;
+#endif
     gmk_update_init();
 }
 
@@ -609,6 +652,7 @@ gmk_update_result_t __wrap_gmk_trial_process(gmk_update_t *update, gmk_trial_lau
 static void trial_begin(uint8_t packet[32], uint8_t target) {
     begin(packet, target);
     packet[1] = 0x71;
+    packet[2] = 2;
     packet[5] = 16;
     gmk_write_u32(packet + 24, GMK_STAGE_BASE);
     gmk_write_u32(packet + 28, 0x20006FC0);
@@ -620,12 +664,12 @@ static void trial_command(uint8_t packet[32], uint8_t target) {
     left = master = target == 0;
     gmk_update_task();
     left = master      = true;
-    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x71, 1, target, GMK_STATUS};
+    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x71, 2, target, GMK_STATUS};
     assert(gmk_update_usb(status, 32));
     memcpy(packet, status, 32);
 }
 
-static void test_trial_run_disabled(void) {
+static void test_trial_run_recovery(void) {
     for (uint8_t target = 0; target < 2; ++target) {
         fixture();
         relay = target == 1;
@@ -641,6 +685,7 @@ static void test_trial_run_disabled(void) {
         for (unsigned offset = 0; offset < sizeof(payload); offset += 16) {
             query(packet, target, GMK_DATA, 42, offset, 16);
             packet[1] = 0x71;
+            packet[2] = 2;
             memcpy(packet + 16, payload + offset, 16);
             assert(gmk_update_usb(packet, 32));
             assert(packet[5] == ((offset + 16) % GMK_PAGE_SIZE ? GMK_OK : GMK_BUSY));
@@ -652,17 +697,32 @@ static void test_trial_run_disabled(void) {
         }
         query(packet, target, GMK_SEAL, 42, 0, 0);
         packet[1] = 0x71;
+        packet[2] = 2;
         trial_command(packet, target);
         assert(packet[5] == GMK_OK);
         query(packet, target, 0x10, 42, 0, 0);
         packet[1] = 0x71;
+        packet[2] = 2;
         trial_command(packet, target);
-        assert(packet[5] == GMK_UNAVAILABLE && packet[6] == GMK_SEALED);
+        assert(packet[5] == GMK_OK && packet[6] == GMK_SEALED);
+        assert(gmk_read_u32(packet + 24) == 2);
+        assert(trial_preparations == 1 && trial_prepared_action == GMK_TRIAL_BOOT_RUN);
+        assert(trial_prepared_role == target && trial_prepared_image.size == sizeof(payload));
+        assert(trial_peer_starts == target);
+        now += 299;
+        gmk_update_task();
+        assert(resets == 0);
+        now += 1;
+        if (!setjmp(trial_reset_jump)) {
+            gmk_update_task();
+            assert(false);
+        }
+        assert(resets == 1);
         for (unsigned i = 0; i < GMK_STAGE_BASE - GMK_FLASH_BASE; ++i)
             assert(memory[i] == 0xFF);
         for (unsigned i = GMK_STAGE_BASE - GMK_FLASH_BASE + GMK_APP_SIZE; i < sizeof(memory); ++i)
             assert(memory[i] == 0xFF);
-        assert(flash_writes == 4 && resets == 0 && eeprom_reads == 0);
+        assert(flash_writes == 4 && resets == 1 && eeprom_reads == 0);
     }
 }
 
@@ -670,7 +730,7 @@ static void test_trial_adapter(void) {
     fixture();
     memset(memory, 0xFF, sizeof(memory));
     uint8_t packet[32], response[32];
-    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x71, 1, 0, GMK_STATUS};
+    uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x71, 2, 0, GMK_STATUS};
     vial_unlocked      = false;
     trial_begin(packet, 0);
     assert(gmk_update_usb(packet, 32));
@@ -699,6 +759,7 @@ static void test_trial_adapter(void) {
     assert(packet[5] == GMK_BAD_STATE);
     query(packet, 0, GMK_ABORT, 42, 0, 0);
     packet[1] = 0x71;
+    packet[2] = 2;
     assert(gmk_update_usb(packet, 32));
     gmk_update_task();
     assert(!gmk_update_active());
@@ -745,12 +806,58 @@ static void test_trial_adapter(void) {
     rpc(32, packet, 32, response);
     assert(response[5] == GMK_OK && response[7] == 0);
 }
+static void test_trial_watchdog_and_result(void) {
+    fixture();
+    memset(memory, 0xFF, sizeof(memory));
+    uint8_t packet[32];
+    query(packet, 0, GMK_TRIAL_WATCHDOG, 42, 0, 0);
+    packet[1]     = 0x71;
+    packet[2]     = 2;
+    vial_unlocked = false;
+    assert(gmk_update_usb(packet, 32) && packet[5] == GMK_LOCKED);
+    assert(!trial_preparations && !resets);
+    vial_unlocked = true;
+    query(packet, 0, GMK_TRIAL_WATCHDOG, 42, 0, 0);
+    packet[1]        = 0x71;
+    packet[2]        = 2;
+    trial_prepare_ok = false;
+    trial_command(packet, 0);
+    assert(packet[5] == GMK_UNAVAILABLE && !resets && !gmk_update_active());
+    trial_prepare_ok = true;
+    query(packet, 0, GMK_TRIAL_WATCHDOG, 42, 0, 0);
+    packet[1] = 0x71;
+    packet[2] = 2;
+    trial_command(packet, 0);
+    assert(packet[5] == GMK_OK && trial_prepared_action == GMK_TRIAL_BOOT_PROBE);
+    assert(gmk_read_u32(packet + 8) == 42);
+    assert(!trial_prepared_image.size && !trial_prepared_image.crc);
+    // No transfer can replace the intent during the ACK/reset delay.
+    begin(packet, 0);
+    assert(gmk_update_usb(packet, 32) && packet[5] == GMK_BAD_STATE);
+    now += 300;
+    if (!setjmp(trial_reset_jump)) {
+        gmk_update_task();
+        assert(false);
+    }
+    assert(resets == 1 && !flash_writes);
+    fixture();
+    vial_unlocked = false;
+    query(packet, 0, GMK_TRIAL_RESULT, 99, 0, 0);
+    packet[1] = 0x71;
+    packet[2] = 2;
+    trial_command(packet, 0);
+    assert(packet[5] == GMK_OK && gmk_read_u32(packet + 16) == 0x302);
+    assert(gmk_read_u32(packet + 8) == 99);
+    assert(gmk_read_u32(packet + 20) == 4 && !flash_writes && !resets);
+}
+
 #endif
 
 int main(void) {
 #ifdef GMK70_VIAL_TRIAL
     test_trial_adapter();
-    test_trial_run_disabled();
+    test_trial_run_recovery();
+    test_trial_watchdog_and_result();
 #endif
     test_error_correlation();
     test_buffered_peer_data();

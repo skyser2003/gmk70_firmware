@@ -27,7 +27,8 @@ MEMORY
     flash5 (rx) : org = 0x00000000, len = 0
     flash6 (rx) : org = 0x00000000, len = 0
     flash7 (rx) : org = 0x00000000, len = 0
-    ram0   (wx) : org = 0x20000000, len = 28k
+    trial_record (wx) : org = 0x20000000, len = DEFINED(GMK70_TRIAL_RAM_RESERVE) ? 64 : 0
+    ram0   (wx) : org = 0x20000000 + (DEFINED(GMK70_TRIAL_RAM_RESERVE) ? 64 : 0), len = 28k - (DEFINED(GMK70_TRIAL_RAM_RESERVE) ? 64 : 0)
     ram1   (wx) : org = 0x00000000, len = 0
     ram2   (wx) : org = 0x00000000, len = 0
     ram3   (wx) : org = 0x00000000, len = 0
@@ -80,6 +81,12 @@ REGION_ALIAS("BSS_RAM", ram0);
 
 /* RAM region to be used for the default heap.*/
 REGION_ALIAS("HEAP_RAM", ram0);
+
+/* Trial intent/result survives CRT initialization and the resident stack. */
+SECTIONS {
+    .trial_retained (NOLOAD) : { KEEP(*(.trial_retained)) } > trial_record
+}
+ASSERT(SIZEOF(.trial_retained) == (DEFINED(GMK70_TRIAL_RAM_RESERVE) ? 64 : 0), "Trial retained record size mismatch")
 
 /* Generic rules inclusion.*/
 INCLUDE rules.ld

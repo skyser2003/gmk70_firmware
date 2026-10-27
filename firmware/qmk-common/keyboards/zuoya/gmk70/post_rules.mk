@@ -10,7 +10,10 @@ ifeq ($(strip $(GMK70_SPLIT_UPDATE)), yes)
 endif
 ifeq ($(strip $(GMK70_VIAL_TRIAL)), yes)
     OPT_DEFS += -DGMK70_VIAL_TRIAL
-    SRC += update/trial.c
+    SRC += update/trial.c update/trial_boot.c update/trial_watchdog.c
+    SRC += update/trial_platform.c update/trial_startup.S update/trial_peer.c update/trial_role.c
+    LDFLAGS += -Wl,--defsym=GMK70_TRIAL_RAM_RESERVE=1
+    LDFLAGS += -Wl,--wrap=transport_master_if_connected -Wl,--wrap=transaction_rpc_exec
 endif
 include $(GMK70_PLATFORM_DIR)/compat/platform_rules.mk
 include $(KEYBOARD_PATH_1)/wls/wls.mk
