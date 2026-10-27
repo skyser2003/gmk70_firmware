@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+if BOARD_GMK70_LEFT
+config ZMK_KEYBOARD_NAME
+	default "GMK70 Left ZMK Trial"
+config ZMK_BOARD_COMPAT
+	default y
+endif

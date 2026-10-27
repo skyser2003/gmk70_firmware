@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+config SOC_WB32FQ95
+	bool
+
+config SOC
+	default "wb32fq95" if SOC_WB32FQ95

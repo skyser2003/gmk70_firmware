@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+description: Westberry WB32FQ95 full-speed USB device controller
+
+compatible: "westberry,wb32-usb"
+
+include: usb-controller.yaml
+
+properties:
+  reg:
+    required: true
+  interrupts:
+    required: true

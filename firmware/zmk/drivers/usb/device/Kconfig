@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+config USB_DC_WB32
+    bool "Westberry WB32 USB device controller"
+    default y
+    depends on DT_HAS_WESTBERRY_WB32_USB_ENABLED
+    depends on USB_DEVICE_STACK
+    help
+      Legacy usb_dc driver for the WB32FQ95 indexed full-speed controller.
+      Supports EP0 and three bidirectional bulk or interrupt endpoints with
+      maximum packets of 64 bytes. Isochronous and remote wakeup are unsupported.

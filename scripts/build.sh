@@ -11,7 +11,7 @@ esac
 case "$platform" in
     qmk) ;;
     vial) exec bash ./scripts/build_vial.sh "${2:-vial}" "$mode" ;;
-    zmk) printf 'ZMK is not implemented yet; see firmware/zmk/README.md\n' >&2; exit 2 ;;
+    zmk) exec bash ./scripts/build_zmk.sh "${2:-left-trial}" ;;
     *) printf 'Unknown platform: %s\n' "$platform" >&2; exit 2 ;;
 esac
 case "$keymap" in

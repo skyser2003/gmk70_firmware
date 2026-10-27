@@ -1,0 +1,60 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#include <arm/armv7-m.dtsi>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+    cpus {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        cpu0: cpu@0 {
+            device_type = "cpu";
+            compatible = "arm,cortex-m3";
+            reg = <0>;
+            clock-frequency = <96000000>;
+        };
+    };
+    sram0: memory@20000040 {
+        compatible = "mmio-sram";
+        reg = <0x20000040 0x6f80>;
+    };
+    soc {
+        flash0: flash@8020000 {
+            compatible = "soc-nv-flash";
+            reg = <0x08020000 0x1e000>;
+            write-block-size = <4>;
+            erase-block-size = <1024>;
+        };
+        gpioa: gpio@40000000 {
+            compatible = "westberry,wb32-gpio";
+            reg = <0x40000000 0x34>;
+            gpio-controller;
+            #gpio-cells = <2>;
+            ngpios = <16>;
+            clock-bit = <5>;
+        };
+        gpiob: gpio@40000400 {
+            compatible = "westberry,wb32-gpio";
+            reg = <0x40000400 0x34>;
+            gpio-controller;
+            #gpio-cells = <2>;
+            ngpios = <16>;
+            clock-bit = <6>;
+        };
+        gpioc: gpio@40000800 {
+            compatible = "westberry,wb32-gpio";
+            reg = <0x40000800 0x34>;
+            gpio-controller;
+            #gpio-cells = <2>;
+            ngpios = <16>;
+            clock-bit = <7>;
+        };
+        usb0: usb@40014000 {
+            compatible = "westberry,wb32-usb";
+            reg = <0x40014000 0x1000>;
+            interrupts = <14 2>;
+            maximum-speed = "full-speed";
+            status = "disabled";
+        };
+    };
+};
+&nvic { arm,num-irq-priority-bits = <4>; };

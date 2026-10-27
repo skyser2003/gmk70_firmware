@@ -1,0 +1,6 @@
+board:
+  name: gmk70_left
+  full_name: ZUOYA GMK70 left staging USB trial
+  vendor: zuoya
+  socs:
+    - name: wb32fq95

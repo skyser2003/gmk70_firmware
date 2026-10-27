@@ -1,0 +1,14 @@
+description: Westberry WB32 GPIO port (polled GPIO only)
+compatible: "westberry,wb32-gpio"
+include: [gpio-controller.yaml, base.yaml]
+properties:
+  reg:
+    required: true
+  clock-bit:
+    type: int
+    required: true
+  "#gpio-cells":
+    const: 2
+gpio-cells:
+  - pin
+  - flags

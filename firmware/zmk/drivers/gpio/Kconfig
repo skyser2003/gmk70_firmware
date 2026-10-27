@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+config GPIO_WB32
+	bool "Westberry WB32 GPIO (polled)"
+	default y
+	depends on DT_HAS_WESTBERRY_WB32_GPIO_ENABLED
+	depends on GPIO

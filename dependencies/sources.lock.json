@@ -26,5 +26,28 @@
       "lib/printf": "c2e3b4e10d281e7f0f694d3ecbd9f320977288cc",
       "lib/lufa": "549b97320d515bfca2f95c145a67bd13be968faa"
     }
+  },
+  "zmk": {
+    "repository": "https://github.com/zmkfirmware/zmk.git",
+    "commit": "4dd95d7840eb3d5a3f59bb29fbf1ab054715ef85",
+    "manifest": "app/west.yml"
+  },
+  "zephyr": {
+    "repository": "https://github.com/zmkfirmware/zephyr.git",
+    "commit": "10ba6d0cb38bc3d258775d27982f707599320085",
+    "manifest_ref": "v4.1.0+zmk-fixes",
+    "manifest": "west.yml"
+  },
+  "zmk_modules": {
+    "cmsis": {
+      "repository": "https://github.com/zephyrproject-rtos/cmsis.git",
+      "commit": "d1b8b20b6278615b00e136374540eb1c00dcabe7",
+      "path": "modules/hal/cmsis"
+    },
+    "lvgl": {
+      "repository": "https://github.com/zmkfirmware/lvgl.git",
+      "commit": "f1db87ee98f1810328a8419572fa42a3b5f352ae",
+      "path": "modules/lib/gui/lvgl"
+    }
   }
 }

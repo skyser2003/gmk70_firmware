@@ -24,7 +24,7 @@ build-vial-radio-diagnostic:
 	bash ./scripts/build.sh vial vial radio-diagnostic-updater
 .PHONY: build-vial-radio-diagnostic
 build-zmk:
-	bash ./scripts/build.sh zmk
+	bash ./scripts/build.sh zmk left-trial
 clean:
 	bash ./scripts/clean.sh
 rebuild: clean
@@ -54,3 +54,12 @@ build-vial-watchdog-qualification:
 build-zmk-trial-fixtures:
 	bash ./scripts/build_zmk_trial_fixtures.sh
 .PHONY: build-vial-trial-updater build-vial-unlocked-trial-updater build-vial-watchdog-qualification build-zmk-trial-fixtures
+
+setup-zmk:
+	bash ./scripts/setup_zmk.sh
+.PHONY: setup-zmk
+
+test-zmk:
+	bash ./tests/zmk/run_usb_dc_tests.sh
+	bash ./tests/zmk/run_soc_clock_tests.sh
+.PHONY: test-zmk

@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: MIT */
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/keys.h>
+/ {
+    keymap {
+        compatible = "zmk,keymap";
+        default_layer {
+            bindings = <
+                &kp C_MUTE &kp ESC &kp GRAVE &kp N1 &kp N2 &kp N3 &kp N4 &kp N5
+                &none &kp TAB &kp Q &kp W &kp E &kp R &kp T &none
+                &none &kp CAPS &kp A &kp S &kp D &kp F &kp G &none
+                &none &kp LSHIFT &kp Z &kp X &kp C &kp V &kp B &none
+                &none &kp LCTRL &kp LGUI &kp LALT &none &kp SPACE &none &none
+            >;
+        };
+    };
+};

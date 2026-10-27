@@ -8,3 +8,8 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 /.work/
+
+# Explicitly initialized, pinned ZMK/Zephyr dependencies.
+/dependencies/zmk/
+/dependencies/zephyr/
+/dependencies/modules/
