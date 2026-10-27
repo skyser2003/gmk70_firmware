@@ -1,0 +1,39 @@
+{
+  "success": true,
+  "action": "fallback",
+  "target": "left",
+  "expected_reset": "software",
+  "started_at": "2026-10-27T16:51:12.709012+00:00",
+  "finished_at": "2026-10-27T16:51:26.582277+00:00",
+  "elapsed_seconds": 13.875,
+  "capabilities": {
+    "bits": 25,
+    "fallback_ms": 12000,
+    "ram_start": 536870976,
+    "ram_end": 536899520
+  },
+  "before": {
+    "size": 94908,
+    "crc": 3394405425,
+    "abi": 2,
+    "boot_crc": 1770733249,
+    "role": 3
+  },
+  "after": {
+    "size": 94908,
+    "crc": 3394405425,
+    "abi": 2,
+    "boot_crc": 1770733249,
+    "role": 3
+  },
+  "result": {
+    "action": 2,
+    "phase": 3,
+    "reset_flags": 40,
+    "size": 0,
+    "crc": 0,
+    "role": 3
+  },
+  "package_sha256": null,
+  "retries": 5
+}

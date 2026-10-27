@@ -72,9 +72,13 @@
 
 ### Task 5: Left-only hardware proof and evidence
 
+**Outcome:** Software fallback proven. Watchdog recovery failed; left restored to
+the published release, right untouched. Independent watchdog qualification and
+staging execution remain outstanding; see `docs/ZMK-TRIAL-EXECUTION.md`.
+
 **Files:** separate ignored device operation scripts; `docs/ZMK-TRIAL-EXECUTION.md`; sanitized recovery evidence.
 
-- [ ] Read both live INFO/resident identities and take fresh native settings backup.
-- [ ] Install left application only; verify resident and right application unchanged; restore/verify fresh settings.
-- [ ] Run left watchdog then fallback proofs, accepting only matching actual reset flags.
-- [ ] Verify native settings and both halves again; record exact results and limitations; commit reviewable source/evidence.
+- [x] Read both live INFO/resident identities and take fresh native settings backup.
+- [x] Install left application only; verify resident and right application unchanged; restore/verify fresh settings.
+- [x] Run left watchdog then fallback proofs, accepting only matching actual reset flags.
+- [x] Verify native settings and both halves again; record exact results and limitations; commit reviewable source/evidence.

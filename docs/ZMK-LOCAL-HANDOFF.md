@@ -136,3 +136,14 @@ work is still the startup/watchdog backend, followed by its separate recovery pr
 The [execution continuation](ZMK-TRIAL-EXECUTION.md) now implements the ABI 2
 pre-CRT launcher and watchdog backend, with the explicitly requested unlocked
 Vial release variant. Consult that document for current validation status.
+
+The latest runtime checkpoint is also in that execution document. A left-only
+runtime profile retained normal Vial startup and disabled staging RUN and all
+right-side qualification. Its DWT/software fallback returned automatically;
+the IWDG-dependent probe did not return USB and required one left USB reconnect.
+The left was then restored to the exact published unlocked0.1.7 release. Both
+halves, both resident CRCs and all263native saved-configuration getters verify;
+the right was not flashed during this checkpoint. Do not reinstall either failed
+trial candidate or repeat WATCHDOG/RUN as the next step. Capture watchdog setup
+progress and CPU fault state offline first; the failing MMIO/reset stage remains
+unknown. Preserve the user's preference to avoid right-only physical recovery.

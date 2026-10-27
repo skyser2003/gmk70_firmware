@@ -166,8 +166,46 @@ Offline validation passed: sanitized portable/adapter tests,77repository tests,
 locked/unlocked updater, full trial profiles and the runtime profile. Actual ELF
 checks also pass with Python optimization enabled. Independent review found the
 right peer timing gap; regression tests first reproduced it, then verified the
-left-only capability, processing and platform gates. Hardware proof is pending.
+left-only capability, processing and platform gates. The hardware results below
+are narrower than the passing offline checks.
 
 Design and execution checklist are in
 [the runtime design](superpowers/specs/2026-10-27-runtime-watchdog-design.md) and
 [the plan](superpowers/plans/2026-10-27-runtime-watchdog.md).
+
+### Live results and final device state
+
+The source at `9ca44e2` produced the runtime application:94,908bytes,
+CRC32 3394405425, SHA256
+`4b812d28a71444743dd9fa4997618d0ca8254b0b6bb528d58f089d975eb87f00`.
+Only the left application was installed. Normal startup, both resident CRCs,
+right identity and native settings restoration were verified before testing.
+
+- WATCHDOG PROBE at16:48UTC received CAPS25/12000 and a terminal ACK, then USB
+  disappeared. Recovery did not return within54.312seconds. The bounded software
+  fallback did not recover this execution path. The user unplugged/reconnected
+  left USB; Vial returned, but the retained record was cleared by the power cycle.
+- FALLBACK_TEST at16:51UTC, on the same application, skipped watchdog setup and
+  returned automatically in13.875seconds. RESULT was action2, phase3(RETURNED),
+  reset flags40(SOFTWARE|PIN), with zero image size/CRC. Application and resident
+  identities matched before/after. This proves the DWT/software reset path only.
+- At16:54UTC the left was restored through left USB to the exact published
+  standard unlocked0.1.7 application. No right application, resident, radio or
+  driver was written. At16:55UTC both halves reported IDLE,91,236bytes,
+  appCRC1962194226 and residentCRC1770733249. All263native configuration getter
+  responses matched the fresh16:33UTC backup. No physical bootloader entry,
+  shorting pads or right-only USB flashing was needed in this milestone.
+
+The watchdog-dependent path remains unsafe to rely on. Its exact stall/reset
+cause is not established; no hardware fault PC or failing MMIO address was
+captured. A successful software-only deadline does not prove recovery from a CPU
+fault or stalled bus access. Do not repeat live WATCHDOG or staging RUN until
+watchdog setup/fault state can be captured and its recovery re-evaluated.
+Right runtime qualification remains disabled. No ZMK/staging code was executed.
+
+Sanitized evidence:
+[qualification and final state](../artifacts/recovery/2026-10-27-runtime-watchdog-qualification.json),
+[watchdog failure](../artifacts/recovery/2026-10-27-left-runtime-watchdog.json),
+[software fallback success](../artifacts/recovery/2026-10-27-left-runtime-fallback.json),
+[final configuration verification](../artifacts/recovery/2026-10-27-runtime-watchdog-final-verification.json).
+Private native keymap/macro backups remain ignored.

@@ -1,0 +1,182 @@
+{
+  "format": "gmk70-runtime-watchdog-qualification-v1",
+  "source_commit": "9ca44e2",
+  "trial_candidate": {
+    "format": 1,
+    "board": "zuoya/gmk70",
+    "mcu": "WB32FQ95-256K",
+    "profile": "vial",
+    "app_address": 134225920,
+    "app_size": 94908,
+    "app_crc": 3394405425,
+    "app_sha256": "4b812d28a71444743dd9fa4997618d0ca8254b0b6bb528d58f089d975eb87f00",
+    "boot_crc": 1770733249,
+    "boot_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a",
+    "install_sha256": "29abb2b6e75134cab3f533c92c5f1a27ca545ddd60f1626b1db843375d5b166c"
+  },
+  "baseline": {
+    "left": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 3,
+      "session": 0,
+      "received": 0,
+      "size": 91236,
+      "crc": 1962194226,
+      "abi": 1,
+      "boot_crc": 1770733249
+    },
+    "right": {
+      "operation": 7,
+      "result": 0,
+      "state": 0,
+      "role": 0,
+      "session": 0,
+      "received": 0,
+      "size": 91236,
+      "crc": 1962194226,
+      "abi": 1,
+      "boot_crc": 1770733249
+    }
+  },
+  "install_started_utc": "2026-10-27T16:46:42.246721+00:00",
+  "install_finished_utc": "2026-10-27T16:47:21.148740+00:00",
+  "watchdog": {
+    "success": false,
+    "action": "probe",
+    "target": "left",
+    "expected_reset": "watchdog",
+    "started_at": "2026-10-27T16:48:07.849453+00:00",
+    "package_sha256": null,
+    "capabilities": {
+      "bits": 25,
+      "fallback_ms": 12000,
+      "ram_start": 536870976,
+      "ram_end": 536899520
+    },
+    "before": {
+      "size": 94908,
+      "crc": 3394405425,
+      "abi": 2,
+      "boot_crc": 1770733249,
+      "role": 3
+    },
+    "acknowledged": true,
+    "error": "Trial recovery did not return a verified result before the deadline",
+    "retries": 1521,
+    "elapsed_seconds": 54.312000000005355,
+    "finished_at": "2026-10-27T16:49:02.165233+00:00"
+  },
+  "after_manual_left_usb_reconnect": {
+    "target": "left",
+    "identity": {
+      "size": 94908,
+      "crc": 3394405425,
+      "abi": 2,
+      "boot_crc": 1770733249,
+      "role": 3
+    },
+    "result": {
+      "action": 0,
+      "phase": 0,
+      "reset_flags": 0,
+      "size": 0,
+      "crc": 0,
+      "role": 3
+    },
+    "retries": 0
+  },
+  "fallback": {
+    "success": true,
+    "action": "fallback",
+    "target": "left",
+    "expected_reset": "software",
+    "started_at": "2026-10-27T16:51:12.709012+00:00",
+    "finished_at": "2026-10-27T16:51:26.582277+00:00",
+    "elapsed_seconds": 13.875,
+    "capabilities": {
+      "bits": 25,
+      "fallback_ms": 12000,
+      "ram_start": 536870976,
+      "ram_end": 536899520
+    },
+    "before": {
+      "size": 94908,
+      "crc": 3394405425,
+      "abi": 2,
+      "boot_crc": 1770733249,
+      "role": 3
+    },
+    "after": {
+      "size": 94908,
+      "crc": 3394405425,
+      "abi": 2,
+      "boot_crc": 1770733249,
+      "role": 3
+    },
+    "result": {
+      "action": 2,
+      "phase": 3,
+      "reset_flags": 40,
+      "size": 0,
+      "crc": 0,
+      "role": 3
+    },
+    "package_sha256": null,
+    "retries": 5
+  },
+  "restore_left_started_utc": "2026-10-27T16:53:45.013203+00:00",
+  "restore_left_finished_utc": "2026-10-27T16:54:32.858285+00:00",
+  "final": {
+    "at": "2026-10-27T16:55:23.397906+00:00",
+    "halves": {
+      "left": {
+        "operation": 7,
+        "result": 0,
+        "state": 0,
+        "role": 3,
+        "session": 0,
+        "received": 0,
+        "size": 91236,
+        "crc": 1962194226,
+        "abi": 1,
+        "boot_crc": 1770733249
+      },
+      "right": {
+        "operation": 7,
+        "result": 0,
+        "state": 0,
+        "role": 0,
+        "session": 0,
+        "received": 0,
+        "size": 91236,
+        "crc": 1962194226,
+        "abi": 1,
+        "boot_crc": 1770733249
+      }
+    },
+    "vial_uid": "b691d7277fc88251",
+    "native_unlocked": true,
+    "configuration_getters_checked": 263,
+    "configuration_matches_backup": true,
+    "different_getter_count": 0,
+    "configuration_writes": 0,
+    "backup": "artifacts\\recovery\\2026-10-27T163352Z-vial-before-update.json",
+    "backup_sha256": "3e06c4539bdc71dda601b7e3737259851d127c6fa9a8481145fd1e0192f8d632",
+    "runtime_source_commit": "9ca44e2",
+    "left_package_sha256": "4365bca28938d27615d84c68ec1adb0b70d7af136eb0476c2400d670a58c23b8",
+    "right_firmware_writes": 0,
+    "resident_writes": 0,
+    "right_unchanged": true
+  },
+  "left_application_installs": 2,
+  "right_application_installs": 0,
+  "resident_writes": 0,
+  "driver_installations": 0,
+  "staging_execution_attempts": 0,
+  "watchdog_recovery_proven": false,
+  "software_fallback_proven": true,
+  "root_cause": "Not established. IWDG-dependent path did not return USB; DWT-only software fallback returned. No hardware fault PC captured.",
+  "next_requirement": "Capture watchdog setup/CPU fault state before another live watchdog probe. Keep right qualification disabled."
+}
