@@ -126,3 +126,9 @@ package/packet tooling and bare reset-return/hang fixtures. Device RUN is still
 disabled. The next execution milestone is the early-startup trampoline and
 independent-watchdog integration/proof in that document; no hardware trial,
 firmware installation or resident modification is implied by the offline work.
+
+The [2026-10-27 hardware continuation](ZMK-TRIAL-HARDWARE-VALIDATION.md) installed
+and validated the trial receiver on both halves through left USB after explicit
+user authorization. Saved native configuration was restored and verified, Vial
+was relocked, and resident CRCs stayed unchanged. RUN remains disabled; the next
+work is still the startup/watchdog backend, followed by its separate recovery proof.

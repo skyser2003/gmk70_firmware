@@ -5,6 +5,10 @@ The opt-in Vial trial updater can receive and validate a trial. RUN is deliberat
 UNAVAILABLE: no watchdog register writes, reset trampoline or CPU handoff exists
 in this milestone. Nothing here establishes recovery on a keyboard.
 
+[Live staging validation on 2026-10-27](ZMK-TRIAL-HARDWARE-VALIDATION.md) now covers
+application installation, receiver operations and authorization on both halves.
+CPU handoff and watchdog recovery remain unimplemented and untested.
+
 ## Design and alternatives
 
 Keep the resident and ordinary install ABI unchanged. Replacing the resident
