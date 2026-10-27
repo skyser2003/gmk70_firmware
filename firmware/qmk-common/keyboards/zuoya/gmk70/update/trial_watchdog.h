@@ -26,3 +26,8 @@ enum {
 // Runs before C runtime initialization. The adapter must use volatile MMIO;
 // false always precedes the start key, which is the final write on success.
 bool gmk_trial_watchdog_start(const gmk_trial_mmio_t *io);
+
+// Reconfigure an inherited watchdog without starting a stopped watchdog.
+bool gmk_trial_watchdog_recover(const gmk_trial_mmio_t *io);
+// Reload only; no reads, clock changes, configuration, or start key.
+bool gmk_trial_watchdog_feed(const gmk_trial_mmio_t *io);

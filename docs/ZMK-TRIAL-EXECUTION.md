@@ -209,3 +209,28 @@ Sanitized evidence:
 [software fallback success](../artifacts/recovery/2026-10-27-left-runtime-fallback.json),
 [final configuration verification](../artifacts/recovery/2026-10-27-runtime-watchdog-final-verification.json).
 Private native keymap/macro backups remain ignored.
+
+### Recovery servicing qualification (2026-10-27)
+
+The fault-capture runtime build returned automatically from the deliberate UDF
+with software-reset flags and the expected fault PC. Its IWDG probe then returned
+one matching RESULT with IWDG reset flags, but USB disappeared again afterward.
+That instantaneous result did not prove stable recovery. A left USB power cycle
+restored Vial and 35 seconds of read-only identity checks passed; the right and
+both resident identities remained unchanged.
+
+The full launcher now handles the possibility of an inherited running IWDG.
+Only a valid left ENTERED/RETURNED record with a current software/IWDG reset
+(optionally PIN) qualifies. Before CRT it configures the longest watchdog period
+and reloads without issuing a start key. Vial initialization repeats that setup,
+clears the current reset flags, and enables reloads in updater housekeeping.
+Ordinary, power, corrupt, rejected and right-side recovery records do not touch
+the watchdog. New trial execution configures its own short deadline and receives
+no housekeeping feeds. Failed recovery setup prevents a new trial request.
+
+Portable MMIO and native full-adapter tests exercise these gates, current versus
+retained reset flags, and an admitted staging RUN through start and handoff. The
+host now requires 30 seconds of continuously verified INFO and terminal RESULT;
+transport retries restart that observation window. Hardware qualification of
+this revised launcher is the next step; watchdog persistence is still a
+hypothesis until stable return is observed.

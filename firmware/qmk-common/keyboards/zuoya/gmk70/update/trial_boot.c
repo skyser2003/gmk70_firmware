@@ -213,3 +213,10 @@ bool gmk_trial_boot_trace_report(const volatile gmk_trial_boot_record_t *record,
         words[i] = copy.reserved[i];
     return true;
 }
+
+bool gmk_trial_boot_watchdog_recovery(const volatile gmk_trial_boot_record_t *record, uint32_t reset_flags) {
+    const uint32_t causes = GMK_TRIAL_BOOT_RESET_SOFTWARE | GMK_TRIAL_BOOT_RESET_WATCHDOG;
+    if (!(reset_flags & causes) || (reset_flags & ~(causes | GMK_TRIAL_BOOT_RESET_PIN))) return false;
+    gmk_trial_boot_record_t copy;
+    return record && snapshot(record, &copy) && valid(&copy) && copy.role == GMK_TRIAL_BOOT_ROLE_LEFT && (copy.phase == GMK_TRIAL_BOOT_ENTERED || copy.phase == GMK_TRIAL_BOOT_RETURNED);
+}

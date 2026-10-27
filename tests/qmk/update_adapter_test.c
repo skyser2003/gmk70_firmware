@@ -54,6 +54,15 @@ void gmk_trial_runtime_fallback_test(bool enabled) {
     runtime_fallback = enabled;
 }
 #    endif
+#    ifndef GMK70_TRIAL_RUNTIME
+static unsigned platform_inits, platform_tasks;
+void            gmk_trial_platform_init(void) {
+    ++platform_inits;
+}
+void gmk_trial_platform_task(void) {
+    ++platform_tasks;
+}
+#    endif
 bool gmk_trial_platform_prepare(uint32_t action, gmk_image_t image, uint32_t role) {
     assert(!locks);
     ++trial_preparations;
@@ -212,7 +221,15 @@ static void fixture(void) {
     trial_prepare_ok   = true;
     trial_preparations = trial_peer_starts = 0;
 #endif
+#if defined(GMK70_VIAL_TRIAL) && !defined(GMK70_TRIAL_RUNTIME)
+    platform_inits = platform_tasks = 0;
+#endif
     gmk_update_init();
+#if defined(GMK70_VIAL_TRIAL) && !defined(GMK70_TRIAL_RUNTIME)
+    assert(platform_inits == 1);
+    gmk_update_task();
+    assert(platform_tasks == 1);
+#endif
 }
 
 static void begin(uint8_t packet[32], uint8_t target) {

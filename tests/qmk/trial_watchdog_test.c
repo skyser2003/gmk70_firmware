@@ -216,6 +216,104 @@ static void test_invalid_adapter(void) {
     assert(write_count == 0);
 }
 
+// Recovery must service an inherited watchdog without starting a stopped one.
+// Wrong timeout values, missing gates/readback, or any oscillator/debug writes
+// violate this trace even when register status appears immediately ready.
+static void assert_recovery_only(void) {
+    assert(start_count == 0);
+    for (unsigned i = 0; i < write_count; ++i) {
+        assert(writes[i].address == 0x40010C3C || writes[i].address == 0x40010C64 || writes[i].address == 0x40010800 || writes[i].address == 0x40010804 || writes[i].address == 0x40010808);
+        assert(writes[i].address != 0x40010800 || writes[i].value != 0xCCCC);
+    }
+    assert(reg_at(0x40010444)->reads == 0 && reg_at(0x40010448)->reads == 0);
+    assert(reg_at(0xE0042004)->reads == 0);
+}
+
+static void test_recovery_sequence(void) {
+    fixture();
+    initial_busy = 2;
+    update_delay = 4;
+    assert(gmk_trial_watchdog_recover(&io));
+    static const uint32_t expected[][2] = {
+        {0x40010C3C, 0x7F}, {0x40010C64, 5}, {0x40010800, 0x5555}, {0x40010804, 6}, {0x40010808, 4095}, {0x40010800, 0xAAAA},
+    };
+    assert(write_count == sizeof(expected) / sizeof(expected[0]));
+    for (unsigned i = 0; i < write_count; ++i) {
+        assert(writes[i].address == expected[i][0]);
+        assert(writes[i].value == expected[i][1]);
+    }
+    assert(reg_at(0x40010C3C)->reads == 2 && reg_at(0x40010C64)->reads == 2);
+    assert(reg_at(0x40010804)->reads == 1 && reg_at(0x40010808)->reads == 1);
+    assert(reg_at(0x4001080C)->reads == 8);
+    assert(!write_unlocked);
+    assert_recovery_only();
+}
+
+static void test_recovery_failures(void) {
+    const uint32_t addresses[] = {0x40010C3C, 0x40010C64, 0x40010800, 0x40010804, 0x40010808};
+    for (unsigned i = 0; i < sizeof(addresses) / sizeof(addresses[0]); ++i) {
+        fixture();
+        // The reset reload value already equals the desired maximum.
+        reg_at(0x40010808)->value = 2999;
+        ignored_write             = addresses[i];
+        assert(!gmk_trial_watchdog_recover(&io));
+        assert_recovery_only();
+        assert(!write_unlocked);
+        assert(last_value != 0xAAAA);
+    }
+    const uint32_t config[] = {0x40010804, 0x40010808};
+    for (unsigned i = 0; i < sizeof(config) / sizeof(config[0]); ++i) {
+        fixture();
+        corrupt_read = config[i];
+        assert(!gmk_trial_watchdog_recover(&io));
+        assert_recovery_only();
+        assert(last_access_write && last_address == 0x40010800 && last_value == 0);
+    }
+    for (unsigned mask = 0; mask <= 3; ++mask) {
+        fixture();
+        if (mask == 0)
+            initial_busy = UINT32_MAX;
+        else
+            stuck_update_mask = mask;
+        assert(!gmk_trial_watchdog_recover(&io));
+        assert_recovery_only();
+        assert(reg_at(0x4001080C)->reads == GMK_TRIAL_WATCHDOG_POLL_LIMIT + (mask != 0));
+        assert(!write_unlocked);
+        assert(last_value != 0xAAAA);
+    }
+}
+
+static void test_recovery_final_poll(void) {
+    fixture();
+    initial_busy = GMK_TRIAL_WATCHDOG_POLL_LIMIT - 1;
+    assert(gmk_trial_watchdog_recover(&io));
+    assert(reg_at(0x4001080C)->reads == GMK_TRIAL_WATCHDOG_POLL_LIMIT + 1);
+    assert_recovery_only();
+    fixture();
+    update_delay = GMK_TRIAL_WATCHDOG_POLL_LIMIT - 1;
+    assert(gmk_trial_watchdog_recover(&io));
+    assert(reg_at(0x4001080C)->reads == GMK_TRIAL_WATCHDOG_POLL_LIMIT + 1);
+    assert_recovery_only();
+}
+
+static void test_recovery_and_feed_invalid_adapter(void) {
+    fixture();
+    const gmk_trial_mmio_t no_read  = {.read = NULL, .write = write_register};
+    const gmk_trial_mmio_t no_write = {.read = read_register, .write = NULL};
+    assert(!gmk_trial_watchdog_recover(NULL));
+    assert(!gmk_trial_watchdog_recover(&no_read));
+    assert(!gmk_trial_watchdog_recover(&no_write));
+    assert(!gmk_trial_watchdog_feed(NULL));
+    assert(!gmk_trial_watchdog_feed(&no_write));
+    assert(write_count == 0);
+    // Feed only needs the write callback and performs no status/config reads.
+    assert(gmk_trial_watchdog_feed(&no_read));
+    assert(write_count == 1 && writes[0].address == 0x40010800 && writes[0].value == 0xAAAA);
+    for (unsigned i = 0; i < sizeof(registers) / sizeof(registers[0]); ++i)
+        assert(registers[i].reads == 0);
+    assert_recovery_only();
+}
+
 int main(void) {
     test_delayed_ready_start_sequence();
     test_rejected_preparation_writes();
@@ -223,6 +321,10 @@ int main(void) {
     test_configuration_failures();
     test_final_poll_ready();
     test_invalid_adapter();
+    test_recovery_sequence();
+    test_recovery_failures();
+    test_recovery_final_poll();
+    test_recovery_and_feed_invalid_adapter();
     puts("trial watchdog tests passed");
     return 0;
 }

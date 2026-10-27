@@ -173,6 +173,53 @@ class TrialClientTests(unittest.TestCase):
         self.assertGreaterEqual(clock.value, 9)
         self.assertEqual(device.operations.count(TrialOp.PROBE), 1)
 
+    def test_recovery_requires_sustained_read_only_verification(self) -> None:
+        device, clock = Device(), Clock()
+        report = self.client(device, clock).probe(0)
+        self.assertGreaterEqual(report["elapsed_seconds"], 39)
+        self.assertGreaterEqual(report["stable_seconds"], 30)
+        after_probe = device.operations[device.operations.index(TrialOp.PROBE) + 1 :]
+        self.assertGreater(after_probe.count(TrialOp.RESULT), 2)
+        self.assertLessEqual(
+            set(after_probe), {TrialOp.STATUS, TrialOp.INFO, TrialOp.RESULT}
+        )
+
+    def test_disappearance_after_first_verified_return_is_not_success(self) -> None:
+        device, clock = Device(), Clock()
+        exchange = device.exchange
+
+        def disappear(request: bytes) -> bytes:
+            if clock.value >= 10:
+                raise OSError("Watchdog recovery disappeared")
+            return exchange(request)
+
+        device.exchange = disappear  # type: ignore[method-assign]
+        client = self.client(device, clock)
+        with self.assertRaises(TimeoutError):
+            client.probe(0)
+        self.assertFalse(client.last_report["success"])
+        self.assertIn("result", client.last_report)
+        self.assertLess(clock.value, 100)
+        self.assertEqual(device.operations.count(TrialOp.PROBE), 1)
+
+    def test_transport_retry_restarts_the_stable_window(self) -> None:
+        device, clock = Device(), Clock()
+        exchange = device.exchange
+        interrupted_at: list[float] = []
+
+        def interrupt_once(request: bytes) -> bytes:
+            if clock.value >= 15 and not interrupted_at:
+                interrupted_at.append(clock.value)
+                raise OSError("Temporary USB loss")
+            return exchange(request)
+
+        device.exchange = interrupt_once  # type: ignore[method-assign]
+        report = self.client(device, clock).probe(0)
+        self.assertTrue(report["success"])
+        self.assertTrue(interrupted_at)
+        self.assertGreaterEqual(clock.value - interrupted_at[0], 30)
+        self.assertGreaterEqual(report["stable_seconds"], 30)
+
     def test_run_uploads_exact_bytes_before_run(self) -> None:
         device = Device()
         report = self.client(device).run(package(), expect_reset="watchdog")

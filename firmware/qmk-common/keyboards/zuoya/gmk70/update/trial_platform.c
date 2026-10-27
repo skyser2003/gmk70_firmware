@@ -25,6 +25,15 @@ enum {
     SCB_PENDING_CLEAR = (1U << 27) | (1U << 25),
 };
 
+#ifdef GMK_TRIAL_PLATFORM_TEST
+uint32_t gmk_trial_platform_read(uint32_t address);
+void     gmk_trial_platform_write(uint32_t address, uint32_t value);
+void     gmk_trial_platform_barrier(void);
+bool     gmk_trial_platform_role(uint32_t *role);
+#    define read_register gmk_trial_platform_read
+#    define write_register gmk_trial_platform_write
+#    define barrier gmk_trial_platform_barrier
+#else
 static uint32_t read_register(uint32_t address) {
     return *(volatile const uint32_t *)(uintptr_t)address;
 }
@@ -39,11 +48,16 @@ static void barrier(void) {
                          : "memory");
 }
 
+#endif
+
 static const gmk_trial_mmio_t io = {.read = read_register, .write = write_register};
 
 // Serialize the portable sampler with normal framework GPIO/clock operations.
 // Before CRT, PRIMASK is already set by the strong Reset_Handler.
 static bool actual_role(uint32_t *role) {
+#ifdef GMK_TRIAL_PLATFORM_TEST
+    return gmk_trial_platform_role(role);
+#else
     uint32_t primask;
     __asm__ volatile("mrs %0, primask\n"
                      "cpsid i\n"
@@ -52,6 +66,7 @@ static bool actual_role(uint32_t *role) {
     barrier();
     __asm__ volatile("msr primask, %0" : : "r"(primask) : "memory");
     return ready;
+#endif
 }
 
 static bool commit_erased(void) {
@@ -67,7 +82,27 @@ static bool staged_image_valid(gmk_image_t image) {
     return gmk_trial_vectors(staged, image.size) && gmk_crc32(staged, image.size) == image.crc;
 }
 
+static bool watchdog_service;
+static bool watchdog_service_failed;
+
+void gmk_trial_platform_init(void) {
+    watchdog_service        = false;
+    watchdog_service_failed = false;
+    if (gmk_trial_boot_watchdog_recovery(&gmk_trial_record, read_register(RCC_RSTSTAT))) {
+        watchdog_service        = gmk_trial_watchdog_recover(&io);
+        watchdog_service_failed = !watchdog_service;
+    }
+    write_register(RCC_CLRRSTSTAT, 1);
+    barrier();
+}
+
+void gmk_trial_platform_task(void) {
+    if (watchdog_service) (void)gmk_trial_watchdog_feed(&io);
+}
+
 bool gmk_trial_platform_prepare(uint32_t action, gmk_image_t image, uint32_t role) {
+    // A failed recovery must not replace the evidence or attempt another trial.
+    if (watchdog_service_failed) return false;
     uint32_t hardware_role;
     if (!actual_role(&hardware_role) || role != hardware_role || !commit_erased()) return false;
     if (action == GMK_TRIAL_BOOT_RUN && !staged_image_valid(image)) return false;
@@ -75,7 +110,9 @@ bool gmk_trial_platform_prepare(uint32_t action, gmk_image_t image, uint32_t rol
 }
 
 __attribute__((noreturn)) void gmk_trial_platform_reset(void) {
+#ifndef GMK_TRIAL_PLATFORM_TEST
     __asm__ volatile("cpsid i" ::: "memory");
+#endif
     write_register(RCC_CLRRSTSTAT, 1);
     barrier();
     write_register(SCB_AIRCR, 0x05FA0004);
@@ -113,7 +150,9 @@ static void clear_core_state(void) {
 }
 
 __attribute__((noreturn)) static void await_watchdog(void) {
+#ifndef GMK_TRIAL_PLATFORM_TEST
     __asm__ volatile("cpsid i" ::: "memory");
+#endif
     for (;;)
         __asm__ volatile("nop");
 }
@@ -121,19 +160,22 @@ __attribute__((noreturn)) static void await_watchdog(void) {
 __attribute__((noreturn)) void gmk_trial_platform_handoff(uint32_t vectors);
 
 void gmk_trial_early_boot(void) {
-    uint32_t reset_flags = read_register(RCC_RSTSTAT);
-    write_register(RCC_CLRRSTSTAT, 1);
-    barrier();
+    uint32_t                 reset_flags = read_register(RCC_RSTSTAT);
     gmk_trial_boot_request_t request;
     // Admission consumes the checked intent before it may sample hardware.
     // Ordinary and watchdog-return boots perform no GPIO bus accesses.
     if (!gmk_trial_boot_admit(&gmk_trial_record, reset_flags, actual_role, &request)) {
         (void)gmk_trial_boot_complete(&gmk_trial_record, reset_flags);
+        // An inherited IWDG may still be running after reset; reload before CRT.
+        // Leave current flags intact for init; terminal reports may be stale.
+        if (gmk_trial_boot_watchdog_recovery(&gmk_trial_record, reset_flags)) (void)gmk_trial_watchdog_recover(&io);
         return;
     }
     // Validation cannot arm a watchdog or alter flash. A rejected intent is
     // already consumed and remains a reportable REJECTED result.
     if (!commit_erased() || (request.action == GMK_TRIAL_BOOT_RUN && !staged_image_valid(request.image))) return;
+    write_register(RCC_CLRRSTSTAT, 1);
+    barrier();
     clear_core_state();
     if (!gmk_trial_watchdog_start(&io)) return;
     // From the start key onward, every failure waits for IWDG without feeding.

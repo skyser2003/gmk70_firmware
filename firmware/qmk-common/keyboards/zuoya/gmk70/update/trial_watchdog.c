@@ -54,3 +54,26 @@ bool gmk_trial_watchdog_start(const gmk_trial_mmio_t *io) {
     io->write(GMK_TRIAL_WATCHDOG_KR, 0xCCCC);
     return true;
 }
+
+bool gmk_trial_watchdog_recover(const gmk_trial_mmio_t *io) {
+    if (!io || !io->read || !io->write) return false;
+    if (!update_bits(io, GMK_TRIAL_WATCHDOG_AHBENR0, 0, IWDG_BUS_ENABLE) || !update_bits(io, GMK_TRIAL_WATCHDOG_CLKENR, 0, IWDG_CLOCK_ENABLE) || !wait_bits(io, GMK_TRIAL_WATCHDOG_SR, IWDG_UPDATING, 0)) return false;
+
+    // The inherited watchdog already owns its oscillator. Do not touch analog,
+    // LSI or debug controls, and never issue the irreversible start key here.
+    // /256 * (4095+1) gives the longest valid period (nominally 32.768s).
+    io->write(GMK_TRIAL_WATCHDOG_KR, 0x5555);
+    io->write(GMK_TRIAL_WATCHDOG_PR, 6);
+    io->write(GMK_TRIAL_WATCHDOG_RLR, 4095);
+    if (!wait_bits(io, GMK_TRIAL_WATCHDOG_SR, IWDG_UPDATING, 0) || (io->read(GMK_TRIAL_WATCHDOG_PR) & 7U) != 6 || (io->read(GMK_TRIAL_WATCHDOG_RLR) & 0xFFFU) != 4095) {
+        io->write(GMK_TRIAL_WATCHDOG_KR, 0);
+        return false;
+    }
+    return gmk_trial_watchdog_feed(io);
+}
+
+bool gmk_trial_watchdog_feed(const gmk_trial_mmio_t *io) {
+    if (!io || !io->write) return false;
+    io->write(GMK_TRIAL_WATCHDOG_KR, 0xAAAA);
+    return true;
+}

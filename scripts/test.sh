@@ -26,6 +26,14 @@ for component in watchdog boot peer role deadline; do
         -o "artifacts/tests/qmk/trial-$component"
     "artifacts/tests/qmk/trial-$component"
 done
+cc "${common_flags[@]}" -DGMK_TRIAL_PLATFORM_TEST -ffunction-sections -fdata-sections -Wl,--gc-sections \
+    tests/qmk/trial_platform_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_platform.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_boot.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
+    -o artifacts/tests/qmk/trial-platform
+artifacts/tests/qmk/trial-platform
 cc "${common_flags[@]}" -Itests/qmk/module_stubs \
     '-DPRODUCT="ZUOYA GMK70"' '-DMANUFACTURER="HS"' \
     -DVENDOR_ID=0x342d -DPRODUCT_ID=0xe491 \

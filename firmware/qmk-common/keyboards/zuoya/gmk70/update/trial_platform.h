@@ -5,6 +5,9 @@
 // The linker reserves the first 64 SRAM bytes in trial updater builds only.
 extern volatile gmk_trial_boot_record_t gmk_trial_record;
 
+// Full launcher only: service an already-running watchdog after trial return.
+void                           gmk_trial_platform_init(void);
+void                           gmk_trial_platform_task(void);
 bool                           gmk_trial_platform_prepare(uint32_t action, gmk_image_t image, uint32_t role);
 __attribute__((noreturn)) void gmk_trial_platform_reset(void);
 // Four little-endian words: action | phase << 8, reset flags, image size, CRC.

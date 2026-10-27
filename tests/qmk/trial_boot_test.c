@@ -661,7 +661,34 @@ static void test_trace_integrity_and_invalid_arguments(void) {
     assert(words[0] == 99 && words[1] == 99 && words[2] == 99 && words[3] == 99 && words[4] == 99);
 }
 
+static void test_watchdog_recovery_gate(void) {
+    gmk_trial_boot_record_t  record;
+    gmk_trial_boot_request_t request;
+    assert(!gmk_trial_boot_watchdog_recovery(NULL, 4));
+    for (unsigned role = 0; role < 2; ++role) {
+        for (unsigned phase = 1; phase <= 4; ++phase) {
+            prepare(&record, GMK_TRIAL_BOOT_RUN, role);
+            if (phase != 1) assert(gmk_trial_boot_consume(&record, 8, role, &request));
+            if (phase == 2 || phase == 3) assert(gmk_trial_boot_enter(&record));
+            if (phase == 3) assert(gmk_trial_boot_complete(&record, 4));
+            if (phase == 4) assert(gmk_trial_boot_complete(&record, 8));
+            for (unsigned flags = 0; flags < 128; ++flags) {
+                bool reset    = flags == 4 || flags == 8 || flags == 12 || flags == 36 || flags == 40 || flags == 44;
+                bool expected = role == 0 && (phase == 2 || phase == 3) && reset;
+                assert(gmk_trial_boot_watchdog_recovery(&record, flags) == expected);
+            }
+            gmk_trial_boot_record_t saved = record;
+            for (unsigned byte = 0; byte < sizeof(record); ++byte) {
+                record = saved;
+                ((uint8_t *)&record)[byte] ^= 1;
+                assert(!gmk_trial_boot_watchdog_recovery(&record, 4));
+            }
+        }
+    }
+}
+
 int main(void) {
+    test_watchdog_recovery_gate();
     assert(sizeof(gmk_trial_boot_record_t) == 64);
     test_diagnostic_abi_reports_entered_empty_probe();
     test_trace_enable_requires_entered_empty_probe();

@@ -182,6 +182,7 @@ class TrialReport(TypedDict):
     started_at: str
     finished_at: str
     elapsed_seconds: float
+    stable_seconds: float
     capabilities: dict[str, int]
     before: dict[str, int]
     after: dict[str, int]
@@ -397,7 +398,13 @@ class TrialClient:
             self.last_report["acknowledged"] = True
             # The peer has a bounded polling pause; left USB must enumerate again.
             self._sleep(9)
-            deadline = self._now() + 45
+            # A brief USB return can precede another watchdog reset. Require
+            # a full observation window, with the original reconnect allowance
+            # still available before that window starts.
+            stable_required = 30.0
+            deadline = self._now() + 45 + stable_required
+            stable_since: float | None = None
+            self.last_report["stable_seconds"] = 0.0
             reconnect = target == 0
             while self._now() < deadline:
                 try:
@@ -409,6 +416,7 @@ class TrialClient:
                             self._sleep(0.25)
                             continue
                         reconnect = False
+                    retries_before = self.retries
                     after, status = self.inspect(target)
                     self.last_report["after"] = asdict(after)
                     if after != before:
@@ -423,7 +431,12 @@ class TrialClient:
                         else None
                     )
                     self.last_report["trace"] = asdict(trace) if trace else {}
+                    if self.retries != retries_before:
+                        stable_since = None
+                        self.last_report["stable_seconds"] = 0.0
                     if status.state != 0 or result.phase in (1, 2):
+                        stable_since = None
+                        self.last_report["stable_seconds"] = 0.0
                         self._sleep(0.25)
                         continue
                     result.verify(1 if package else 2, expect_reset, package)
@@ -436,6 +449,16 @@ class TrialClient:
                         raise RuntimeError(
                             "FAULT_TEST did not return a captured undefined instruction"
                         )
+                    observed_at = self._now()
+                    if observed_at >= deadline:
+                        break
+                    if stable_since is None:
+                        stable_since = observed_at
+                    stable_seconds = observed_at - stable_since
+                    self.last_report["stable_seconds"] = stable_seconds
+                    if stable_seconds < stable_required:
+                        self._sleep(0.25)
+                        continue
                     report: TrialReport = {
                         "success": True,
                         "action": action,
@@ -444,6 +467,7 @@ class TrialClient:
                         "started_at": str(self.last_report["started_at"]),
                         "finished_at": datetime.now(UTC).isoformat(),
                         "elapsed_seconds": self._now() - started,
+                        "stable_seconds": stable_seconds,
                         "capabilities": asdict(capabilities),
                         "before": asdict(before),
                         "after": asdict(after),
@@ -457,11 +481,13 @@ class TrialClient:
                     self.last_report = dict(report)
                     return report
                 except (OSError, TimeoutError):
+                    stable_since = None
+                    self.last_report["stable_seconds"] = 0.0
                     self.retries += 1
                     reconnect = True
                     self._sleep(0.25)
             raise TimeoutError(
-                "Trial recovery did not return a verified result before the deadline"
+                "Trial recovery did not remain stable for 30 seconds before the deadline"
             )
         except (OSError, RuntimeError, TimeoutError, ValueError) as error:
             self.last_report.update(

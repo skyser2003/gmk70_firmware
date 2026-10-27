@@ -137,6 +137,8 @@ void gmk_update_init(void) {
     gmk_trial_peer_init();
 #    ifdef GMK70_TRIAL_RUNTIME
     gmk_trial_runtime_init();
+#    else
+    gmk_trial_platform_init();
 #    endif
     trial_reset_pending = false;
     trial_mode          = false;
@@ -152,6 +154,9 @@ void gmk_update_init(void) {
 }
 
 void gmk_update_task(void) {
+#if defined(GMK70_VIAL_TRIAL) && !defined(GMK70_TRIAL_RUNTIME)
+    gmk_trial_platform_task();
+#endif
 #ifdef GMK70_VIAL_TRIAL
     if (trial_reset_pending) {
         if (timer_elapsed32(reset_at) >= 300) gmk_trial_platform_reset();
