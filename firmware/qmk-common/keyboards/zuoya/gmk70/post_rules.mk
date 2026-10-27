@@ -14,7 +14,7 @@ ifeq ($(strip $(GMK70_VIAL_TRIAL)), yes)
     SRC += update/trial_peer.c
     ifeq ($(strip $(GMK70_TRIAL_RUNTIME)), yes)
         OPT_DEFS += -DGMK70_TRIAL_RUNTIME
-        SRC += update/trial_runtime.c update/trial_deadline.c
+        SRC += update/trial_runtime.c update/trial_deadline.c update/trial_fault.S
     else
         SRC += update/trial_platform.c update/trial_startup.S update/trial_role.c
     endif

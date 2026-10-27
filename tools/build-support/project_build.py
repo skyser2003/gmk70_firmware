@@ -262,7 +262,11 @@ def export_sources(root: Path, output: Path, platform: str = "qmk") -> None:
                 source_files(
                     path,
                     unused_modules(root, platform)
-                    | {framework_path(root, "qmk" if platform == "vial" else "vial")},
+                    | {framework_path(root, "qmk" if platform == "vial" else "vial")}
+                    | {
+                        root / "dependencies" / name
+                        for name in ("zmk", "zephyr", "modules")
+                    },
                 )
                 if path.is_dir()
                 else [path]

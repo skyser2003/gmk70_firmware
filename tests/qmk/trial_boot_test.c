@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 static const gmk_image_t image = {.size = 4096, .crc = 0xA63C7195};
 
@@ -419,8 +421,254 @@ static void test_zero_reset_entry_cannot_authorize_run_or_image(void) {
     }
 }
 
+// The diagnostic ABI can describe an entered empty probe without becoming a
+// new launch request. CRC is a fixed fixture over the 52-byte record body.
+static void test_diagnostic_abi_reports_entered_empty_probe(void) {
+    gmk_trial_boot_record_t record = {.magic = 0x474D5442, .abi = 2, .action = 2, .phase = 2, .checksum = 0x30815ED6, .checksum_inverse = 0xCF7EA129};
+    gmk_trial_boot_result_t result;
+    assert(gmk_trial_boot_report(&record, &result));
+    assert(result.action == 2 && result.phase == 2 && result.role == 0);
+    assert(result.image.size == 0 && result.image.crc == 0 && result.reset_flags == 0);
+}
+
+// Build deliberately malformed but integrity-correct input fixtures. Output
+// expectations below are literal, and corruption tests do not use this helper.
+static void seal_fixture(gmk_trial_boot_record_t *record) {
+    uint32_t crc = UINT32_MAX;
+    for (size_t i = 4; i < 56; ++i) {
+        crc ^= ((const uint8_t *)record)[i];
+        for (unsigned bit = 0; bit < 8; ++bit) {
+            if (crc & 1U)
+                crc = (crc >> 1) ^ 0xEDB88320U;
+            else
+                crc >>= 1;
+        }
+    }
+    record->checksum         = ~crc;
+    record->checksum_inverse = crc;
+}
+
+static void entered_empty_probe(gmk_trial_boot_record_t *record, uint32_t role) {
+    assert(gmk_trial_boot_prepare(record, 2, (gmk_image_t){0}, role));
+    assert(gmk_trial_boot_runtime_enter(record, role));
+}
+
+static void assert_trace(const gmk_trial_boot_record_t *record, uint32_t address, uint32_t value, uint32_t cfsr, uint32_t pc, uint32_t flags) {
+    gmk_trial_boot_record_t saved    = *record;
+    uint32_t                words[5] = {99, 99, 99, 99, 99};
+    assert(gmk_trial_boot_trace_report(record, words));
+    assert(words[0] == address && words[1] == value && words[2] == cfsr && words[3] == pc && words[4] == flags);
+    assert(memcmp(record, &saved, sizeof(saved)) == 0);
+}
+
+// Enabling trace cannot bypass the existing one-shot admission. Both runtime
+// and early-admitted empty probes may convert, but a second enable is inert.
+static void test_trace_enable_requires_entered_empty_probe(void) {
+    for (uint32_t role = 0; role <= 1; ++role) {
+        for (unsigned early = 0; early <= 1; ++early) {
+            gmk_trial_boot_record_t record;
+            assert(gmk_trial_boot_prepare(&record, 2, (gmk_image_t){0}, role));
+            gmk_trial_boot_record_t saved = record;
+            assert(!gmk_trial_boot_trace_enable(&record));
+            assert(memcmp(&record, &saved, sizeof(record)) == 0);
+            if (early) {
+                gmk_trial_boot_request_t request;
+                assert(gmk_trial_boot_consume(&record, 8, role, &request));
+                saved = record;
+                assert(!gmk_trial_boot_trace_enable(&record));
+                assert(memcmp(&record, &saved, sizeof(record)) == 0);
+                assert(gmk_trial_boot_enter(&record));
+            } else {
+                assert(gmk_trial_boot_runtime_enter(&record, role));
+            }
+            assert(gmk_trial_boot_trace_enable(&record));
+            assert(record.abi == 2);
+            assert_trace(&record, 0, 0, 0, 0, 0);
+            saved = record;
+            assert(!gmk_trial_boot_trace_enable(&record));
+            assert(memcmp(&record, &saved, sizeof(record)) == 0);
+            assert(gmk_trial_boot_complete(&record, 4));
+            saved = record;
+            assert(!gmk_trial_boot_trace_enable(&record));
+            assert(memcmp(&record, &saved, sizeof(record)) == 0);
+        }
+    }
+    for (unsigned invalid = 0; invalid < 5; ++invalid) {
+        gmk_trial_boot_record_t record;
+        entered_empty_probe(&record, 0);
+        if (invalid == 0) record.action = 1;
+        if (invalid == 1) record.image.size = 4;
+        if (invalid == 2) record.image.crc = 1;
+        if (invalid == 3) record.reserved[0] = 0x40003000;
+        if (invalid == 4) record.phase = 4;
+        seal_fixture(&record);
+        gmk_trial_boot_record_t saved = record;
+        assert(!gmk_trial_boot_trace_enable(&record));
+        assert(memcmp(&record, &saved, sizeof(record)) == 0);
+    }
+}
+
+// Distinct checkpoints must be committed immediately, including a change of
+// value or direction at the same address. Identical accesses make no writes.
+static void test_trace_io_distinct_accesses_and_no_rewrite(void) {
+    gmk_trial_boot_record_t record;
+    entered_empty_probe(&record, 0);
+    assert(!gmk_trial_boot_trace_io(&record, 0x40003000, 0, false));
+    assert(gmk_trial_boot_trace_enable(&record));
+    assert(gmk_trial_boot_trace_io(&record, 0x40003000, 0, false));
+    assert_trace(&record, 0x40003000, 0, 0, 0, 0);
+    assert(gmk_trial_boot_trace_io(&record, 0x40003000, 0x5555, true));
+    assert_trace(&record, 0x40003000, 0x5555, 0, 0, 0x100);
+    assert(gmk_trial_boot_trace_io(&record, 0x40003000, 0xAAAA, true));
+    assert_trace(&record, 0x40003000, 0xAAAA, 0, 0, 0x100);
+    assert(gmk_trial_boot_trace_io(&record, 0x40003000, 0xAAAA, false));
+    assert_trace(&record, 0x40003000, 0xAAAA, 0, 0, 0);
+
+    long page_bytes = sysconf(_SC_PAGESIZE);
+    assert(page_bytes >= (long)sizeof(record));
+    gmk_trial_boot_record_t *readonly = mmap(NULL, (size_t)page_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    assert(readonly != MAP_FAILED);
+    *readonly = record;
+    assert(mprotect(readonly, (size_t)page_bytes, PROT_READ) == 0);
+    assert(gmk_trial_boot_trace_io(readonly, 0x40003000, 0xAAAA, false));
+    assert(munmap(readonly, (size_t)page_bytes) == 0);
+
+    assert(gmk_trial_boot_trace_io(&record, 0x40003004, 0, false));
+    assert_trace(&record, 0x40003004, 0, 0, 0, 0);
+    assert(gmk_trial_boot_complete(&record, 4));
+    gmk_trial_boot_record_t saved = record;
+    assert(!gmk_trial_boot_trace_io(&record, 0x40003008, 1, true));
+    assert(memcmp(&record, &saved, sizeof(record)) == 0);
+    assert_trace(&record, 0x40003004, 0, 0, 0, 0);
+}
+
+// A captured fault freezes the last MMIO checkpoint and its direction. The
+// snapshot and first reset cause survive subsequent ordinary resets intact.
+static void test_trace_fault_snapshot_and_completion(void) {
+    for (uint32_t kind = 1; kind <= 5; ++kind) {
+        gmk_trial_boot_record_t record;
+        entered_empty_probe(&record, 0);
+        assert(!gmk_trial_boot_trace_fault(&record, kind, 0x8200, 0x08002347));
+        assert(gmk_trial_boot_trace_enable(&record));
+        bool write = (kind & 1U) != 0;
+        assert(gmk_trial_boot_trace_io(&record, 0x40003000, 0xCCCC, write));
+        gmk_trial_boot_record_t saved = record;
+        assert(!gmk_trial_boot_trace_fault(&record, 0, 0x8200, 0x08002347));
+        assert(!gmk_trial_boot_trace_fault(&record, 6, 0x8200, 0x08002347));
+        assert(!gmk_trial_boot_trace_fault(&record, UINT32_MAX, 0x8200, 0x08002347));
+        assert(memcmp(&record, &saved, sizeof(record)) == 0);
+        assert(gmk_trial_boot_trace_fault(&record, kind, 0x8200, 0x08002347));
+        uint32_t flags = kind | (write ? 0x100U : 0);
+        assert_trace(&record, 0x40003000, 0xCCCC, 0x8200, 0x08002347, flags);
+        saved = record;
+        assert(!gmk_trial_boot_trace_io(&record, 0x40003004, 0xAAAA, true));
+        assert(!gmk_trial_boot_trace_fault(&record, kind, 0xFFFF, 0x08002401));
+        assert(memcmp(&record, &saved, sizeof(record)) == 0);
+        assert(gmk_trial_boot_complete(&record, 8));
+        assert_trace(&record, 0x40003000, 0xCCCC, 0x8200, 0x08002347, flags);
+        gmk_trial_boot_result_t result;
+        assert(gmk_trial_boot_report(&record, &result));
+        assert(result.phase == 3 && result.reset_flags == 8);
+        saved = record;
+        assert(!gmk_trial_boot_complete(&record, 4));
+        assert(!gmk_trial_boot_trace_fault(&record, kind, 0xFFFF, 0x08002401));
+        assert(memcmp(&record, &saved, sizeof(record)) == 0);
+    }
+}
+
+// Even a CRC-correct diagnostic body cannot express a launch, admission ticket,
+// nonempty image, invalid fault, or a new reset-free entry path.
+static void test_diagnostic_abi_rejects_launch_records(void) {
+    gmk_trial_boot_record_t valid = {.magic = 0x474D5442, .abi = 2, .action = 2, .phase = 2, .checksum = 0x30815ED6, .checksum_inverse = 0xCF7EA129};
+    for (unsigned invalid = 0; invalid < 12; ++invalid) {
+        gmk_trial_boot_record_t record = valid;
+        if (invalid == 0) record.action = 1;
+        if (invalid == 1) record.phase = 1;
+        if (invalid == 2) record.phase = 4;
+        if (invalid == 3) record.image.size = 4;
+        if (invalid == 4) record.image.crc = 1;
+        if (invalid == 5) record.consumed = 1;
+        if (invalid == 6) record.role = 2;
+        if (invalid == 7) record.reset_flags = 4;
+        if (invalid == 8) record.reserved[4] = 0x200;
+        if (invalid == 9) record.reserved[4] = 6;
+        if (invalid == 10) record.abi = 3;
+        if (invalid == 11) {
+            record.phase       = 4;
+            record.consumed    = 1;
+            record.reset_flags = 8;
+        }
+        seal_fixture(&record);
+        gmk_trial_boot_result_t result;
+        uint32_t                words[5] = {0};
+        assert(!gmk_trial_boot_report(&record, &result));
+        assert(!gmk_trial_boot_trace_report(&record, words));
+        assert(!gmk_trial_boot_trace_enable(&record));
+        assert(!gmk_trial_boot_trace_io(&record, 0x40003000, 1, true));
+        assert(!gmk_trial_boot_trace_fault(&record, 1, 1, 1));
+        assert(!gmk_trial_boot_enter(&record));
+        assert(!gmk_trial_boot_complete(&record, 4));
+        gmk_trial_boot_request_t request = {.action = 99};
+        gmk_trial_boot_record_t  copy    = record;
+        assert(!gmk_trial_boot_consume(&copy, 8, 0, &request));
+        copy = record;
+        role_fixture();
+        assert(!gmk_trial_boot_admit(&copy, 8, read_role, &request));
+        assert(role_reads == 0 && request.action == 99);
+        copy = record;
+        assert(!gmk_trial_boot_runtime_enter(&copy, 0));
+    }
+    gmk_trial_boot_request_t request = {.action = 99};
+    assert(!gmk_trial_boot_consume(&valid, 8, 0, &request));
+    assert(!gmk_trial_boot_runtime_enter(&valid, 0));
+    assert(!gmk_trial_boot_enter(&valid));
+    assert(request.action == 99);
+}
+
+// CRC/complement and commit magic protect every diagnostic byte. Read-only
+// reports and failed mutations must not expose or replace corrupt snapshots.
+static void test_trace_integrity_and_invalid_arguments(void) {
+    gmk_trial_boot_record_t valid;
+    entered_empty_probe(&valid, 0);
+    assert(gmk_trial_boot_trace_enable(&valid));
+    assert(gmk_trial_boot_trace_io(&valid, 0x40003000, 0x5555, true));
+    assert(gmk_trial_boot_trace_fault(&valid, 1, 0x8200, 0x08002347));
+    for (unsigned byte = 0; byte < sizeof(valid); ++byte) {
+        for (unsigned bit = 0; bit < 8; ++bit) {
+            gmk_trial_boot_record_t record = valid;
+            ((uint8_t *)&record)[byte] ^= 1U << bit;
+            gmk_trial_boot_record_t saved    = record;
+            uint32_t                words[5] = {99, 99, 99, 99, 99};
+            gmk_trial_boot_result_t result;
+            assert(!gmk_trial_boot_trace_report(&record, words));
+            assert(words[0] == 99 && words[1] == 99 && words[2] == 99 && words[3] == 99 && words[4] == 99);
+            assert(!gmk_trial_boot_report(&record, &result));
+            assert(!gmk_trial_boot_trace_enable(&record));
+            assert(!gmk_trial_boot_trace_io(&record, 0x40003000, 1, false));
+            assert(!gmk_trial_boot_trace_fault(&record, 1, 1, 1));
+            assert(!gmk_trial_boot_complete(&record, 4));
+            assert(memcmp(&record, &saved, sizeof(record)) == 0);
+        }
+    }
+    uint32_t words[5] = {99, 99, 99, 99, 99};
+    assert(!gmk_trial_boot_trace_enable(NULL));
+    assert(!gmk_trial_boot_trace_io(NULL, 0, 0, false));
+    assert(!gmk_trial_boot_trace_fault(NULL, 1, 0, 0));
+    assert(!gmk_trial_boot_trace_report(NULL, words));
+    assert(!gmk_trial_boot_trace_report(&valid, NULL));
+    entered_empty_probe(&valid, 0);
+    assert(!gmk_trial_boot_trace_report(&valid, words));
+    assert(words[0] == 99 && words[1] == 99 && words[2] == 99 && words[3] == 99 && words[4] == 99);
+}
+
 int main(void) {
     assert(sizeof(gmk_trial_boot_record_t) == 64);
+    test_diagnostic_abi_reports_entered_empty_probe();
+    test_trace_enable_requires_entered_empty_probe();
+    test_trace_io_distinct_accesses_and_no_rewrite();
+    test_trace_fault_snapshot_and_completion();
+    test_diagnostic_abi_rejects_launch_records();
+    test_trace_integrity_and_invalid_arguments();
     test_runtime_probe_entry_and_return();
     test_runtime_rejects_run_images_and_roles();
     test_runtime_corruption_and_stale_admission();

@@ -56,7 +56,7 @@ bool gmk_update_usb_authorized(uint8_t operation) {
     // Authorize at the USB master. The slave inherits that authorization over
     // the split link; it cannot perform Vial's USB unlock handshake itself.
 #    ifdef GMK70_VIAL_TRIAL
-    if (operation == GMK_TRIAL_RESULT || operation == GMK_TRIAL_CAPS) return true;
+    if (operation == GMK_TRIAL_RESULT || operation == GMK_TRIAL_CAPS || operation == GMK_TRIAL_TRACE) return true;
 #    endif
     return operation == GMK_INFO || operation == GMK_STATUS || vial_unlocked;
 }

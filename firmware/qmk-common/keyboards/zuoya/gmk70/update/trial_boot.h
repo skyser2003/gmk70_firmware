@@ -70,3 +70,14 @@ bool gmk_trial_boot_runtime_enter(volatile gmk_trial_boot_record_t *record, uint
 // Terminal results remain stable through later ordinary resets.
 bool gmk_trial_boot_complete(volatile gmk_trial_boot_record_t *record, uint32_t reset_flags);
 bool gmk_trial_boot_report(const volatile gmk_trial_boot_record_t *record, gmk_trial_boot_result_t *result);
+
+// Upgrade an already ENTERED, empty ABI1 PROBE to diagnostic ABI2. This cannot
+// authorize a launch or reset an existing diagnostic snapshot.
+bool gmk_trial_boot_trace_enable(volatile gmk_trial_boot_record_t *record);
+// Checkpoint each distinct access before the platform performs the MMIO. Only
+// an active diagnostic probe without a captured fault can accept checkpoints.
+bool gmk_trial_boot_trace_io(volatile gmk_trial_boot_record_t *record, uint32_t address, uint32_t value, bool write);
+// Capture the first fault: 1 HardFault, 2 NMI, 3 MemManage, 4 BusFault, 5 UsageFault.
+bool gmk_trial_boot_trace_fault(volatile gmk_trial_boot_record_t *record, uint32_t kind, uint32_t cfsr, uint32_t pc);
+// Read address, value, CFSR, PC, flags (fault kind low 8 bits; write bit 8).
+bool gmk_trial_boot_trace_report(const volatile gmk_trial_boot_record_t *record, uint32_t words[5]);

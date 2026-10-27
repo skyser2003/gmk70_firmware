@@ -273,6 +273,9 @@ class VialTests(unittest.TestCase):
                     {"vial": {"libraries": {}}}
                 ),
                 "dependencies/vial-qmk/quantum/quantum.c": "selected framework",
+                "dependencies/zmk/app/CMakeLists.txt": "unrelated ZMK",
+                "dependencies/zephyr/CMakeLists.txt": "unrelated Zephyr",
+                "dependencies/modules/hal/cmsis/LICENSE.txt": "unrelated CMSIS",
                 "dependencies/qmk/quantum/quantum.c": "other framework",
             }
             for name in directories:
@@ -301,6 +304,8 @@ class VialTests(unittest.TestCase):
             with tarfile.open(output) as archive:
                 archive.extractall(exported, filter="data")
             self.assertFalse((exported / "dependencies/qmk").exists())
+            for unrelated in ("zmk", "zephyr", "modules"):
+                self.assertFalse((exported / "dependencies" / unrelated).exists())
             self.assertEqual(
                 (exported / "dependencies/vial-qmk/quantum/quantum.c").read_text(),
                 "selected framework",

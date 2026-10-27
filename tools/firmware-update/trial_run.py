@@ -29,6 +29,8 @@ class TrialOp(IntEnum):
     RESULT = 0x12
     CAPS = 0x13
     FALLBACK_TEST = 0x14
+    TRACE = 0x15
+    FAULT_TEST = 0x16
 
 
 class TrialCapability(IntFlag):
@@ -37,6 +39,7 @@ class TrialCapability(IntFlag):
     EARLY = 4
     FALLBACK = 8
     FALLBACK_TEST = 16
+    FAULT_TEST = 32
 
 
 def nonce() -> int:
@@ -56,7 +59,7 @@ def correlated(response: bytes, original: bytes, current: bytes) -> bool:
         return completed or polling
     if response[4] != original[4]:
         return False
-    if original[4] in (TrialOp.CAPS, TrialOp.RESULT):
+    if original[4] in (TrialOp.CAPS, TrialOp.RESULT, TrialOp.TRACE):
         if response[8:16] != original[8:16]:
             return False
     elif (
@@ -139,6 +142,15 @@ class TrialCapabilities:
 
 
 @dataclass(frozen=True)
+class TrialTrace:
+    address: int
+    value: int
+    cfsr: int
+    pc: int
+    flags: int
+
+
+@dataclass(frozen=True)
 class TrialResult:
     action: int
     phase: int
@@ -174,6 +186,7 @@ class TrialReport(TypedDict):
     before: dict[str, int]
     after: dict[str, int]
     result: dict[str, int]
+    trace: dict[str, int]
     package_sha256: str | None
     retries: int
 
@@ -292,6 +305,18 @@ class TrialClient:
             raise RuntimeError(message) from error
         return TrialCapabilities(*struct.unpack("<IIII", reply.payload))
 
+    def trace(self, target: int) -> TrialTrace:
+        first = self.command(target, TrialOp.TRACE, nonce(), 0)
+        second = self.command(target, TrialOp.TRACE, nonce(), 1)
+        address, value, cfsr, pc = struct.unpack("<IIII", first.payload)
+        flags, reserved1, reserved2, reserved3 = struct.unpack("<IIII", second.payload)
+        if reserved1 or reserved2 or reserved3 or flags & ~0x1FF or flags & 0xFF > 5:
+            raise RuntimeError("Invalid retained fault trace")
+        return TrialTrace(address, value, cfsr, pc, flags)
+
+    def fault(self, target: int) -> TrialReport:
+        return self._execute(target, None, "software", TrialOp.FAULT_TEST)
+
     def probe(self, target: int) -> TrialReport:
         return self._execute(target, None, "watchdog", TrialOp.PROBE)
 
@@ -323,6 +348,7 @@ class TrialClient:
             TrialOp.PROBE: "probe",
             TrialOp.RUN: "run",
             TrialOp.FALLBACK_TEST: "fallback",
+            TrialOp.FAULT_TEST: "fault",
         }[operation]
         self.last_report = {
             "success": False,
@@ -339,6 +365,7 @@ class TrialClient:
                 TrialOp.PROBE: TrialCapability.PROBE,
                 TrialOp.RUN: TrialCapability.RUN,
                 TrialOp.FALLBACK_TEST: TrialCapability.FALLBACK_TEST,
+                TrialOp.FAULT_TEST: TrialCapability.FAULT_TEST,
             }[operation]
             if not capabilities.bits & required:
                 raise RuntimeError(
@@ -390,10 +417,25 @@ class TrialClient:
                         )
                     result = self.result(target)
                     self.last_report["result"] = asdict(result)
+                    trace = (
+                        self.trace(target)
+                        if capabilities.bits & TrialCapability.FAULT_TEST
+                        else None
+                    )
+                    self.last_report["trace"] = asdict(trace) if trace else {}
                     if status.state != 0 or result.phase in (1, 2):
                         self._sleep(0.25)
                         continue
                     result.verify(1 if package else 2, expect_reset, package)
+                    if operation == TrialOp.FAULT_TEST and (
+                        trace is None
+                        or trace.flags & 0xFF not in (1, 5)
+                        or not trace.cfsr & 0x10000
+                        or not 0x08002000 <= trace.pc < 0x08002000 + before.size
+                    ):
+                        raise RuntimeError(
+                            "FAULT_TEST did not return a captured undefined instruction"
+                        )
                     report: TrialReport = {
                         "success": True,
                         "action": action,
@@ -406,6 +448,7 @@ class TrialClient:
                         "before": asdict(before),
                         "after": asdict(after),
                         "result": asdict(result),
+                        "trace": asdict(trace) if trace else {},
                         "package_sha256": package.manifest["sha256"]
                         if package
                         else None,
@@ -441,6 +484,10 @@ def main() -> int:
         "fallback", help="Explicitly prove the bounded software reset fallback"
     )
     fallback.add_argument("--target", choices=("left", "right"), required=True)
+    fault = commands.add_parser(
+        "fault", help="Explicitly qualify active-probe fault capture and reset"
+    )
+    fault.add_argument("--target", choices=("left", "right"), required=True)
     run = commands.add_parser(
         "run", help="Explicitly upload, seal and execute one staging package"
     )
@@ -450,7 +497,7 @@ def main() -> int:
         "result", help="Read the retained trial result without a reset"
     )
     result.add_argument("--target", choices=("left", "right"), required=True)
-    for command in (probe, fallback, run, result):
+    for command in (probe, fallback, fault, run, result):
         command.add_argument("--report", type=Path)
     args = parser.parse_args()
     package = TrialPackage.load(args.package) if args.command == "run" else None
@@ -464,6 +511,8 @@ def main() -> int:
             report = client.run(package, expect_reset=args.expect_reset)
         elif args.command == "probe":
             report = client.probe(int(args.target == "right"))
+        elif args.command == "fault":
+            report = client.fault(int(args.target == "right"))
         elif args.command == "fallback":
             report = client.fallback(int(args.target == "right"))
         else:

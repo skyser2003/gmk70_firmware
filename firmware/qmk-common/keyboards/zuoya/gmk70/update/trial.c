@@ -18,8 +18,12 @@ bool gmk_trial_packet_valid(const uint8_t request[GMK_PACKET_SIZE]) {
         case GMK_TRIAL_RESULT:
         case GMK_TRIAL_RUN:
         case GMK_TRIAL_FALLBACK_TEST:
+        case GMK_TRIAL_FAULT_TEST:
             normal[4] = GMK_SEAL;
             break;
+        case GMK_TRIAL_TRACE:
+            if (gmk_read_u32(request + 12) > 1) return false;
+            __attribute__((fallthrough)); // Read-only pages retain both nonce words.
         case GMK_TRIAL_CAPS:
             // Unlike INFO, CAPS carries a fresh nonce in both words.
             normal[4]  = GMK_SEAL;
@@ -75,8 +79,8 @@ gmk_update_result_t gmk_trial_process(gmk_update_t *update, gmk_trial_launch_t *
     if (!gmk_trial_packet_valid(request)) return GMK_BAD_REQUEST;
     uint8_t  op      = request[4];
     uint32_t session = gmk_read_u32(request + 8);
-    if (op == GMK_STATUS || op == GMK_INFO || op == GMK_TRIAL_RESULT || op == GMK_TRIAL_CAPS) return GMK_OK;
-    if (op == GMK_TRIAL_WATCHDOG || op == GMK_TRIAL_FALLBACK_TEST) {
+    if (op == GMK_STATUS || op == GMK_INFO || op == GMK_TRIAL_RESULT || op == GMK_TRIAL_CAPS || op == GMK_TRIAL_TRACE) return GMK_OK;
+    if (op == GMK_TRIAL_WATCHDOG || op == GMK_TRIAL_FALLBACK_TEST || op == GMK_TRIAL_FAULT_TEST) {
         if (!session || update->state != GMK_IDLE || launch->armed || !commit_erased()) return GMK_BAD_STATE;
         return recovery_ready ? GMK_OK : GMK_UNAVAILABLE;
     }

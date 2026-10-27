@@ -5,13 +5,15 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
+extern volatile uint32_t gmk_trial_probe_active;
 
 uint32_t        SystemCoreClock = 96000000;
 static uint8_t  commit[GMK_PAGE_SIZE];
 static uint32_t demcr, control, cycles, reset_flags;
 static unsigned irq_disables, watchdog_starts, resets;
-static bool     stalled, fail_watchdog;
+static bool     stalled, fail_watchdog, inject_watchdog_fault;
 static jmp_buf  reset_jump;
+static bool     last_barrier;
 
 const uint8_t *gmk_flash_view(uint32_t address) {
     assert(address == GMK_COMMIT_BASE);
@@ -24,6 +26,7 @@ bool gmk_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
 }
 
 uint32_t gmk_trial_runtime_read(uint32_t address) {
+    last_barrier = false;
     switch (address) {
         case 0xE000EDFC:
             return demcr;
@@ -32,8 +35,16 @@ uint32_t gmk_trial_runtime_read(uint32_t address) {
         case 0xE0001004:
             if (!stalled && (demcr & (1U << 24)) && (control & 1)) cycles += 1000000;
             return cycles;
+        case 0xE000ED28:
+            return 0x10000;
         case 0x40010D00:
             return reset_flags;
+        case 0xE0042004: {
+            uint32_t words[5];
+            assert(gmk_trial_boot_trace_report(&gmk_trial_record, words));
+            assert(words[0] == address && !(words[4] & 0x100));
+            gmk_trial_runtime_fault(1, 0x08003BAD);
+        }
         default:
             assert(false);
             return 0;
@@ -53,7 +64,7 @@ void gmk_trial_runtime_write(uint32_t address, uint32_t value) {
             reset_flags = 0;
             break;
         case 0xE000ED0C:
-            assert(value == 0x05FA0004 && irq_disables);
+            assert(value == 0x05FA0004 && irq_disables && last_barrier);
             ++resets;
             reset_flags |= GMK_TRIAL_BOOT_RESET_SOFTWARE;
             longjmp(reset_jump, 1);
@@ -65,7 +76,9 @@ void gmk_trial_runtime_write(uint32_t address, uint32_t value) {
 void gmk_trial_runtime_disable_irq(void) {
     ++irq_disables;
 }
-void gmk_trial_runtime_barrier(void) {}
+void gmk_trial_runtime_barrier(void) {
+    last_barrier = true;
+}
 
 bool gmk_trial_watchdog_start(const gmk_trial_mmio_t *io) {
     assert(irq_disables && io && !reset_flags);
@@ -73,6 +86,12 @@ bool gmk_trial_watchdog_start(const gmk_trial_mmio_t *io) {
     assert(gmk_trial_boot_report(&gmk_trial_record, &report));
     assert(report.action == GMK_TRIAL_BOOT_PROBE && report.phase == GMK_TRIAL_BOOT_ENTERED);
     ++watchdog_starts;
+    uint32_t words[5];
+    assert(gmk_trial_boot_trace_report(&gmk_trial_record, words));
+    if (inject_watchdog_fault) {
+        (void)io->read(0xE0042004);
+        assert(false);
+    }
     return !fail_watchdog;
 }
 
@@ -82,7 +101,7 @@ static void fixture(void) {
     demcr = control = cycles = 0;
     reset_flags              = GMK_TRIAL_BOOT_RESET_POWER;
     irq_disables = watchdog_starts = resets = 0;
-    stalled = fail_watchdog = false;
+    stalled = fail_watchdog = inject_watchdog_fault = false;
     gmk_trial_runtime_init();
     assert(!reset_flags && !irq_disables && !watchdog_starts && !demcr && !control);
 }
@@ -101,7 +120,43 @@ static void execute(void) {
     assert(!gmk_read_u32(result + 8) && !gmk_read_u32(result + 12));
 }
 
+__attribute__((noreturn)) void gmk_trial_runtime_unhandled(void) {
+    longjmp(reset_jump, 2);
+}
+
+void gmk_trial_runtime_trigger_fault(void) {
+    gmk_trial_runtime_fault(1, 0x08003BAD);
+}
+
+static void test_fault_guard(void) {
+    fixture();
+    int jumped = setjmp(reset_jump);
+    if (!jumped) gmk_trial_runtime_fault(1, 0x08003BAD);
+    assert(jumped == 2 && !resets); // Ordinary faults use the original handler.
+    fixture();
+    gmk_trial_probe_active = 0x47545052; // RAM still contains the previous probe.
+    reset_flags            = GMK_TRIAL_BOOT_RESET_WATCHDOG;
+    jumped                 = setjmp(reset_jump);
+    if (!jumped) gmk_trial_runtime_fault(1, 0x08003BAD);
+    assert(jumped == 2 && !resets); // Startup after reset is not an active probe.
+
+    fixture();
+    inject_watchdog_fault = true;
+    assert(gmk_trial_platform_prepare(GMK_TRIAL_BOOT_PROBE, (gmk_image_t){0}, 0));
+    execute();
+    uint32_t words[5];
+    assert(gmk_trial_boot_trace_report(&gmk_trial_record, words));
+    assert(words[0] == 0xE0042004 && words[2] == 0x10000 && words[3] == 0x08003BAD && words[4] == 1);
+    fixture();
+    gmk_trial_runtime_fault_test(true);
+    assert(gmk_trial_platform_prepare(GMK_TRIAL_BOOT_PROBE, (gmk_image_t){0}, 0));
+    execute();
+    assert(!watchdog_starts && gmk_trial_boot_trace_report(&gmk_trial_record, words));
+    assert(words[2] == 0x10000 && words[3] == 0x08003BAD && words[4] == 1);
+}
+
 int main(void) {
+    test_fault_guard();
     fixture();
     assert(!gmk_trial_platform_prepare(GMK_TRIAL_BOOT_RUN, (gmk_image_t){128, 1}, 0));
     assert(!gmk_trial_platform_prepare(GMK_TRIAL_BOOT_PROBE, (gmk_image_t){0, 1}, 0));

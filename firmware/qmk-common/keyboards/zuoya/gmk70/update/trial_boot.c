@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "trial_boot.h"
 
-enum { BOOT_MAGIC = 0x474D5442, BOOT_ABI = 1 };
+enum { BOOT_MAGIC = 0x474D5442, BOOT_ABI = 1, BOOT_TRACE_ABI = 2, TRACE_FAULT_MASK = 0xFF, TRACE_WRITE = 0x100 };
 _Static_assert(offsetof(gmk_trial_boot_record_t, checksum) == 56, "trial record checksum covers the complete body");
 
 static bool valid_role(uint32_t role) {
@@ -32,10 +32,17 @@ static bool snapshot(const volatile gmk_trial_boot_record_t *record, gmk_trial_b
 }
 
 static bool valid(const gmk_trial_boot_record_t *record) {
-    if (record->magic != BOOT_MAGIC || record->abi != BOOT_ABI || record->checksum_inverse != ~record->checksum || checksum(record) != record->checksum) return false;
+    if (record->magic != BOOT_MAGIC || (record->abi != BOOT_ABI && record->abi != BOOT_TRACE_ABI) || record->checksum_inverse != ~record->checksum || checksum(record) != record->checksum) return false;
     if ((record->action != GMK_TRIAL_BOOT_RUN && record->action != GMK_TRIAL_BOOT_PROBE) || !valid_role(record->role) || record->phase < GMK_TRIAL_BOOT_REQUESTED || record->phase > GMK_TRIAL_BOOT_REJECTED || record->consumed > 1) return false;
-    for (unsigned i = 0; i < sizeof(record->reserved) / sizeof(record->reserved[0]); ++i)
-        if (record->reserved[i] != 0) return false;
+    if (record->abi == BOOT_TRACE_ABI) {
+        // ABI2 is only an observation of an already-entered empty probe. It
+        // cannot describe a launch request or carry an admission ticket.
+        if (record->action != GMK_TRIAL_BOOT_PROBE || record->image.size || record->image.crc || record->consumed || (record->phase != GMK_TRIAL_BOOT_ENTERED && record->phase != GMK_TRIAL_BOOT_RETURNED)) return false;
+        if ((record->reserved[4] & ~(TRACE_FAULT_MASK | TRACE_WRITE)) || (record->reserved[4] & TRACE_FAULT_MASK) > 5) return false;
+    } else {
+        for (unsigned i = 0; i < sizeof(record->reserved) / sizeof(record->reserved[0]); ++i)
+            if (record->reserved[i] != 0) return false;
+    }
     if (record->phase == GMK_TRIAL_BOOT_REQUESTED && (record->consumed || record->reset_flags)) return false;
     if (record->consumed && record->phase != GMK_TRIAL_BOOT_REJECTED) return false;
     if (record->consumed && !software_reset(record->reset_flags)) return false;
@@ -81,7 +88,7 @@ bool gmk_trial_boot_consume(volatile gmk_trial_boot_record_t *record, uint32_t r
     bool                    stable = snapshot(record, &copy);
     if (copy.phase != GMK_TRIAL_BOOT_REQUESTED) return false;
     record->magic = 0; // Consume BEFORE integrity, reset-cause, or role checks.
-    if (!stable || !valid(&copy)) return false;
+    if (!stable || !valid(&copy) || copy.abi != BOOT_ABI) return false;
     bool accepted    = request && valid_role(role) && copy.role == role && software_reset(reset_flags);
     copy.phase       = GMK_TRIAL_BOOT_REJECTED;
     copy.reset_flags = reset_flags;
@@ -114,7 +121,7 @@ bool gmk_trial_boot_admit(volatile gmk_trial_boot_record_t *record, uint32_t res
 bool gmk_trial_boot_enter(volatile gmk_trial_boot_record_t *record) {
     if (!record) return false;
     gmk_trial_boot_record_t copy;
-    if (!snapshot(record, &copy) || !valid(&copy) || copy.phase != GMK_TRIAL_BOOT_REJECTED || copy.consumed != 1) return false;
+    if (!snapshot(record, &copy) || !valid(&copy) || copy.abi != BOOT_ABI || copy.phase != GMK_TRIAL_BOOT_REJECTED || copy.consumed != 1) return false;
     copy.phase    = GMK_TRIAL_BOOT_ENTERED;
     copy.consumed = 0;
     commit(record, &copy);
@@ -127,7 +134,7 @@ bool gmk_trial_boot_runtime_enter(volatile gmk_trial_boot_record_t *record, uint
     bool                    stable = snapshot(record, &copy);
     if (copy.phase != GMK_TRIAL_BOOT_REQUESTED) return false;
     record->magic = 0; // Consume before checking integrity, action, or role.
-    if (!stable || !valid(&copy)) return false;
+    if (!stable || !valid(&copy) || copy.abi != BOOT_ABI) return false;
     bool accepted = copy.action == GMK_TRIAL_BOOT_PROBE && !copy.image.size && !copy.image.crc && valid_role(role) && copy.role == role;
     copy.phase    = accepted ? GMK_TRIAL_BOOT_ENTERED : GMK_TRIAL_BOOT_REJECTED;
     commit(record, &copy);
@@ -159,5 +166,50 @@ bool gmk_trial_boot_report(const volatile gmk_trial_boot_record_t *record, gmk_t
     result->role        = copy.role;
     result->reset_flags = copy.reset_flags;
     result->image       = copy.image;
+    return true;
+}
+
+bool gmk_trial_boot_trace_enable(volatile gmk_trial_boot_record_t *record) {
+    if (!record) return false;
+    gmk_trial_boot_record_t copy;
+    if (!snapshot(record, &copy) || !valid(&copy) || copy.abi != BOOT_ABI || copy.phase != GMK_TRIAL_BOOT_ENTERED || copy.action != GMK_TRIAL_BOOT_PROBE || copy.image.size || copy.image.crc) return false;
+    copy.abi = BOOT_TRACE_ABI;
+    commit(record, &copy);
+    return true;
+}
+
+static bool active_trace(const volatile gmk_trial_boot_record_t *record, gmk_trial_boot_record_t *copy) {
+    return record && snapshot(record, copy) && valid(copy) && copy->abi == BOOT_TRACE_ABI && copy->phase == GMK_TRIAL_BOOT_ENTERED && !(copy->reserved[4] & TRACE_FAULT_MASK);
+}
+
+bool gmk_trial_boot_trace_io(volatile gmk_trial_boot_record_t *record, uint32_t address, uint32_t value, bool write) {
+    gmk_trial_boot_record_t copy;
+    if (!active_trace(record, &copy)) return false;
+    uint32_t flags = write ? TRACE_WRITE : 0;
+    if (copy.reserved[0] == address && copy.reserved[1] == value && copy.reserved[4] == flags) return true;
+    copy.reserved[0] = address;
+    copy.reserved[1] = value;
+    copy.reserved[4] = flags;
+    commit(record, &copy);
+    return true;
+}
+
+bool gmk_trial_boot_trace_fault(volatile gmk_trial_boot_record_t *record, uint32_t kind, uint32_t cfsr, uint32_t pc) {
+    if (kind < 1 || kind > 5) return false;
+    gmk_trial_boot_record_t copy;
+    if (!active_trace(record, &copy)) return false;
+    copy.reserved[2] = cfsr;
+    copy.reserved[3] = pc;
+    copy.reserved[4] |= kind;
+    commit(record, &copy);
+    return true;
+}
+
+bool gmk_trial_boot_trace_report(const volatile gmk_trial_boot_record_t *record, uint32_t words[5]) {
+    if (!record || !words) return false;
+    gmk_trial_boot_record_t copy;
+    if (!snapshot(record, &copy) || !valid(&copy) || copy.abi != BOOT_TRACE_ABI) return false;
+    for (unsigned i = 0; i < 5; ++i)
+        words[i] = copy.reserved[i];
     return true;
 }

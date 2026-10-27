@@ -53,6 +53,7 @@ class Device:
         self.reconnections = 0
         self.capabilities = (7, 0, 0x20000040, 0x20006FC0)
         self.caps_supported = True
+        self.trace_words = (0xE0042004, 0, 0x10000, 0x08003000, 1)
 
     def exchange(self, request: bytes) -> bytes:
         op = request[4]
@@ -82,13 +83,19 @@ class Device:
             self.state = 2
             if self.fail_seal:
                 reply[5] = 6
-        elif op in (TrialOp.RUN, TrialOp.PROBE, 0x14):
+        elif op in (TrialOp.RUN, TrialOp.PROBE, 0x14, 0x16):
             if op == TrialOp.RUN:
                 assert self.state == 2
             self.action = 1 if op == TrialOp.RUN else 2
             self.state = 0
             if self.changed_identity:
                 self.boot_crc ^= 1
+        elif op == 0x15:
+            page = struct.unpack_from("<I", request, 12)[0]
+            words = (
+                self.trace_words[:4] if page == 0 else (self.trace_words[4], 0, 0, 0)
+            )
+            struct.pack_into("<IIII", reply, 16, *words)
         elif op == TrialOp.RESULT:
             image = package()
             struct.pack_into(
@@ -117,6 +124,45 @@ class TrialClientTests(unittest.TestCase):
     def client(self, device: Device, clock: Clock | None = None) -> TrialClient:
         timer = clock or Clock()
         return TrialClient(device, now=timer.now, sleep=timer.sleep)
+
+    def test_fault_test_requires_capability_and_captured_undefined_instruction(
+        self,
+    ) -> None:
+        device = Device()
+        device.flags = 40
+        device.capabilities = (57, 12000, 0x20000040, 0x20006FC0)
+        report = self.client(device).fault(0)
+        self.assertTrue(report["success"])
+        self.assertEqual(report["trace"]["address"], 0xE0042004)
+        self.assertEqual(report["trace"]["pc"], 0x08003000)
+        self.assertEqual(device.operations.count(0x16), 1)
+        self.assertLess(device.operations.index(0x13), device.operations.index(0x16))
+
+    def test_fault_test_cannot_succeed_without_fault_evidence(self) -> None:
+        device = Device()
+        device.flags = 40
+        device.capabilities = (57, 12000, 0x20000040, 0x20006FC0)
+        device.trace_words = (0, 0, 0, 0, 0)
+        with self.assertRaisesRegex(RuntimeError, "captured undefined"):
+            self.client(device).fault(0)
+
+    def test_failed_watchdog_still_captures_trace(self) -> None:
+        device = Device()
+        device.flags = 40
+        device.capabilities = (57, 12000, 0x20000040, 0x20006FC0)
+        client = self.client(device)
+        with self.assertRaisesRegex(RuntimeError, "Unexpected trial reset"):
+            client.probe(0)
+        self.assertEqual(
+            client.last_report["trace"],
+            {
+                "address": 0xE0042004,
+                "value": 0,
+                "cfsr": 0x10000,
+                "pc": 0x08003000,
+                "flags": 1,
+            },
+        )
 
     def test_probe_retries_unavailable_and_verifies_watchdog_return(self) -> None:
         device, clock = Device(), Clock()
