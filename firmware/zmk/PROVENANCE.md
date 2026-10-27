@@ -34,3 +34,24 @@ The USB driver documents its controller semantics and vendor references in its
 source header.
 This local port does not claim eligibility for upstream ZMK's clean-room
 contribution process.
+
+`update/wb32_flash.c` and `update/wb32_flash_lowlevel.h` adapt Westberry's
+Apache-2.0 `hal_efl_lld.c` from Vial's independently pinned ChibiOS-Contrib
+[`3ac181e4ca5cafddaf8b472baa1d09c2b24c77b6`](https://github.com/qmk/ChibiOS-Contrib/blob/3ac181e4ca5cafddaf8b472baa1d09c2b24c77b6/os/hal/ports/WB32/WB32FQ95xx/hal_efl_lld.c),
+read locally from
+`dependencies/vial-qmk/lib/chibios-contrib/os/hal/ports/WB32/WB32FQ95xx/hal_efl_lld.c`.
+The exact vendor PRE_OP instruction words and three-word RAM operation helper
+are retained with Westberry copyright and Apache-2.0 identification. The native
+adapter supports exactly one 256-byte page at a time, preserves the vendor
+pre-operation calibration and erase/latch/program sequences, verifies readback,
+and restores IRQ/FHSI/PCLK/APB2/RNG clock-gate state. It does not write protection
+or option bytes. The upstream source remains unchanged and is not linked into
+ZMK; no QMK HAL runtime is required.
+
+`update/wb32_watchdog.c` uses the WB32 register contract and initialization
+ordering documented in the maintained GPL-2.0-or-later
+`firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_watchdog.c` and Westberry
+EN_RM2905025_WB32FQ95xx_V01, sections 5.4.9/10, 7.2.12, 7.3.11/16, 11.4.6/7,
+18 and 27.4.2. The new adapter retains that GPL identifier. Permanent firmware
+establishes the longest IWDG period for both stopped and inherited running
+watchdogs; staging qualification neither initializes nor feeds IWDG.
