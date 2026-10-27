@@ -20,7 +20,7 @@ cc "${common_flags[@]}" tests/qmk/trial_test.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
     -o artifacts/tests/qmk/trial
 artifacts/tests/qmk/trial
-for component in watchdog boot peer role; do
+for component in watchdog boot peer role deadline; do
     cc "${common_flags[@]}" "tests/qmk/trial_${component}_test.c" \
         "firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_${component}.c" \
         -o "artifacts/tests/qmk/trial-$component"
@@ -118,9 +118,12 @@ cc -Itests/qmk/vial_stubs -Itests/qmk/update_stubs "${common_flags[@]}" \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
     -Wl,--wrap=raw_hid_send -o artifacts/tests/qmk/vial-updater
 artifacts/tests/qmk/vial-updater
+for trial_profile in early runtime; do
+    trial_flags=()
+    if [[ "$trial_profile" == runtime ]]; then trial_flags+=(-DGMK70_TRIAL_RUNTIME); fi
 cc -Itests/qmk/vial_stubs -Itests/qmk/update_stubs "${common_flags[@]}" \
     -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs -Idependencies/qmk/platforms \
-    -DRAW_ENABLE -DGMK70_SPLIT_UPDATE -DGMK70_VIAL_UPDATE -DGMK70_VIAL_TRIAL -DEEPROM_TEST_HARNESS \
+    -DRAW_ENABLE -DGMK70_SPLIT_UPDATE -DGMK70_VIAL_UPDATE -DGMK70_VIAL_TRIAL "${trial_flags[@]}" -DEEPROM_TEST_HARNESS \
     -DCOMBO_ENABLE -DREPEAT_KEY_ENABLE -DMATRIX_ROWS=10 -DMATRIX_COLS=9 \
     -ffunction-sections -fdata-sections -Wl,--gc-sections \
     tests/qmk/update_adapter_test.c tests/qmk/stock_v15_fixture.c \
@@ -129,8 +132,17 @@ cc -Itests/qmk/vial_stubs -Itests/qmk/update_stubs "${common_flags[@]}" \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
-    -Wl,--wrap=raw_hid_send -Wl,--wrap=gmk_trial_process -o artifacts/tests/qmk/vial-trial-updater
-artifacts/tests/qmk/vial-trial-updater
+    -Wl,--wrap=raw_hid_send -Wl,--wrap=gmk_trial_process -o "artifacts/tests/qmk/vial-trial-$trial_profile"
+"artifacts/tests/qmk/vial-trial-$trial_profile"
+done
+cc "${common_flags[@]}" -DGMK70_TRIAL_RUNTIME -DGMK_TRIAL_RUNTIME_TEST \
+    tests/qmk/trial_runtime_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_runtime.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_boot.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_deadline.c \
+    -o artifacts/tests/qmk/trial-runtime
+artifacts/tests/qmk/trial-runtime
 cc "${common_flags[@]}" tests/qmk/stock_via_test.c \
     tests/qmk/stock_v15_fixture.c firmware/qmk-via/compat/stock_via.c -o artifacts/tests/qmk/stock-via
 artifacts/tests/qmk/stock-via

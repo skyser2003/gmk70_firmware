@@ -134,3 +134,40 @@ Hardware source: [WB32FQ95 reference manual](https://www.westberrytech.com/uploa
 particularly sections 7.1, 7.2.12, 7.3.16/24/28, 18 and 27.4.2, plus the pinned
 vendor CMSIS/ChibiOS sources. No option bytes, radio firmware or resident code
 are changed.
+
+## Runtime watchdog qualification
+
+To reduce the chance of repeating right-half ROM recovery, the next profile
+retains ordinary upstream Vial/ChibiOS startup. Build it explicitly with
+`make build-vial-watchdog-qualification`. Its separate cache and artifact suffix
+is `unlocked-trial-updater-runtime-watchdog`; it is experimental and is not a
+published normal Vial asset. There is no early hook, raw role sampler or staging
+handoff in this ELF. RUN remains unavailable even for a sealed staging image.
+
+Read-only CAPS 0x13 returns capability bits, fallback milliseconds, RAM base and
+RAM end in bytes16..31, and echoes a fresh nonce in bytes8..15. Bits are PROBE=1,
+RUN=2, EARLY=4, FALLBACK=8, FALLBACK_TEST=16. The runtime profile reports25/12000
+on the left and0/0 on the right. Both protocol processing and platform preparation
+reject right-side qualification. The existing eight-second peer pause has not
+been qualified for a twelve-second right fallback; that work is deferred.
+The full pre-CRT launcher reports7/0. Host tooling requires CAPS before mutation.
+
+Runtime PROBE enters an empty-image retained record after normal startup, masks
+interrupts and starts IWDG without feeding it. A DWT counter is enabled and
+verified before ACK; a12-second deadline or1024consecutive stalled reads causes
+software reset if IWDG does not expire. FALLBACK_TEST0x14 uses the same deadline
+while deliberately skipping IWDG start. Only reset flags4/36 prove IWDG;
+flags8/40 prove the software fallback. Runtime ordinary initialization completes
+the result record but never starts either timer or touches role GPIO. This guard
+does not recover arbitrary CPU/bus faults in early kernel experiments.
+
+Offline validation passed: sanitized portable/adapter tests,77repository tests,
+77firmware-update tests, Ruff/strictmypy, QMK release/debug builds, Vial normal,
+locked/unlocked updater, full trial profiles and the runtime profile. Actual ELF
+checks also pass with Python optimization enabled. Independent review found the
+right peer timing gap; regression tests first reproduced it, then verified the
+left-only capability, processing and platform gates. Hardware proof is pending.
+
+Design and execution checklist are in
+[the runtime design](superpowers/specs/2026-10-27-runtime-watchdog-design.md) and
+[the plan](superpowers/plans/2026-10-27-runtime-watchdog.md).

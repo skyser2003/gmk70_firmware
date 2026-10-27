@@ -49,6 +49,8 @@ build-vial-trial-updater:
 	bash ./scripts/build.sh vial vial trial-updater
 build-vial-unlocked-trial-updater:
 	bash ./scripts/build.sh vial vial unlocked-trial-updater
+build-vial-watchdog-qualification:
+	GMK70_TRIAL_RUNTIME=yes bash ./scripts/build.sh vial vial unlocked-trial-updater
 build-zmk-trial-fixtures:
 	bash ./scripts/build_zmk_trial_fixtures.sh
-.PHONY: build-vial-trial-updater build-vial-unlocked-trial-updater build-zmk-trial-fixtures
+.PHONY: build-vial-trial-updater build-vial-unlocked-trial-updater build-vial-watchdog-qualification build-zmk-trial-fixtures

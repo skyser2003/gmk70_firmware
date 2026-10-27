@@ -6,6 +6,22 @@ mode="${2:-normal}"
     printf 'Vial supports normal, updater, radio-diagnostic-updater, trial-updater, unlocked-updater, or unlocked-trial-updater mode.\n' >&2
     exit 2
 }
+runtime_watchdog=false
+profile_suffix=
+runtime_flags=()
+case "${GMK70_TRIAL_RUNTIME:-}" in
+    ""|no) ;;
+    yes)
+        if [[ "$mode" != trial-updater && "$mode" != unlocked-trial-updater ]]; then
+            printf 'GMK70_TRIAL_RUNTIME=yes requires a trial-updater or unlocked-trial-updater mode.\n' >&2
+            exit 2
+        fi
+        runtime_watchdog=true
+        profile_suffix=-runtime-watchdog
+        runtime_flags+=(--runtime-watchdog)
+        ;;
+    *) printf 'GMK70_TRIAL_RUNTIME must be yes or no.\n' >&2; exit 2 ;;
+esac
 for tool in arm-none-eabi-gcc qmk flock; do
     command -v "$tool" >/dev/null || { printf 'Missing %s; run make setup and make setup-vial\n' "$tool" >&2; exit 2; }
 done
@@ -14,10 +30,13 @@ mkdir -p .work/locks
 exec 9>.work/locks/vial-vial.lock
 flock 9
 source_python="${GMK70_SOURCE_PYTHON:-python3}"
-build_root="$("$source_python" tools/build-support/project_build.py prepare-vial --mode "$mode")"
+build_root="$("$source_python" tools/build-support/project_build.py prepare-vial --mode "$mode" "${runtime_flags[@]}")"
 framework_root="$project_root/dependencies/vial-qmk"
 output=artifacts/vial/vial
 update_flags=()
+if [[ "$runtime_watchdog" == true ]]; then
+    update_flags+=(GMK70_TRIAL_RUNTIME=yes)
+fi
 unlocked=false
 if [[ "$mode" == unlocked-updater || "$mode" == unlocked-trial-updater ]]; then
     unlocked=true
@@ -32,6 +51,7 @@ if [[ "$mode" != normal ]]; then
     fi
     update_flags+=(GMK70_SPLIT_UPDATE=yes MCU_LDSCRIPT=GMK70_UPDATE USE_CHIBIOS_CONTRIB=yes)
 fi
+output="$output$profile_suffix"
 mkdir -p "$output"
 export QMK_HOME="$framework_root" QMK_USERSPACE=""
 export GMK70_PROJECT_ROOT="$project_root" GMK70_KEYMAP=vial PYTHONDONTWRITEBYTECODE=1
@@ -77,10 +97,17 @@ else
 fi
 if [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
     grep -q -- '-DGMK70_VIAL_TRIAL' "$output/cflags.txt"
+    if [[ "$runtime_watchdog" == true ]]; then
+        grep -q -- '-DGMK70_TRIAL_RUNTIME' "$output/cflags.txt" || {
+            printf 'Runtime watchdog requires GMK70_TRIAL_RUNTIME\n' >&2; exit 1;
+        }
+    elif grep -q -- '-DGMK70_TRIAL_RUNTIME' "$output/cflags.txt"; then
+        printf 'Trial launcher unexpectedly contains GMK70_TRIAL_RUNTIME\n' >&2; exit 1
+    fi
     arm-none-eabi-nm "$output/$target.elf" > "$output/trial-symbols.txt"
     grep -q ' gmk_trial_process$' "$output/trial-symbols.txt"
     rm "$output/trial-symbols.txt"
-    "$source_python" tools/build-support/check_trial_elf.py "$output/$target.elf"
+    "$source_python" tools/build-support/check_trial_elf.py "${runtime_flags[@]}" "$output/$target.elf"
 else
     if grep -q -- '-DGMK70_VIAL_TRIAL' "$output/cflags.txt"; then
         printf 'Normal Vial unexpectedly contains the trial receiver\n' >&2; exit 1
@@ -104,6 +131,9 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
 {
     printf 'Platform: vial\nKeyboard: zuoya/gmk70\nKeymap: vial\n'
     printf 'Build mode: %s\nEXPERIMENTAL port: no hardware validation.\n' "$mode"
+    if [[ "$runtime_watchdog" == true ]]; then
+        printf 'Build profile: runtime-watchdog; experimental runtime-only PROBE and FALLBACK_TEST qualification; RUN disabled. Not a normal release asset.\n'
+    fi
     if [[ "$unlocked" == true ]]; then
         printf 'PERMANENTLY UNLOCKED: upstream VIAL_INSECURE=yes; host configuration and firmware writes do not require physical unlock.\n'
     fi
@@ -131,11 +161,21 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
     arm-none-eabi-size -A "$output/$target.elf"
     printf 'Complete working sources: source.tar.gz\n'
 } > "$output/build-info.txt"
-cat > "$output/README.txt" <<'EOF'
-GMK70 experimental Vial firmware
-
+printf 'GMK70 experimental Vial firmware\n\n' > "$output/README.txt"
+if [[ "$runtime_watchdog" == true ]]; then
+    cat >> "$output/README.txt" <<'EOF_RUNTIME'
+Experimental runtime-only watchdog qualification; not a normal release asset.
+PROBE and FALLBACK_TEST are available; RUN disabled.
+Keep the recovered right half unchanged; this milestone qualifies only the left.
+No build or test command flashes a keyboard.
+EOF_RUNTIME
+else
+    cat >> "$output/README.txt" <<'EOF'
 Both halves must use this same build. Physical installation and testing have
 not been performed. No build or test command flashes a keyboard.
+EOF
+fi
+cat >> "$output/README.txt" <<'EOF'
 
 Back up current mappings and settings before installation. Native Vial storage
 has schema 0x564D4702; stock/VIA and the earlier Vial baseline are reset to Vial
@@ -174,6 +214,7 @@ support=()
 archive=gmk70-vial.zip
 if [[ "$mode" != normal ]]; then
     archive="gmk70-vial-$mode.zip"
+    archive="${archive%.zip}$profile_suffix.zip"
     images=(application.bin application.hex resident.bin install.bin install.hex update.json)
     extras=(update.py requirements.txt)
     if [[ "$mode" == radio-diagnostic-updater ]]; then
@@ -206,7 +247,16 @@ For subsequent Vial updates, first unlock in the Vial GUI (Escape + left Shift),
 then close Vial without unplugging or resetting the keyboard.
 EOF
     fi
-    cat >> "$output/README.txt" <<'EOF'
+    if [[ "$runtime_watchdog" == true ]]; then
+        cat >> "$output/README.txt" <<'EOF_RUNTIME'
+Install Python dependencies: python -m pip install -r requirements.txt
+Read-only left check: python update.py . --target left --inspect
+Explicit left application installation: python update.py . --target left --install
+Keep the right application and both resident installers unchanged.
+Restore and verify a fresh native settings backup before qualification.
+EOF_RUNTIME
+    else
+        cat >> "$output/README.txt" <<'EOF'
 Install Python dependencies: python -m pip install -r requirements.txt
 Read-only check: python update.py . --target both --inspect
 Explicit installation: python update.py . --target both --install
@@ -216,6 +266,7 @@ from stock/VIA; normal Vial and Vial updater share the same settings schema,
 but native Vial's per-build magic still resets dynamic mappings and macros.
 EEPROM backups, RAM diagnostics and persistent logging are not included.
 EOF
+    fi
 else
     cat >> "$output/README.txt" <<'EOF'
 
@@ -225,6 +276,21 @@ Do not submit this normal image as application.bin to that updater.
 EOF
 fi
 if [[ "$mode" == trial-updater || "$mode" == unlocked-trial-updater ]]; then
+    if [[ "$runtime_watchdog" == true ]]; then
+        cat >> "$output/README.txt" <<'EOF_RUNTIME'
+
+Experimental runtime-only watchdog receiver (namespace 0x71).
+Normal upstream Vial/ChibiOS startup; no pre-CRT launcher or staging handoff.
+PROBE starts the independent watchdog with a bounded software fallback.
+FALLBACK_TEST skips watchdog start to qualify that software reset fallback.
+RUN disabled; staging images cannot execute with this profile.
+RAM 0x20000000..0x2000003F remains reserved for the retained intent/result record.
+Only actual IWDG reset flags prove watchdog recovery; software fallback does not.
+This updater application installs at 0x08002000 and preserves the resident.
+Use Python 3.12+ and trial_run.py for explicit left probe/fallback/result operations.
+See ZMK-TRIAL-EXECUTION.md for the broader trial contract and validation status.
+EOF_RUNTIME
+    else
     cat >> "$output/README.txt" <<'EOF_TRIAL'
 
 Experimental staging trial receiver (namespace 0x71).
@@ -238,6 +304,7 @@ trial packages offline. It never opens USB and has no RUN command.
 The separate trial_run.py performs explicit device probe/run/result operations.
 See ZMK-TRIAL-EXECUTION.md for the contract and hardware validation status.
 EOF_TRIAL
+    fi
 fi
 if [[ "$mode" == radio-diagnostic-updater ]]; then
     cp docs/RADIO-DIAGNOSTICS.md "$output/README.txt"

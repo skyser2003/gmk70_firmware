@@ -11,7 +11,13 @@ endif
 ifeq ($(strip $(GMK70_VIAL_TRIAL)), yes)
     OPT_DEFS += -DGMK70_VIAL_TRIAL
     SRC += update/trial.c update/trial_boot.c update/trial_watchdog.c
-    SRC += update/trial_platform.c update/trial_startup.S update/trial_peer.c update/trial_role.c
+    SRC += update/trial_peer.c
+    ifeq ($(strip $(GMK70_TRIAL_RUNTIME)), yes)
+        OPT_DEFS += -DGMK70_TRIAL_RUNTIME
+        SRC += update/trial_runtime.c update/trial_deadline.c
+    else
+        SRC += update/trial_platform.c update/trial_startup.S update/trial_role.c
+    endif
     LDFLAGS += -Wl,--defsym=GMK70_TRIAL_RAM_RESERVE=1
     LDFLAGS += -Wl,--wrap=transport_master_if_connected -Wl,--wrap=transaction_rpc_exec
 endif

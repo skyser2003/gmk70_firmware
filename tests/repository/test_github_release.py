@@ -77,15 +77,25 @@ class ReleaseTests(unittest.TestCase):
             "vial-trial-updater",
             "vial-unlocked-trial-updater",
             "vial-radio-diagnostic-updater",
+            "vial-trial-updater-runtime-watchdog",
+            "vial-unlocked-trial-updater-runtime-watchdog",
         ):
             self.assertNotIn(experiment, vial["variants"])
 
     def test_trial_artifacts_block_normal_vial_publication(self) -> None:
         output = self.assets("vial")
-        (output / "gmk70-vial-unlocked-trial-updater.zip").write_text("experiment")
-        with self.assertRaisesRegex(ValueError, "Unexpected release assets"):
-            self.release.verify_assets(output, "vial")
-        self.assertFalse((output / "SHA256SUMS").exists())
+        for name in (
+            "gmk70-vial-unlocked-trial-updater.zip",
+            "gmk70-vial-unlocked-trial-updater-runtime-watchdog.zip",
+            "gmk70-vial-trial-updater-runtime-watchdog.zip",
+        ):
+            with self.subTest(asset=name):
+                artifact = output / name
+                artifact.write_text("experiment")
+                with self.assertRaisesRegex(ValueError, "Unexpected release assets"):
+                    self.release.verify_assets(output, "vial")
+                self.assertFalse((output / "SHA256SUMS").exists())
+                artifact.unlink()
 
     def test_patch_versions_are_independent_and_sorted_numerically(self) -> None:
         tags = [

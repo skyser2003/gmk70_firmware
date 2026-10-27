@@ -1,11 +1,13 @@
 """Pinning, overlay boundaries and embedded Vial contract regressions."""
 
 import importlib.util
+import io
 import json
 import re
 import tarfile
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,6 +21,75 @@ SPEC.loader.exec_module(BUILD)
 
 
 class VialTests(unittest.TestCase):
+    def test_runtime_watchdog_uses_separate_trial_caches(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            paths: set[Path] = set()
+            with patch.object(BUILD, "verify"):
+                for mode in ("trial-updater", "unlocked-trial-updater"):
+                    ordinary = BUILD.prepare_vial(root, mode)
+                    runtime = BUILD.prepare_vial(root, mode, runtime_watchdog=True)
+                    self.assertEqual(
+                        runtime, root / ".work/vial/vial" / f"{mode}-runtime-watchdog"
+                    )
+                    self.assertTrue((runtime / "gmk70-source-origins.json").is_file())
+                    paths.update((ordinary, runtime))
+            self.assertEqual(len(paths), 4)
+
+    def test_runtime_watchdog_rejects_nontrial_modes_before_creating_outputs(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for mode in (
+                "normal",
+                "updater",
+                "unlocked-updater",
+                "radio-diagnostic-updater",
+            ):
+                with (
+                    self.subTest(mode=mode),
+                    self.assertRaisesRegex(ValueError, "trial"),
+                ):
+                    BUILD.prepare_vial(root, mode, runtime_watchdog=True)
+            self.assertFalse((root / ".work").exists())
+
+    def test_runtime_watchdog_cli_routes_trial_profile_and_rejects_other_commands(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = io.StringIO()
+            with (
+                patch.object(BUILD, "ROOT", root),
+                patch.object(BUILD, "verify"),
+                patch(
+                    "sys.argv",
+                    [
+                        "project_build.py",
+                        "prepare-vial",
+                        "--mode",
+                        "trial-updater",
+                        "--runtime-watchdog",
+                    ],
+                ),
+                redirect_stdout(output),
+            ):
+                BUILD.main()
+            self.assertEqual(
+                output.getvalue().strip(),
+                str(root / ".work/vial/vial/trial-updater-runtime-watchdog"),
+            )
+            with (
+                patch(
+                    "sys.argv", ["project_build.py", "prepare", "--runtime-watchdog"]
+                ),
+                patch("sys.stderr", io.StringIO()),
+                self.assertRaises(SystemExit) as stopped,
+            ):
+                BUILD.main()
+            self.assertEqual(stopped.exception.code, 2)
+
     def test_unlocked_builds_use_independent_caches_and_reject_qmk(self) -> None:
         modes = (
             "normal",

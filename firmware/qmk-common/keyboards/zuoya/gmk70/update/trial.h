@@ -2,7 +2,7 @@
 #pragma once
 #include "protocol.h"
 
-enum { GMK_TRIAL_NAMESPACE = 0x71, GMK_TRIAL_ABI = 2, GMK_TRIAL_RUN = 0x10, GMK_TRIAL_WATCHDOG = 0x11, GMK_TRIAL_RESULT = 0x12, GMK_TRIAL_RAM_BASE = 0x20000040, GMK_TRIAL_RAM_END = 0x20006FC0 };
+enum { GMK_TRIAL_NAMESPACE = 0x71, GMK_TRIAL_ABI = 2, GMK_TRIAL_RUN = 0x10, GMK_TRIAL_WATCHDOG = 0x11, GMK_TRIAL_RESULT = 0x12, GMK_TRIAL_CAPS = 0x13, GMK_TRIAL_FALLBACK_TEST = 0x14, GMK_TRIAL_RAM_BASE = 0x20000040, GMK_TRIAL_RAM_END = 0x20006FC0 };
 // Runtime intent; the early-startup backend uses a separate retained record.
 typedef struct {
     gmk_image_t image;

@@ -50,7 +50,7 @@ static void update_response(const uint8_t request[GMK_PACKET_SIZE], gmk_update_r
     gmk_update_response(&update, request, result, response);
 #ifdef GMK70_VIAL_TRIAL
     if (request[1] == GMK_TRIAL_NAMESPACE) gmk_write_u32(response + 24, GMK_TRIAL_ABI);
-    if (request[1] == GMK_TRIAL_NAMESPACE && (request[4] == GMK_TRIAL_WATCHDOG || request[4] == GMK_TRIAL_RESULT) && result == GMK_OK) {
+    if (request[1] == GMK_TRIAL_NAMESPACE && (request[4] == GMK_TRIAL_WATCHDOG || request[4] == GMK_TRIAL_RESULT || request[4] == GMK_TRIAL_CAPS || request[4] == GMK_TRIAL_FALLBACK_TEST) && result == GMK_OK) {
         // These operations have no transfer session; still correlate their ACK.
         memcpy(response + 8, request + 8, 8);
     }
@@ -85,7 +85,7 @@ static void receive(const uint8_t *request, uint8_t *response) {
             response[5] = GMK_BUSY;
         }
 #ifdef GMK70_VIAL_TRIAL
-    } else if (update.state != GMK_IDLE && request[4] != GMK_INFO && request[4] != GMK_STATUS && request[4] != GMK_TRIAL_RESULT && (request[1] == GMK_TRIAL_NAMESPACE) != trial_mode) {
+    } else if (update.state != GMK_IDLE && request[4] != GMK_INFO && request[4] != GMK_STATUS && request[4] != GMK_TRIAL_RESULT && request[4] != GMK_TRIAL_CAPS && (request[1] == GMK_TRIAL_NAMESPACE) != trial_mode) {
         update_response(request, GMK_BAD_STATE, response);
     } else if (request[4] == GMK_STATUS && request[1] != last_response[1]) {
         update_response(request, GMK_OK, response);
@@ -135,6 +135,9 @@ static void peer_handler(uint8_t in_size, const void *in, uint8_t out_size, void
 void gmk_update_init(void) {
 #ifdef GMK70_VIAL_TRIAL
     gmk_trial_peer_init();
+#    ifdef GMK70_TRIAL_RUNTIME
+    gmk_trial_runtime_init();
+#    endif
     trial_reset_pending = false;
     trial_mode          = false;
     trial_launch        = (gmk_trial_launch_t){0};
@@ -205,10 +208,17 @@ void gmk_update_task(void) {
 #ifdef GMK70_VIAL_TRIAL
             bool trial = request[1] == GMK_TRIAL_NAMESPACE;
             if (trial) {
-                result = gmk_trial_process(&update, &trial_launch, request, true);
-                if (result == GMK_OK && (request[4] == GMK_TRIAL_RUN || request[4] == GMK_TRIAL_WATCHDOG)) {
+                bool recovery_ready = true;
+#    ifdef GMK70_TRIAL_RUNTIME
+                recovery_ready = is_keyboard_left() && request[4] != GMK_TRIAL_RUN;
+                gmk_trial_runtime_fallback_test(request[4] == GMK_TRIAL_FALLBACK_TEST);
+#    else
+                recovery_ready = request[4] != GMK_TRIAL_FALLBACK_TEST;
+#    endif
+                result = gmk_trial_process(&update, &trial_launch, request, recovery_ready);
+                if (result == GMK_OK && (request[4] == GMK_TRIAL_RUN || request[4] == GMK_TRIAL_WATCHDOG || request[4] == GMK_TRIAL_FALLBACK_TEST)) {
                     gmk_image_t image  = {0};
-                    bool        ready  = request[4] == GMK_TRIAL_WATCHDOG || gmk_trial_take_launch(&trial_launch, &image);
+                    bool        ready  = request[4] != GMK_TRIAL_RUN || gmk_trial_take_launch(&trial_launch, &image);
                     uint32_t    action = request[4] == GMK_TRIAL_RUN ? GMK_TRIAL_BOOT_RUN : GMK_TRIAL_BOOT_PROBE;
                     if (ready && gmk_trial_platform_prepare(action, image, !is_keyboard_left())) {
                         reset_at            = timer_read32();
@@ -227,6 +237,17 @@ void gmk_update_task(void) {
         update_response(request, result, response);
     }
 #ifdef GMK70_VIAL_TRIAL
+    if (request[1] == GMK_TRIAL_NAMESPACE && request[4] == GMK_TRIAL_CAPS && result == GMK_OK) {
+#    ifdef GMK70_TRIAL_RUNTIME
+        gmk_write_u32(response + 16, is_keyboard_left() ? 25 : 0); // Left-only qualification.
+        gmk_write_u32(response + 20, is_keyboard_left() ? 12000 : 0);
+#    else
+        gmk_write_u32(response + 16, 7); // PROBE, staging RUN, early startup.
+        gmk_write_u32(response + 20, 0);
+#    endif
+        gmk_write_u32(response + 24, GMK_TRIAL_RAM_BASE);
+        gmk_write_u32(response + 28, GMK_TRIAL_RAM_END);
+    }
     if (request[1] == GMK_TRIAL_NAMESPACE && request[4] == GMK_TRIAL_RESULT && result == GMK_OK) gmk_trial_platform_result(response + 16);
 #endif
     response[7] = (is_keyboard_left() ? 1 : 0) | (is_keyboard_master() ? 2 : 0);

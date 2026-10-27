@@ -160,11 +160,26 @@ def prepare(root: Path, variant: str, mode: str = "normal") -> Path:
     return prepare_framework(root, variant, "qmk", mode)
 
 
-def prepare_vial(root: Path, mode: str = "normal") -> Path:
-    return prepare_framework(root, "vial", "vial", mode)
+def prepare_vial(
+    root: Path, mode: str = "normal", *, runtime_watchdog: bool = False
+) -> Path:
+    return prepare_framework(
+        root, "vial", "vial", mode, runtime_watchdog=runtime_watchdog
+    )
 
 
-def prepare_framework(root: Path, variant: str, platform: str, mode: str) -> Path:
+def prepare_framework(
+    root: Path,
+    variant: str,
+    platform: str,
+    mode: str,
+    *,
+    runtime_watchdog: bool = False,
+) -> Path:
+    if runtime_watchdog and (
+        platform != "vial" or mode not in ("trial-updater", "unlocked-trial-updater")
+    ):
+        raise ValueError("Runtime watchdog profile requires a Vial trial updater mode")
     if mode not in ("normal", "updater") and not (
         platform == "vial"
         and mode
@@ -183,8 +198,9 @@ def prepare_framework(root: Path, variant: str, platform: str, mode: str) -> Pat
     else:
         verify(root, platform)
     source = framework_path(root, platform)
-    destination = generated_path(root, platform, variant, mode)
-    generated_path(root, platform, variant, mode, ".build")
+    profile = mode + ("-runtime-watchdog" if runtime_watchdog else "")
+    destination = generated_path(root, platform, variant, profile)
+    generated_path(root, platform, variant, profile, ".build")
     origins: dict[str, str] = {}
     overlays = (
         (root / "firmware/qmk-common", Path(".")),
@@ -275,6 +291,7 @@ def main() -> None:
         ),
     )
     parser.add_argument("argument", nargs="?")
+    parser.add_argument("--runtime-watchdog", action="store_true")
     parser.add_argument(
         "--mode",
         choices=(
@@ -289,13 +306,21 @@ def main() -> None:
     )
     args = parser.parse_args()
     try:
+        if args.runtime_watchdog and args.command != "prepare-vial":
+            raise ValueError(
+                "--runtime-watchdog requires prepare-vial with a trial mode"
+            )
         match args.command:
             case "verify":
                 verify(ROOT)
             case "verify-vial":
                 verify(ROOT, "vial")
             case "prepare-vial":
-                print(prepare_vial(ROOT, args.mode))
+                print(
+                    prepare_vial(
+                        ROOT, args.mode, runtime_watchdog=args.runtime_watchdog
+                    )
+                )
             case "prepare":
                 print(prepare(ROOT, args.argument or "release", args.mode))
             case "clean":

@@ -1,5 +1,7 @@
 """Exercise the explicit trial client through an in-memory device boundary."""
 
+import io
+import json
 import struct
 import unittest
 from unittest.mock import patch
@@ -7,7 +9,7 @@ from unittest.mock import patch
 from test_update import HidFixture
 
 from trial import TrialPackage
-from trial_run import TrialClient, TrialOp, TrialUsbLink
+from trial_run import TrialClient, TrialOp, TrialUsbLink, main
 
 
 def package() -> TrialPackage:
@@ -49,6 +51,8 @@ class Device:
         self.unavailable = 0
         self.changed_identity = False
         self.reconnections = 0
+        self.capabilities = (7, 0, 0x20000040, 0x20006FC0)
+        self.caps_supported = True
 
     def exchange(self, request: bytes) -> bytes:
         op = request[4]
@@ -62,6 +66,11 @@ class Device:
         reply = bytearray(response(request))
         if op == TrialOp.INFO:
             struct.pack_into("<IIII", reply, 16, 92000, 0xABCDEF01, 2, self.boot_crc)
+        elif op == 0x13:
+            if self.caps_supported:
+                struct.pack_into("<IIII", reply, 16, *self.capabilities)
+            else:
+                reply[5] = 2
         elif op == TrialOp.BEGIN:
             self.state = 1
         elif op == TrialOp.DATA:
@@ -73,7 +82,7 @@ class Device:
             self.state = 2
             if self.fail_seal:
                 reply[5] = 6
-        elif op in (TrialOp.RUN, TrialOp.PROBE):
+        elif op in (TrialOp.RUN, TrialOp.PROBE, 0x14):
             if op == TrialOp.RUN:
                 assert self.state == 2
             self.action = 1 if op == TrialOp.RUN else 2
@@ -125,7 +134,167 @@ class TrialClientTests(unittest.TestCase):
         self.assertLess(
             device.operations.index(TrialOp.SEAL), device.operations.index(TrialOp.RUN)
         )
+        self.assertLess(device.operations.index(0x13), device.operations.index(2))
         self.assertEqual(report["package_sha256"], package().manifest["sha256"])
+
+    def test_probe_reads_and_records_capabilities_before_reset(self) -> None:
+        device = Device()
+        device.capabilities = (25, 12000, 0x20000040, 0x20006FC0)
+        report = self.client(device).probe(0)
+        self.assertLess(device.operations.index(0x13), device.operations.index(0x11))
+        self.assertEqual(
+            report["capabilities"],
+            {
+                "bits": 25,
+                "fallback_ms": 12000,
+                "ram_start": 0x20000040,
+                "ram_end": 0x20006FC0,
+            },
+        )
+
+    def test_runtime_backend_refuses_run_before_uploading(self) -> None:
+        device = Device()
+        device.capabilities = (25, 12000, 0x20000040, 0x20006FC0)
+        client = self.client(device)
+        with self.assertRaisesRegex(RuntimeError, "RUN.*capability"):
+            client.run(package(), expect_reset="watchdog")
+        self.assertEqual(bytes(device.data), b"")
+        self.assertFalse(set(device.operations) & {2, 3, 4, 0x10})
+        self.assertEqual(
+            client.last_report["capabilities"],
+            {
+                "bits": 25,
+                "fallback_ms": 12000,
+                "ram_start": 0x20000040,
+                "ram_end": 0x20006FC0,
+            },
+        )
+
+    def test_probe_requires_probe_capability(self) -> None:
+        device = Device()
+        device.capabilities = (6, 0, 0x20000040, 0x20006FC0)
+        with self.assertRaisesRegex(RuntimeError, "PROBE.*capability"):
+            self.client(device).probe(1)
+        self.assertNotIn(0x11, device.operations)
+
+    def test_backend_without_caps_fails_before_any_mutation(self) -> None:
+        for action in ("probe", "run", "fallback"):
+            with self.subTest(action=action):
+                device = Device()
+                device.caps_supported = False
+                client = self.client(device)
+                with self.assertRaisesRegex(RuntimeError, "CAPS.*required"):
+                    if action == "run":
+                        client.run(package(), expect_reset="watchdog")
+                    elif action == "fallback":
+                        client.fallback(1)
+                    else:
+                        client.probe(1)
+                self.assertFalse(set(device.operations) & {2, 3, 4, 0x10, 0x11, 0x14})
+
+    def test_capability_query_rejects_stale_nonce_word(self) -> None:
+        device = Device()
+        requests: list[bytes] = []
+
+        def exchange(request: bytes) -> bytes:
+            requests.append(request)
+            reply = bytearray(response(request))
+            if len(requests) == 1:
+                reply[12] ^= 1
+            struct.pack_into("<IIII", reply, 16, 25, 12000, 0x20000040, 0x20006FC0)
+            return bytes(reply)
+
+        device.exchange = exchange  # type: ignore[method-assign]
+        client = self.client(device)
+        self.assertEqual(client.capabilities(1).bits, 25)
+        self.assertEqual(len(requests), 2)
+        self.assertNotEqual(requests[0][8:16], bytes(8))
+
+    def test_capability_queries_use_fresh_nonce_words(self) -> None:
+        device = Device()
+        requests: list[bytes] = []
+        exchange = device.exchange
+
+        def record(request: bytes) -> bytes:
+            if request[4] == 0x13:
+                requests.append(request)
+            return exchange(request)
+
+        device.exchange = record  # type: ignore[method-assign]
+        with patch("trial_run.nonce", side_effect=(1, 2, 3, 4)):
+            client = self.client(device)
+            client.capabilities(0)
+            client.capabilities(0)
+        self.assertEqual(
+            [request[8:16] for request in requests],
+            [
+                b"\x01\0\0\0\x02\0\0\0",
+                b"\x03\0\0\0\x04\0\0\0",
+            ],
+        )
+
+    def test_fallback_requires_its_capability_before_reset(self) -> None:
+        device = Device()
+        with self.assertRaisesRegex(RuntimeError, "FALLBACK_TEST.*capability"):
+            self.client(device).fallback(0)
+        self.assertNotIn(0x14, device.operations)
+
+    def test_fallback_requires_software_reset_and_probe_result_action(self) -> None:
+        for flags in (8, 40):
+            with self.subTest(flags=flags):
+                device = Device()
+                device.capabilities = (25, 12000, 0x20000040, 0x20006FC0)
+                device.flags = flags
+                report = self.client(device).fallback(0)
+                self.assertTrue(report["success"])
+                self.assertEqual(report["action"], "fallback")
+                self.assertEqual(report["expected_reset"], "software")
+                self.assertEqual(report["result"]["action"], 2)
+                self.assertIn(0x14, device.operations)
+                self.assertFalse(set(device.operations) & {2, 3, 4, 0x10, 0x11})
+
+    def test_fallback_rejects_hardware_or_ambiguous_reset_flags(self) -> None:
+        for flags in (0, 4, 12, 36, 44):
+            with self.subTest(flags=flags):
+                device = Device()
+                device.capabilities = (25, 12000, 0x20000040, 0x20006FC0)
+                device.flags = flags
+                with self.assertRaisesRegex(RuntimeError, "reset cause"):
+                    self.client(device).fallback(1)
+
+    def test_fallback_waits_for_twelve_second_reset_and_usb_recovery(self) -> None:
+        device, clock = Device(), Clock()
+        device.capabilities = (25, 12000, 0x20000040, 0x20006FC0)
+        device.flags = 8
+        reconnect_times: list[float] = []
+
+        def reconnect() -> None:
+            reconnect_times.append(clock.value)
+            if clock.value < 12.3:
+                raise OSError("The software fallback has not reset yet")
+
+        device.reconnect = reconnect  # type: ignore[method-assign]
+        report = self.client(device, clock).fallback(0)
+        self.assertTrue(report["success"])
+        self.assertGreaterEqual(report["elapsed_seconds"], 12.3)
+        self.assertGreaterEqual(reconnect_times[0], 9)
+        self.assertLess(report["elapsed_seconds"], 54)
+
+    def test_fallback_cli_dispatches_explicit_software_proof(self) -> None:
+        device, clock = Device(), Clock()
+        device.capabilities = (25, 12000, 0x20000040, 0x20006FC0)
+        device.flags = 8
+        output = io.StringIO()
+        with (
+            patch("trial_run.TrialUsbLink", return_value=device),
+            patch("trial_run.TrialClient", return_value=self.client(device, clock)),
+            patch("sys.argv", ["trial_run.py", "fallback", "--target", "left"]),
+            patch("sys.stdout", output),
+        ):
+            self.assertEqual(main(), 0)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["action"], "fallback")
+        self.assertEqual(report["result"]["reset_flags"], 8)
 
     def test_failed_seal_never_sends_run(self) -> None:
         device = Device()

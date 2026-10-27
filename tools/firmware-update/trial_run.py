@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 from pathlib import Path
 from typing import TypedDict
 
@@ -27,6 +27,16 @@ class TrialOp(IntEnum):
     RUN = 0x10
     PROBE = 0x11
     RESULT = 0x12
+    CAPS = 0x13
+    FALLBACK_TEST = 0x14
+
+
+class TrialCapability(IntFlag):
+    PROBE = 1
+    RUN = 2
+    EARLY = 4
+    FALLBACK = 8
+    FALLBACK_TEST = 16
 
 
 def nonce() -> int:
@@ -46,7 +56,10 @@ def correlated(response: bytes, original: bytes, current: bytes) -> bool:
         return completed or polling
     if response[4] != original[4]:
         return False
-    if (
+    if original[4] in (TrialOp.CAPS, TrialOp.RESULT):
+        if response[8:16] != original[8:16]:
+            return False
+    elif (
         original[4] not in (TrialOp.INFO, TrialOp.ABORT)
         and response[8:12] != original[8:12]
     ):
@@ -118,6 +131,14 @@ class Identity:
 
 
 @dataclass(frozen=True)
+class TrialCapabilities:
+    bits: int
+    fallback_ms: int
+    ram_start: int
+    ram_end: int
+
+
+@dataclass(frozen=True)
 class TrialResult:
     action: int
     phase: int
@@ -149,6 +170,7 @@ class TrialReport(TypedDict):
     started_at: str
     finished_at: str
     elapsed_seconds: float
+    capabilities: dict[str, int]
     before: dict[str, int]
     after: dict[str, int]
     result: dict[str, int]
@@ -258,32 +280,70 @@ class TrialClient:
             raise RuntimeError("Invalid trial result encoding")
         return TrialResult(packed & 0xFF, packed >> 8, flags, size, crc, reply.role)
 
+    def capabilities(self, target: int) -> TrialCapabilities:
+        try:
+            reply = self.command(target, TrialOp.CAPS, nonce(), nonce())
+        except (RuntimeError, TimeoutError) as error:
+            message = (
+                f"Read-only CAPS support is required before trial operations: {error}"
+            )
+            if isinstance(error, TimeoutError):
+                raise TimeoutError(message) from error
+            raise RuntimeError(message) from error
+        return TrialCapabilities(*struct.unpack("<IIII", reply.payload))
+
     def probe(self, target: int) -> TrialReport:
-        return self._execute(target, None, "watchdog")
+        return self._execute(target, None, "watchdog", TrialOp.PROBE)
+
+    def fallback(self, target: int) -> TrialReport:
+        return self._execute(target, None, "software", TrialOp.FALLBACK_TEST)
 
     def run(self, package: TrialPackage, *, expect_reset: str) -> TrialReport:
         # Revalidate an object supplied by another caller before opening a session.
         if package != TrialPackage.create(package.image, package.manifest["target"]):
             raise ValueError("Invalid trial package")
         return self._execute(
-            int(package.manifest["target"] == "right"), package, expect_reset
+            int(package.manifest["target"] == "right"),
+            package,
+            expect_reset,
+            TrialOp.RUN,
         )
 
     def _execute(
-        self, target: int, package: TrialPackage | None, expect_reset: str
+        self,
+        target: int,
+        package: TrialPackage | None,
+        expect_reset: str,
+        operation: TrialOp,
     ) -> TrialReport:
         if expect_reset not in ("software", "watchdog"):
             raise ValueError("Choose software or watchdog reset expectation")
         started = self._now()
+        action = {
+            TrialOp.PROBE: "probe",
+            TrialOp.RUN: "run",
+            TrialOp.FALLBACK_TEST: "fallback",
+        }[operation]
         self.last_report = {
             "success": False,
-            "action": "run" if package else "probe",
+            "action": action,
             "target": "right" if target else "left",
             "expected_reset": expect_reset,
             "started_at": datetime.now(UTC).isoformat(),
             "package_sha256": package.manifest["sha256"] if package else None,
         }
         try:
+            capabilities = self.capabilities(target)
+            self.last_report["capabilities"] = asdict(capabilities)
+            required = {
+                TrialOp.PROBE: TrialCapability.PROBE,
+                TrialOp.RUN: TrialCapability.RUN,
+                TrialOp.FALLBACK_TEST: TrialCapability.FALLBACK_TEST,
+            }[operation]
+            if not capabilities.bits & required:
+                raise RuntimeError(
+                    f"Target {target}: {operation.name} capability is unavailable"
+                )
             before, status = self.inspect(target)
             self.last_report["before"] = asdict(before)
             if status.state != 0:
@@ -293,16 +353,20 @@ class TrialClient:
             session = nonce()
             if package:
                 for packet in upload_packets(package, session):
-                    operation = TrialOp(packet[4])
+                    upload_operation = TrialOp(packet[4])
                     offset = struct.unpack_from("<I", packet, 12)[0]
                     reply = self.command(
-                        target, operation, session, offset, packet[16 : 16 + packet[5]]
+                        target,
+                        upload_operation,
+                        session,
+                        offset,
+                        packet[16 : 16 + packet[5]],
                     )
-                    if operation == TrialOp.SEAL and reply.state != 2:
+                    if upload_operation == TrialOp.SEAL and reply.state != 2:
                         raise RuntimeError(
                             "Trial receiver did not acknowledge SEALED state"
                         )
-            self.command(target, TrialOp.RUN if package else TrialOp.PROBE, session)
+            self.command(target, operation, session)
             self.last_report["acknowledged"] = True
             # The peer has a bounded polling pause; left USB must enumerate again.
             self._sleep(9)
@@ -332,12 +396,13 @@ class TrialClient:
                     result.verify(1 if package else 2, expect_reset, package)
                     report: TrialReport = {
                         "success": True,
-                        "action": "run" if package else "probe",
+                        "action": action,
                         "target": "right" if target else "left",
                         "expected_reset": expect_reset,
                         "started_at": str(self.last_report["started_at"]),
                         "finished_at": datetime.now(UTC).isoformat(),
                         "elapsed_seconds": self._now() - started,
+                        "capabilities": asdict(capabilities),
                         "before": asdict(before),
                         "after": asdict(after),
                         "result": asdict(result),
@@ -372,6 +437,10 @@ def main() -> int:
         "probe", help="Explicitly start a no-feed watchdog reset probe"
     )
     probe.add_argument("--target", choices=("left", "right"), required=True)
+    fallback = commands.add_parser(
+        "fallback", help="Explicitly prove the bounded software reset fallback"
+    )
+    fallback.add_argument("--target", choices=("left", "right"), required=True)
     run = commands.add_parser(
         "run", help="Explicitly upload, seal and execute one staging package"
     )
@@ -381,7 +450,7 @@ def main() -> int:
         "result", help="Read the retained trial result without a reset"
     )
     result.add_argument("--target", choices=("left", "right"), required=True)
-    for command in (probe, run, result):
+    for command in (probe, fallback, run, result):
         command.add_argument("--report", type=Path)
     args = parser.parse_args()
     package = TrialPackage.load(args.package) if args.command == "run" else None
@@ -395,6 +464,8 @@ def main() -> int:
             report = client.run(package, expect_reset=args.expect_reset)
         elif args.command == "probe":
             report = client.probe(int(args.target == "right"))
+        elif args.command == "fallback":
+            report = client.fallback(int(args.target == "right"))
         else:
             target = int(args.target == "right")
             identity, _ = client.inspect(target)

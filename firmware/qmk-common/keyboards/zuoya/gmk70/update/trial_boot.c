@@ -38,7 +38,8 @@ static bool valid(const gmk_trial_boot_record_t *record) {
         if (record->reserved[i] != 0) return false;
     if (record->phase == GMK_TRIAL_BOOT_REQUESTED && (record->consumed || record->reset_flags)) return false;
     if (record->consumed && record->phase != GMK_TRIAL_BOOT_REJECTED) return false;
-    if ((record->consumed || record->phase == GMK_TRIAL_BOOT_ENTERED) && !software_reset(record->reset_flags)) return false;
+    if (record->consumed && !software_reset(record->reset_flags)) return false;
+    if (record->phase == GMK_TRIAL_BOOT_ENTERED && !software_reset(record->reset_flags) && !(record->action == GMK_TRIAL_BOOT_PROBE && !record->image.size && !record->image.crc && !record->reset_flags)) return false;
     return true;
 }
 
@@ -118,6 +119,19 @@ bool gmk_trial_boot_enter(volatile gmk_trial_boot_record_t *record) {
     copy.consumed = 0;
     commit(record, &copy);
     return true;
+}
+
+bool gmk_trial_boot_runtime_enter(volatile gmk_trial_boot_record_t *record, uint32_t role) {
+    if (!record) return false;
+    gmk_trial_boot_record_t copy;
+    bool                    stable = snapshot(record, &copy);
+    if (copy.phase != GMK_TRIAL_BOOT_REQUESTED) return false;
+    record->magic = 0; // Consume before checking integrity, action, or role.
+    if (!stable || !valid(&copy)) return false;
+    bool accepted = copy.action == GMK_TRIAL_BOOT_PROBE && !copy.image.size && !copy.image.crc && valid_role(role) && copy.role == role;
+    copy.phase    = accepted ? GMK_TRIAL_BOOT_ENTERED : GMK_TRIAL_BOOT_REJECTED;
+    commit(record, &copy);
+    return accepted;
 }
 
 bool gmk_trial_boot_complete(volatile gmk_trial_boot_record_t *record, uint32_t reset_flags) {

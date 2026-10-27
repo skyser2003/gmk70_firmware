@@ -335,8 +335,96 @@ static void test_admit_role_failures_are_one_shot(void) {
     report(&record, 4);
 }
 
+// Runtime entry may only consume an empty PROBE for the current role. It has
+// no reset between request and entry, so the retained flags must remain zero.
+static void test_runtime_probe_entry_and_return(void) {
+    for (uint32_t role = 0; role <= 1; ++role) {
+        gmk_trial_boot_record_t record;
+        assert(gmk_trial_boot_prepare(&record, 2, (gmk_image_t){0}, role));
+        assert(gmk_trial_boot_runtime_enter(&record, role));
+        gmk_trial_boot_result_t result;
+        assert(gmk_trial_boot_report(&record, &result));
+        assert(result.action == 2 && result.phase == 2 && result.role == role);
+        assert(result.image.size == 0 && result.image.crc == 0 && result.reset_flags == 0);
+        gmk_trial_boot_record_t saved = record;
+        assert(!gmk_trial_boot_runtime_enter(&record, role));
+        assert(!gmk_trial_boot_enter(&record));
+        assert(memcmp(&record, &saved, sizeof(record)) == 0);
+        assert(gmk_trial_boot_complete(&record, 4));
+        assert(gmk_trial_boot_report(&record, &result));
+        assert(result.action == 2 && result.phase == 3 && result.reset_flags == 4);
+        saved = record;
+        assert(!gmk_trial_boot_runtime_enter(&record, role));
+        assert(!gmk_trial_boot_complete(&record, 8));
+        assert(memcmp(&record, &saved, sizeof(record)) == 0);
+    }
+}
+
+// Runtime rejection consumes the request: RUN, nonempty probes and mismatched
+// or invalid roles cannot become an executable intent on a second attempt.
+static void test_runtime_rejects_run_images_and_roles(void) {
+    for (unsigned failure = 0; failure < 6; ++failure) {
+        gmk_trial_boot_record_t record;
+        uint32_t                action    = failure == 0 ? 1U : 2U;
+        gmk_image_t             bad_image = {0};
+        if (failure == 1) bad_image.size = 4;
+        if (failure == 2) bad_image.crc = 1;
+        uint32_t role = failure >= 3 ? failure - 2 : 0;
+        assert(gmk_trial_boot_prepare(&record, action, bad_image, 0));
+        assert(!gmk_trial_boot_runtime_enter(&record, role));
+        assert(!gmk_trial_boot_runtime_enter(&record, 0));
+        assert(!gmk_trial_boot_enter(&record));
+        gmk_trial_boot_request_t request;
+        assert(!gmk_trial_boot_consume(&record, 8, 0, &request));
+    }
+}
+
+// Bit corruption and incomplete writes cannot authorize runtime entry, and an
+// admission already issued to the early launcher is never a runtime request.
+static void test_runtime_corruption_and_stale_admission(void) {
+    gmk_trial_boot_record_t valid;
+    assert(gmk_trial_boot_prepare(&valid, 2, (gmk_image_t){0}, 0));
+    for (unsigned byte = 0; byte < sizeof(valid); ++byte) {
+        for (unsigned bit = 0; bit < 8; ++bit) {
+            gmk_trial_boot_record_t record = valid;
+            ((uint8_t *)&record)[byte] ^= 1U << bit;
+            assert(!gmk_trial_boot_runtime_enter(&record, 0));
+            assert(!gmk_trial_boot_runtime_enter(&record, 0));
+        }
+    }
+    gmk_trial_boot_request_t request;
+    assert(gmk_trial_boot_consume(&valid, 8, 0, &request));
+    assert(!gmk_trial_boot_runtime_enter(&valid, 0));
+    assert(gmk_trial_boot_enter(&valid));
+    assert(!gmk_trial_boot_runtime_enter(&valid, 0));
+    assert(!gmk_trial_boot_runtime_enter(NULL, 0));
+}
+
+// These fixtures have valid CRCs over their complete retained bodies, but an
+// ENTERED record with no admission reset is legal only for an empty PROBE.
+// A broad zero-flags exception must never admit or report a staging RUN.
+static void test_zero_reset_entry_cannot_authorize_run_or_image(void) {
+    gmk_trial_boot_record_t record = {.magic = 0x474D5442, .abi = 1, .action = 1, .phase = 2, .image = {.size = 4096, .crc = 0xA63C7195}, .checksum = 0x8A836967, .checksum_inverse = 0x757C9698};
+    for (unsigned i = 0; i < 2; ++i) {
+        if (i) {
+            record.action           = 2;
+            record.checksum         = 0xCC515C03;
+            record.checksum_inverse = 0x33AEA3FC;
+        }
+        gmk_trial_boot_result_t result;
+        assert(!gmk_trial_boot_report(&record, &result));
+        assert(!gmk_trial_boot_runtime_enter(&record, 0));
+        assert(!gmk_trial_boot_enter(&record));
+        assert(!gmk_trial_boot_complete(&record, 4));
+    }
+}
+
 int main(void) {
     assert(sizeof(gmk_trial_boot_record_t) == 64);
+    test_runtime_probe_entry_and_return();
+    test_runtime_rejects_run_images_and_roles();
+    test_runtime_corruption_and_stale_admission();
+    test_zero_reset_entry_cannot_authorize_run_or_image();
     test_admit_without_intent_never_reads_hardware();
     test_admit_reads_role_once_after_consumption();
     test_admit_role_failures_are_one_shot();

@@ -63,6 +63,9 @@ bool gmk_trial_boot_consume(volatile gmk_trial_boot_record_t *record, uint32_t r
 // Ordinary, corrupt, stale, and unexpected-reset boots never call read_role.
 bool gmk_trial_boot_admit(volatile gmk_trial_boot_record_t *record, uint32_t reset_flags, bool (*read_role)(uint32_t *role), gmk_trial_boot_request_t *request);
 bool gmk_trial_boot_enter(volatile gmk_trial_boot_record_t *record);
+// Runtime has no intervening reset. Consume only an empty PROBE for this role,
+// transitioning directly from REQUESTED to ENTERED with zero reset flags.
+bool gmk_trial_boot_runtime_enter(volatile gmk_trial_boot_record_t *record, uint32_t role);
 // On the next reset, turn ENTERED into RETURNED and expire an unused admission.
 // Terminal results remain stable through later ordinary resets.
 bool gmk_trial_boot_complete(volatile gmk_trial_boot_record_t *record, uint32_t reset_flags);
