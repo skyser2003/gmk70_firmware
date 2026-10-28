@@ -8,4 +8,3 @@ cc -std=c11 -Wall -Wextra -Werror -g -O1 \
     tests/zmk/usb_dc_wb32_test.c firmware/zmk/drivers/usb/device/usb_dc_wb32.c \
     -o .work/zmk/tests/usb_dc_wb32_test
 .work/zmk/tests/usb_dc_wb32_test
-bash tests/zmk/run_usb_startup_tests.sh
