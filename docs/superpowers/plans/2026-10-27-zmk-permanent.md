@@ -77,6 +77,17 @@ Read-only health tooling repeats the same namespace0x72 nonce while BUSY; a fres
 
 **Files:** Separate ignored device scripts/reports; tracked `docs/ZMK-PERMANENT-WIRED.md`, validation evidence and updated handoff/status.
 
+Runtime finding (2026-10-28): the qualification USB interfaces opened successfully,
+but no INFO reply arrived. Pinned Zephyr initializes static threads after
+APPLICATION initializers; the updater's earlier `k_thread_start` therefore did
+nothing, and its later `SYS_FOREVER_MS` initialization left it asleep. Before
+another trial, repair the service lifecycle with static autostart after successful
+service initialization, a readiness guard that prevents processing/feeds on init
+failure, and a regression that exercises the actual initialization order and a
+queued raw-HID request. Review this production delta, rebuild/recheck A/B/Q, and
+freeze a new device epoch. Preserve all three failed observer attempts and their
+verified unchanged-Vial returns; do not reuse their failed chains for installs.
+
 Device work uses the existing isolated Windows Python/HID runtime through left USB, both halves joined, normal switches; no driver installation or right-only cable/pad procedure. Freeze the reviewed A/B/qualification artifacts into the current device folder alongside the exact left/right Vial recovery packages and native backup recorded in its baseline JSON. Gate each dependent write on verified current application and resident identities. Device scripts are explicit operations, never called from build/test/setup, and require offline ordering/identity tests plus review before execution.
 
 For left staging, coordinate the existing Vial trial client and a temporary qualification HID handle in one process: open the qualification handle only after its unique product enumerates, inspect local health/INFO and old right INFO, optionally BEGIN-clearing only isolated metadata then ABORT, and close it before Vial recovery observation. For right staging, native left USB stays connected: use one shared handle that dispatches namespace0x71 trial packets and namespace0x70/0x72 reads, observe immediately after the successful RUN acknowledgement during the bounded three-second trial, then restore the trial client's request correlation before normal recovery checks. Its existing nine-second post-RUN sleep would miss this window without the inline observer. Budget the existing USB exchange's two-second blocking bound; do not accept replies after observer deadlines. Confirm exact qualification size/CRC and staging health before any right application replacement. Left legacy Vial recovery requires its existing30-second observation; right health-capable Vial recovery requires60 seconds and advancing uptime/feeds. Never invent a retained record or weaken the watchdog recovery checks to advance migration.
