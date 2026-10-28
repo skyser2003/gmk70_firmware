@@ -94,8 +94,9 @@ Native restart investigation (2026-10-28): initial Vial-to-A and subsequent
 healthy native A-to-B transfers both failed automatic restart verification.
 After each joined-left USB reconnect, the requested new application and unchanged
 residents read back correctly and left health passed a fresh 60-second window.
-Right remains Vial and must remain untouched until a different-image native left
-update automatically restarts and passes health. Preserve both failed reports;
+The initial sequence required a different-image native left update to restart
+automatically before touching right. The manual-workflow amendment below now
+defines the prerequisites for a separate device sequence. Preserve failed reports;
 post-reconnect readback does not turn them into automated update successes.
 
 Test one startup hypothesis before further migration: QMK explicitly drives USB
@@ -135,9 +136,10 @@ Preserve this seventh failed device epoch. B1 remains a source-backed board
 initialization repair, but it has not resolved the restart failure. Do not add
 another clock/cache/watchdog behavior change without evidence locating the fault.
 
-The next bounded diagnostic is one separately reviewed, explicitly labeled
-identical-image LEFT reinstall after physical recovery and a fresh 60-second
-health baseline. Keep the proof-stage procedure unchanged. Freeze the exact
+An identical-image LEFT diagnostic was prepared after physical recovery, but
+its hardware execution is deferred in favor of the manual workflow below.
+Any future run still requires a separate review and a fresh 60-second health
+baseline. Keep the old proof-stage procedure unchanged. Freeze the exact
 running package, residents and right Vial identity; verify the installer/padding
 lineage supporting matching application pages. The resident should still validate
 staging/application and clear commit, while skipping matching application-page
@@ -156,6 +158,44 @@ outcome identifies cache or watchdog behavior by itself. A future retained boot
 trace requires an independent extraction path while USB is absent; a new USB
 getter alone is insufficient. No automatic fallback is established, and the
 resident remains unchanged.
+
+Manual-workflow amendment (2026-10-28): the user's goal is permanent ZMK with
+updater support and a strong preference to avoid right-only recovery “if
+possible.” Automatic restart is not required by that request. Four distinct
+left installs became healthy after joined-left reconnection. Use an explicit
+transfer → joined-left USB reconnect → separate verification workflow for this
+wired milestone. Keep automatic failures failed and report automatic restart as
+unresolved. Defer the identical-image diagnostic to avoid an additional possible
+failed restart/recovery cycle. No firmware behavior change follows from this
+decision; create and review a new manual device procedure.
+
+Before any right application write, first run a genuine right Vial empty PROBE
+through native left. Require its terminal retained result, automatic Vial return
+and full60-second recovery uptime/feed proof. Save the result and fresh counters.
+Next transfer distinct left B, recording INSTALL requested rather than installed;
+ask for joined-left USB reconnection. Separate read-only verification must prove
+B/unchanged Vial and both residents, loss of the saved valid right result and
+restarted right uptime, plus fresh left native health and ordinary right Vial
+uptime windows. Do not require advancing recovery feeds from cold-started Vial
+with its watchdog unstarted. This provides practical shared recovery evidence,
+not an electrical power measurement or a universal recovery guarantee.
+
+Then require the existing actual right Q observation within3 seconds and genuine
+automatic Vial return/full60-second health. Only after inspected success and a
+scoped procedure/risk review may the first permanent right transfer occur. Q
+does not prove permanent APP entry or feeds; there is no old-image rollback slot.
+A joined-left cycle cannot repair every possible right failure. Accept that
+bounded residual first-install risk within the user's repeated instruction to
+proceed; do not promise that right-only recovery is impossible or waive any
+concrete defect. Preserve residents and all other source/admission/deadline gates.
+
+Use separately invoked transfer and verification stages for right B, right A and
+final left A. Each transfer outcome is unverified until the requested joined-left
+cycle and actual expected both-half identities/residents/native USB/relay and
+60-second advancing native uptime/feeds pass. The distinct right B→A and left
+A→B/B→A results prove manual updating through left USB. Failed/incomplete stages
+block descendants, with no retries or old-stage replay. Final status/instructions
+must identify manual restart as required and retain automatic restart as unresolved.
 
 For left staging, coordinate the existing Vial trial client and a temporary qualification HID handle in one process: open the qualification handle only after its unique product enumerates, inspect local health/INFO and old right INFO, optionally BEGIN-clearing only isolated metadata then ABORT, and close it before Vial recovery observation. For right staging, native left USB stays connected: use one shared handle that dispatches namespace0x71 trial packets and namespace0x70/0x72 reads, observe immediately after the successful RUN acknowledgement during the bounded three-second trial, then restore the trial client's request correlation before normal recovery checks. Its existing nine-second post-RUN sleep would miss this window without the inline observer. Budget the existing USB exchange's two-second blocking bound; do not accept replies after observer deadlines. Confirm exact qualification size/CRC and staging health before any right application replacement. Left legacy Vial recovery requires its existing30-second observation; right health-capable Vial recovery requires60 seconds and advancing uptime/feeds. Never invent a retained record or weaken the watchdog recovery checks to advance migration.
 

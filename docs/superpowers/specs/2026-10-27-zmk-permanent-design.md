@@ -123,6 +123,21 @@ the right still runs Vial, then launch a right staging qualification using the
 peer trial relay and observe right ZMK INFO/health before replacing its app.
 Do not count an identical-image resident page skip as a different-image update.
 
+The 2026-10-28 manual-workflow amendment permits a documented joined-left USB
+reconnection between updater transfer and separate running-image verification.
+Automatic restart remains unresolved and its failed reports remain failed.
+Before first right replacement, prove a distinct-image left manual update and
+shared recovery while right Vial remains intact, then complete actual right Q
+qualification and genuine Vial return. A completed right PROBE retained result
+lost after joined-left cycling, restarted counters and stable identities/health
+support practical shared recovery; they do not guarantee recovery of every
+future native-right failure. Review the remaining first permanent right APP/
+watchdog/relay risk explicitly. Q and unchanged residents remain mandatory.
+Only post-reconnection identity/health checks can establish installation success;
+transfer-request completion alone cannot. The identical-image diagnostic is
+deferred to avoid an extra possible recovery cycle. See the implementation plan
+for individually guarded stages and required evidence.
+
 An IWDG started by permanent ZMK may survive a warm firmware replacement. Frozen
 Vial services it only when its retained trial recovery gates qualify. General
 automatic Vial rollback after arbitrary cold boots is therefore not established;
@@ -143,6 +158,7 @@ backups available; never publish keymap/macro payloads in validation reports.
 - Left USB keyboard and updater interfaces remain available beyond recovery
   watchdog deadlines, with advancing uptime and no unobserved reboot assumption.
 - Right updates and left self-updates complete over left USB; compatible Vial
-  rollback packages remain accepted.
+  rollback packages remain accepted. If joined-left manual restart is needed,
+  qualify and document that workflow without claiming automatic restart.
 - Native saved configuration stays untouched; ZMK's compile-time layout and
   deferred features are stated plainly in the final report.
