@@ -93,8 +93,13 @@ class StudioUartTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
-            burst = frames[0] * 16 + frames[-1]
-            self.assertEqual(len(burst), 512)
+            cdc = re.search(r"^CONFIG_USB_CDC_ACM_RINGBUF_SIZE=(\d+)$", conf, re.M)
+            self.assertIsNotNone(cdc)
+            self.assertEqual(size, int(cdc[1]))
+            self.assertTrue(all(len(f) <= size for f in frames))
+            burst = frames[0] * (size // len(frames[0]))
+            burst += bytes(size - len(burst))
+            self.assertEqual(len(burst), size)
             for frame in [*frames, burst]:
                 with self.subTest(frame_size=len(frame)):
                     result = subprocess.run(

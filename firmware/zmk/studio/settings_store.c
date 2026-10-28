@@ -34,7 +34,7 @@ static void page_begin(uint8_t *p, unsigned kind, uint64_t gen, unsigned seq) {
     memset(p, 0xff, GMK_SETTINGS_PAGE);
     memset(p, 0, HEADER);
     gmk_write_u32(p, MAGIC);
-    p[4] = 1;
+    p[4] = 2;
     p[5] = (uint8_t)kind;
     gmk_write_u32(p + 8, (uint32_t)gen);
     gmk_write_u32(p + 12, (uint32_t)(gen >> 32));
@@ -42,7 +42,7 @@ static void page_begin(uint8_t *p, unsigned kind, uint64_t gen, unsigned seq) {
 }
 
 static bool page_valid(const uint8_t *p, unsigned kind, uint64_t gen, unsigned seq) {
-    return gmk_read_u32(p) == MAGIC && p[4] == 1 && p[5] == kind && generation(p) == gen && gen != 0 && gmk_read_u32(p + 16) == seq && read16(p + 6) <= PAYLOAD && gmk_read_u32(p + 28) == checksum(p);
+    return gmk_read_u32(p) == MAGIC && (p[4] == 1 || p[4] == 2) && p[5] == kind && generation(p) == gen && gen != 0 && gmk_read_u32(p + 16) == seq && read16(p + 6) <= PAYLOAD && gmk_read_u32(p + 28) == checksum(p);
 }
 
 static bool erased(const uint8_t *p, size_t size) {
@@ -51,26 +51,80 @@ static bool erased(const uint8_t *p, size_t size) {
     return true;
 }
 
-static int find(const gmk_settings_store_t *s, const char *name, size_t size) {
+/* v2 canonical binding names occupy two bytes. Literal names and v1 pages
+ * remain readable; compaction upgrades only the inactive bank, commit last. */
+static unsigned encode_name(const char *name, unsigned length, uint8_t out[GMK_SETTINGS_NAME_MAX]) {
+    if ((length == 12 || length == 13) && !memcmp(name, "keymap/l/", 9) && name[9] >= '0' && name[9] <= '3' && name[10] == '/' && name[11] >= '0' && name[11] <= '9') {
+        unsigned key = (unsigned)(name[11] - '0');
+        if (length == 13) {
+            if (!key || name[12] < '0' || name[12] > '9') goto literal;
+            key = 10 * key + (unsigned)(name[12] - '0');
+        }
+        if (key < 72) {
+            out[0] = (uint8_t)(0x80 + name[9] - '0');
+            out[1] = (uint8_t)key;
+            return 2;
+        }
+    }
+literal:
+    memcpy(out, name, length);
+    return length;
+}
+
+static unsigned decode_name(const uint8_t *r, char name[GMK_SETTINGS_NAME_MAX + 1]) {
+    if (r[0] == 2 && r[4] >= 0x80 && r[4] <= 0x83) {
+        memcpy(name, "keymap/l/0/", 11);
+        name[9]      = (char)('0' + r[4] - 0x80);
+        unsigned key = r[5], at = 11;
+        if (key >= 10) name[at++] = (char)('0' + key / 10);
+        name[at++] = (char)('0' + key % 10);
+        name[at]   = 0;
+        return at;
+    }
+    memcpy(name, r + 4, r[0]);
+    name[r[0]] = 0;
+    return r[0];
+}
+
+static const uint8_t *entry(const gmk_settings_store_t *s, unsigned i) {
+    return s->bytes + s->entries[i].record_offset;
+}
+
+static unsigned entry_name(const uint8_t *r, uint8_t out[GMK_SETTINGS_NAME_MAX]) {
+    if (r[4] >= 0x80) {
+        memcpy(out, r + 4, r[0]);
+        return r[0];
+    }
+    return encode_name((const char *)r + 4, r[0], out);
+}
+
+static int find(const gmk_settings_store_t *s, const uint8_t *name, unsigned size) {
     for (unsigned i = 0; i < s->count; ++i) {
-        const gmk_settings_entry_t *e = &s->entries[i];
-        if (e->name_size == size && memcmp(s->bytes + e->name_offset, name, size) == 0) return (int)i;
+        uint8_t  encoded[GMK_SETTINGS_NAME_MAX];
+        unsigned n = entry_name(entry(s, i), encoded);
+        if (n == size && memcmp(encoded, name, size) == 0) return (int)i;
     }
     return -1;
 }
 
-static int record_size(const uint8_t *r, unsigned available) {
+static int record_size(const uint8_t *r, unsigned available, unsigned version) {
     if (available < 4 || r[0] == 0 || r[0] > GMK_SETTINGS_NAME_MAX || r[1] > 1 || read16(r + 2) > GMK_SETTINGS_VALUE_MAX) return -EIO;
     unsigned size = 4U + r[0] + read16(r + 2);
     if (size > available || (r[1] && read16(r + 2))) return -EIO;
-    for (unsigned i = 0; i < r[0]; ++i)
-        if (r[4 + i] < 32 || r[4 + i] > 126) return -EIO;
+    if (r[0] == 2 && r[4] >= 0x80 && r[4] <= 0x83) {
+        if (version != 2 || r[5] >= 72) return -EIO;
+    } else {
+        for (unsigned i = 0; i < r[0]; ++i)
+            if (r[4 + i] < 32 || r[4 + i] > 126) return -EIO;
+    }
     return (int)size;
 }
 
 static int apply(gmk_settings_store_t *s, uint32_t offset, bool snapshot) {
-    const uint8_t *r     = s->bytes + offset;
-    int            index = find(s, (const char *)r + 4, r[0]);
+    const uint8_t *r = s->bytes + offset;
+    uint8_t        encoded[GMK_SETTINGS_NAME_MAX];
+    unsigned       n     = entry_name(r, encoded);
+    int            index = find(s, encoded, n);
     if (snapshot && (index >= 0 || r[1])) return -EIO;
     if (r[1]) {
         if (index >= 0) {
@@ -83,7 +137,7 @@ static int apply(gmk_settings_store_t *s, uint32_t offset, bool snapshot) {
         if (s->count == GMK_SETTINGS_ENTRIES) return -EIO;
         index = s->count++;
     }
-    s->entries[index] = (gmk_settings_entry_t){(uint16_t)(offset + 4), r[0], (uint8_t)read16(r + 2)};
+    s->entries[index] = (gmk_settings_entry_t){(uint16_t)offset};
     return 0;
 }
 
@@ -99,7 +153,7 @@ static int scan_snapshot(gmk_settings_store_t *s, unsigned bank) {
         if (!page_valid(p, SNAPSHOT, gen, i) || !read16(p + 6)) return -EIO;
         unsigned end = HEADER + read16(p + 6);
         for (unsigned at = HEADER; at < end;) {
-            int size = record_size(p + at, end - at);
+            int size = record_size(p + at, end - at, p[4]);
             if (size < 0 || apply(s, bank * GMK_SETTINGS_BANK + i * GMK_SETTINGS_PAGE + at, true) != 0) return -EIO;
             at += (unsigned)size;
         }
@@ -141,7 +195,7 @@ int gmk_settings_store_mount(gmk_settings_store_t *s, const uint8_t bytes[GMK_SE
     for (unsigned i = (unsigned)pages + 1; i < PAGES; ++i) {
         const uint8_t *p     = base + i * GMK_SETTINGS_PAGE;
         bool           valid = page_valid(p, JOURNAL, s->generation, i);
-        int            size  = valid ? record_size(p + HEADER, read16(p + 6)) : -EIO;
+        int            size  = valid ? record_size(p + HEADER, read16(p + 6), p[4]) : -EIO;
         valid                = valid && size > 0 && (unsigned)size == read16(p + 6);
         if (!valid) {
             tail = true;
@@ -168,7 +222,7 @@ static int write_checked(gmk_settings_store_t *s, uint32_t offset, uint8_t *page
     return 0;
 }
 
-static void put_record(uint8_t *p, const char *name, unsigned length, const void *value, unsigned size) {
+static void put_record(uint8_t *p, const uint8_t *name, unsigned length, const void *value, unsigned size) {
     p[0] = (uint8_t)length;
     p[1] = value == NULL;
     write16(p + 2, (uint16_t)size);
@@ -180,9 +234,11 @@ static unsigned snapshot_pages(const gmk_settings_store_t *s, int replacing, uns
     unsigned pages = 0, used = 0;
     for (unsigned i = 0; i <= s->count; ++i) {
         if ((int)i == replacing || (i == s->count && deleting)) continue;
-        unsigned n      = i == s->count ? name_size : s->entries[i].name_size;
-        unsigned v      = i == s->count ? size : s->entries[i].value_size;
-        unsigned record = 4 + n + v;
+        uint8_t        encoded[GMK_SETTINGS_NAME_MAX];
+        const uint8_t *r      = i == s->count ? NULL : entry(s, i);
+        unsigned       n      = r ? entry_name(r, encoded) : name_size;
+        unsigned       v      = r ? read16(r + 2) : size;
+        unsigned       record = 4 + n + v;
         if (!pages || used + record > PAYLOAD) {
             ++pages;
             used = 0;
@@ -192,7 +248,7 @@ static unsigned snapshot_pages(const gmk_settings_store_t *s, int replacing, uns
     return pages;
 }
 
-static int compact(gmk_settings_store_t *s, const char *name, unsigned length, const void *value, unsigned size, int replacing) {
+static int compact(gmk_settings_store_t *s, const uint8_t *name, unsigned length, const void *value, unsigned size, int replacing) {
     if (s->generation == UINT64_MAX) return -EOVERFLOW;
     unsigned bank = s->bank == 0 ? 1 : 0, page_index = 1, used = 0;
     uint64_t gen = s->generation + 1;
@@ -200,11 +256,13 @@ static int compact(gmk_settings_store_t *s, const char *name, unsigned length, c
     page_begin(page, SNAPSHOT, gen, page_index);
     for (unsigned i = 0; i <= s->count; ++i) {
         if ((int)i == replacing || (i == s->count && value == NULL)) continue;
-        const gmk_settings_entry_t *e    = i < s->count ? &s->entries[i] : NULL;
-        const char                 *key  = e ? (const char *)s->bytes + e->name_offset : name;
-        const void                 *data = e ? s->bytes + e->name_offset + e->name_size : value;
-        unsigned                    n = e ? e->name_size : length, v = e ? e->value_size : size;
-        unsigned                    record = 4 + n + v;
+        const uint8_t *r = i < s->count ? entry(s, i) : NULL;
+        uint8_t        encoded[GMK_SETTINGS_NAME_MAX];
+        unsigned       n      = r ? entry_name(r, encoded) : length;
+        const uint8_t *key    = r ? encoded : name;
+        const void    *data   = r ? r + 4 + r[0] : value;
+        unsigned       v      = r ? read16(r + 2) : size;
+        unsigned       record = 4 + n + v;
         if (used + record > PAYLOAD) {
             int rc = write_checked(s, bank * GMK_SETTINGS_BANK + page_index * GMK_SETTINGS_PAGE, page, used);
             if (rc) return rc;
@@ -241,19 +299,21 @@ int gmk_settings_store_save(gmk_settings_store_t *s, const char *name, const voi
         int rc = gmk_settings_store_mount(s, s->bytes, s->write, s->context);
         if (rc) return rc;
     }
-    int replacing = find(s, name, length);
+    uint8_t  encoded[GMK_SETTINGS_NAME_MAX];
+    unsigned n         = encode_name(name, (unsigned)length, encoded);
+    int      replacing = find(s, encoded, n);
     if (replacing < 0 && value == NULL) return 0;
     if (replacing >= 0 && value != NULL) {
-        const gmk_settings_entry_t *e = &s->entries[replacing];
-        if (e->value_size == size && (!size || memcmp(s->bytes + e->name_offset + e->name_size, value, size) == 0)) return 0;
+        const uint8_t *r = entry(s, (unsigned)replacing);
+        if (read16(r + 2) == size && (!size || memcmp(r + 4 + r[0], value, size) == 0)) return 0;
     }
-    if ((replacing < 0 && s->count == GMK_SETTINGS_ENTRIES) || snapshot_pages(s, replacing, (unsigned)length, (unsigned)size, value == NULL) >= PAGES) return -ENOSPC;
-    if (s->bank < 0 || s->next_page == PAGES) return compact(s, name, (unsigned)length, value, (unsigned)size, replacing);
+    if ((replacing < 0 && s->count == GMK_SETTINGS_ENTRIES) || snapshot_pages(s, replacing, n, (unsigned)size, value == NULL) >= PAGES) return -ENOSPC;
+    if (s->bank < 0 || s->next_page == PAGES) return compact(s, encoded, n, value, (unsigned)size, replacing);
     uint8_t page[GMK_SETTINGS_PAGE];
     page_begin(page, JOURNAL, s->generation, s->next_page);
-    put_record(page + HEADER, name, (unsigned)length, value, (unsigned)size);
+    put_record(page + HEADER, encoded, n, value, (unsigned)size);
     uint32_t offset = (unsigned)s->bank * GMK_SETTINGS_BANK + s->next_page * GMK_SETTINGS_PAGE;
-    int      rc     = write_checked(s, offset, page, (unsigned)(4 + length + size));
+    int      rc     = write_checked(s, offset, page, (unsigned)(4 + n + size));
     if (rc) return rc;
     rc = apply(s, offset + HEADER, false);
     if (rc) {
@@ -267,11 +327,15 @@ int gmk_settings_store_save(gmk_settings_store_t *s, const char *name, const voi
 int gmk_settings_store_get(const gmk_settings_store_t *s, const char *name, const uint8_t **value, size_t *size) {
     if (!s || !name || !value || !size) return -EINVAL;
     if (s->fault) return -EIO;
-    int i = find(s, name, strlen(name));
+    size_t length = strnlen(name, GMK_SETTINGS_NAME_MAX + 1);
+    if (!length || length > GMK_SETTINGS_NAME_MAX) return -EINVAL;
+    uint8_t  encoded[GMK_SETTINGS_NAME_MAX];
+    unsigned n = encode_name(name, (unsigned)length, encoded);
+    int      i = find(s, encoded, n);
     if (i < 0) return -ENOENT;
-    const gmk_settings_entry_t *e = &s->entries[i];
-    *value                        = s->bytes + e->name_offset + e->name_size;
-    *size                         = e->value_size;
+    const uint8_t *r = entry(s, (unsigned)i);
+    *value           = r + 4 + r[0];
+    *size            = read16(r + 2);
     return 0;
 }
 
@@ -279,10 +343,9 @@ int gmk_settings_store_entry(const gmk_settings_store_t *s, unsigned index, char
     if (!s || !name || !value || !size) return -EINVAL;
     if (s->fault) return -EIO;
     if (index >= s->count) return -ENOENT;
-    const gmk_settings_entry_t *e = &s->entries[index];
-    memcpy(name, s->bytes + e->name_offset, e->name_size);
-    name[e->name_size] = 0;
-    *value             = s->bytes + e->name_offset + e->name_size;
-    *size              = e->value_size;
+    const uint8_t *r = entry(s, index);
+    decode_name(r, name);
+    *value = r + 4 + r[0];
+    *size  = read16(r + 2);
     return 0;
 }

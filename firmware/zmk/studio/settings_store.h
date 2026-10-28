@@ -9,12 +9,11 @@
 #define GMK_SETTINGS_BYTES (2U * GMK_SETTINGS_BANK)
 #define GMK_SETTINGS_NAME_MAX 63U
 #define GMK_SETTINGS_VALUE_MAX 128U
-#define GMK_SETTINGS_ENTRIES 192U
+#define GMK_SETTINGS_ENTRIES 320U
 
 typedef bool (*gmk_settings_write_fn)(void *context, uint32_t offset, const uint8_t page[GMK_SETTINGS_PAGE]);
 typedef struct {
-    uint16_t name_offset;
-    uint8_t  name_size, value_size;
+    uint16_t record_offset;
 } gmk_settings_entry_t;
 
 typedef struct {

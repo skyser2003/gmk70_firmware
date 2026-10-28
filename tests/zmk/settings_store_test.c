@@ -94,7 +94,7 @@ static void bounds_and_corruption(void) {
     assert(gmk_settings_store_save(&s, "key", value, sizeof(value)) == -E2BIG);
     assert(gmk_settings_store_save(&s, "", value, 1) == -EINVAL);
     assert(f.calls == 0);
-    for (unsigned i = 0; i < 192; ++i) {
+    for (unsigned i = 0; i < GMK_SETTINGS_ENTRIES; ++i) {
         char name[24];
         snprintf(name, sizeof(name), "key/%u", i);
         assert(gmk_settings_store_save(&s, name, &i, sizeof(i)) == 0);
@@ -102,7 +102,7 @@ static void bounds_and_corruption(void) {
     unsigned calls = f.calls;
     assert(gmk_settings_store_save(&s, "extra", value, 1) == -ENOSPC && f.calls == calls);
     mount(&s, &f);
-    for (unsigned i = 0; i < 192; ++i) {
+    for (unsigned i = 0; i < GMK_SETTINGS_ENTRIES; ++i) {
         char name[24];
         snprintf(name, sizeof(name), "key/%u", i);
         expect(&s, name, &i, sizeof(i));
@@ -233,10 +233,116 @@ static void format_edges(void) {
     /* An unsupported version is not accepted as this format. Destroy the
      * alternate bank so there is no valid fallback. */
     memset(f.bytes + (1 - s.bank) * GMK_SETTINGS_BANK, 0xff, GMK_SETTINGS_BANK);
-    commit[4] = 2;
+    commit[4] = 3;
     assert(gmk_settings_store_mount(&s, f.bytes, write_page, &f) == -EIO);
 }
+static void four_layers(void) {
+    flash_t              f;
+    gmk_settings_store_t s;
+    blank(&f);
+    mount(&s, &f);
+    uint8_t binding[12];
+    memset(binding, 0x5b, sizeof(binding));
+    for (unsigned l = 0; l < 4; ++l)
+        for (unsigned k = 0; k < 72; ++k) {
+            char name[32];
+            snprintf(name, sizeof(name), "keymap/l/%u/%u", l, k);
+            assert(gmk_settings_store_save(&s, name, binding, sizeof(binding)) == 0);
+        }
+    for (unsigned i = 0; i < 16; ++i) {
+        char name[32], device[32];
+        snprintf(name, sizeof(name), "behavior/local_id/%u", i);
+        memset(device, 'b', sizeof(device));
+        assert(!gmk_settings_store_save(&s, name, device, sizeof(device)));
+    }
+    for (unsigned l = 0; l < 4; ++l) {
+        char name[32];
+        snprintf(name, sizeof(name), "keymap/l_n/%u", l);
+        assert(!gmk_settings_store_save(&s, name, "ABCDEFGHIJKLMNOPQRS", 19));
+    }
+    uint8_t order[] = {0, 1, 2, 3}, rgb[16] = {1};
+    assert(!gmk_settings_store_save(&s, "keymap/layer_order", order, sizeof(order)));
+    assert(!gmk_settings_store_save(&s, "rgb/underglow/state", rgb, sizeof(rgb)));
+    mount(&s, &f);
+    assert(s.count == 310);
+    for (unsigned l = 0; l < 4; ++l)
+        for (unsigned k = 0; k < 72; ++k) {
+            char name[32];
+            snprintf(name, sizeof(name), "keymap/l/%u/%u", l, k);
+            expect(&s, name, binding, sizeof(binding));
+        }
+    /* Exercise several subsequent full compactions at the capacity boundary. */
+    for (unsigned i = 0; i < 90; ++i) {
+        binding[0] = (uint8_t)i;
+        assert(!gmk_settings_store_save(&s, "keymap/l/3/71", binding, sizeof(binding)));
+        mount(&s, &f);
+        expect(&s, "keymap/l/3/71", binding, sizeof(binding));
+    }
+}
+/* Construct the installed v1 representation independently from the writer. */
+static void legacy_page(uint8_t *p, unsigned kind, unsigned sequence, const uint8_t value[12]) {
+    memset(p, 0xff, 256);
+    memset(p, 0, 32);
+    gmk_write_u32(p, 0x534b4d47);
+    p[4] = 1;
+    p[5] = (uint8_t)kind;
+    gmk_write_u32(p + 8, 1);
+    gmk_write_u32(p + 16, sequence);
+    p[6]  = 29;
+    p[32] = 13;
+    p[33] = 0;
+    p[34] = 12;
+    p[35] = 0;
+    memcpy(p + 36, "keymap/l/1/71", 13);
+    memcpy(p + 49, value, 12);
+    recalc(p);
+}
+static void legacy_migration(void) {
+    flash_t              f;
+    gmk_settings_store_t s;
+    blank(&f);
+    uint8_t old[12], newer[12];
+    memset(old, 0x34, sizeof(old));
+    memset(newer, 0x59, sizeof(newer));
+    for (unsigned i = 1; i < 32; ++i)
+        legacy_page(f.bytes + i * 256, i == 1 ? 1 : 2, i, old);
+    uint8_t *commit = f.bytes;
+    legacy_page(commit, 3, 0, old);
+    commit[6] = 12;
+    memset(commit + 32, 0, 224);
+    commit[32] = commit[34] = 1;
+    gmk_write_u32(commit + 36, gmk_crc32(commit + 256, 256));
+    recalc(commit);
+    mount(&s, &f);
+    assert(f.calls == 0 && s.count == 1 && s.next_page == 32);
+    expect(&s, "keymap/l/1/71", old, sizeof(old));
+    for (unsigned op = 1; op <= 2; ++op)
+        for (unsigned cut = 0; cut <= 256; ++cut) {
+            flash_t trial = f;
+            mount(&s, &trial);
+            trial.fail_call = op;
+            trial.tear      = cut;
+            assert(gmk_settings_store_save(&s, "keymap/l/1/71", newer, sizeof(newer)) == -EIO);
+            mount(&s, &trial);
+            const uint8_t *got;
+            size_t         size;
+            assert(!gmk_settings_store_get(&s, "keymap/l/1/71", &got, &size));
+            assert(size == 12 && (!memcmp(got, old, 12) || !memcmp(got, newer, 12)));
+        }
+    mount(&s, &f);
+    assert(!gmk_settings_store_save(&s, "keymap/l/1/71", newer, sizeof(newer)));
+    assert(f.bytes[s.bank * GMK_SETTINGS_BANK + 4] == 2);
+    mount(&s, &f);
+    expect(&s, "keymap/l/1/71", newer, sizeof(newer));
+    char           name[64];
+    const uint8_t *got;
+    size_t         size;
+    assert(!gmk_settings_store_entry(&s, 0, name, &got, &size));
+    assert(!strcmp(name, "keymap/l/1/71"));
+}
 int main(void) {
+    four_layers();
+    legacy_migration();
     basic();
     bounds_and_corruption();
     format_edges();
