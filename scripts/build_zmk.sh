@@ -9,12 +9,20 @@ case "$variant" in
     left-trial|right-trial) board="gmk70_${variant%-trial}"; mode=normal ;;
     wired-updater) ;;
     wired-update-test) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/update-test.conf") ;;
+    wired-studio-updater) extra+=(-DGMK70_STUDIO=ON
+        -DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf"
+        -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.overlay") ;;
     wired-qualification) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.overlay") ;;
     *) printf 'Unsupported experimental ZMK target: %s\n' "$variant" >&2; exit 2 ;;
 esac
 python3 firmware/zmk/tools/workspace.py verify
 zmk_tools="$project_root/firmware/zmk/tools/.venv/bin"
+modules="$project_root/dependencies/modules/hal/cmsis;$project_root/dependencies/modules/lib/gui/lvgl"
+if [[ "$variant" == wired-studio-updater ]]; then
+    modules+=";$project_root/dependencies/modules/lib/nanopb;$project_root/dependencies/modules/msgs/zmk-studio-messages"
+    extra+=(-DNANOPB_PROTOC_EXECUTABLE="$zmk_tools/python-grpc-tools-protoc")
+fi
 for tool in python cmake ninja; do
     [[ -x "$zmk_tools/$tool" ]] || { printf 'Missing pinned ZMK build tools; run make setup-zmk\n' >&2; exit 2; }
 done
@@ -37,7 +45,7 @@ user_cache="$project_root/.work/zmk/cache"
 cmake -S dependencies/zmk/app -B "$build_dir" -G Ninja \
     -DBOARD="$board" \
     -DZephyr_DIR="$ZEPHYR_BASE/share/zephyr-package/cmake" \
-    -DZEPHYR_MODULES="$project_root/dependencies/modules/hal/cmsis;$project_root/dependencies/modules/lib/gui/lvgl" \
+    -DZEPHYR_MODULES="$modules" \
     -DZMK_EXTRA_MODULES="$project_root/firmware/zmk" \
     -DPYTHON_EXECUTABLE="$zmk_tools/python" \
     -DUSER_CACHE_DIR="$user_cache" \

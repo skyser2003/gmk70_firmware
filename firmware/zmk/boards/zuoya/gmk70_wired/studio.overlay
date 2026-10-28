@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* The app-tail settings reservation is outside the admitted load region. */
+&flash0 { reg = <0x08002000 0x1a000>; };
+/ {
+    chosen { zmk,studio-rpc-uart = &studio_uart; };
+};
+&usb0 {
+    studio_uart: studio_uart {
+        compatible = "zephyr,cdc-acm-uart";
+    };
+};
+&{/keymap/base_layer} { display-name = "Base"; };
+&{/keymap/function_layer} { display-name = "Fn"; };

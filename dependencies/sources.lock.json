@@ -48,6 +48,16 @@
       "repository": "https://github.com/zmkfirmware/lvgl.git",
       "commit": "f1db87ee98f1810328a8419572fa42a3b5f352ae",
       "path": "modules/lib/gui/lvgl"
+    },
+    "nanopb": {
+      "repository": "https://github.com/zephyrproject-rtos/nanopb.git",
+      "commit": "7307ce399b81ddcb3c3a5dc862c52d4754328d38",
+      "path": "modules/lib/nanopb"
+    },
+    "zmk-studio-messages": {
+      "repository": "https://github.com/zmkfirmware/zmk-studio-messages.git",
+      "commit": "6cb4c283e76209d59c45fbcb218800cd19e9339d",
+      "path": "modules/msgs/zmk-studio-messages"
     }
   }
 }

@@ -11,6 +11,8 @@ dependencies = [
   "pykwalify==1.8.0",
   "packaging==24.2",
   "intelhex==2.3.0",
+  "protobuf==6.32.1",
+  "grpcio-tools==1.76.0",
 ]
 
 [dependency-groups]

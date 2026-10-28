@@ -13,6 +13,8 @@ uses existing clean checkouts. Dependencies are never patched by this port.
 | Zephyr manifest | [west.yml](https://github.com/zmkfirmware/zephyr/blob/10ba6d0cb38bc3d258775d27982f707599320085/west.yml) | Selects CMSIS `d1b8b20b6278615b00e136374540eb1c00dcabe7`. |
 | CMSIS | [d1b8b20b6278615b00e136374540eb1c00dcabe7](https://github.com/zephyrproject-rtos/cmsis/tree/d1b8b20b6278615b00e136374540eb1c00dcabe7) | ARM core definitions. Apache-2.0 license retained. |
 | LVGL | [f1db87ee98f1810328a8419572fa42a3b5f352ae](https://github.com/zmkfirmware/lvgl/tree/f1db87ee98f1810328a8419572fa42a3b5f352ae) | Required Kconfig definitions referenced unconditionally by pinned ZMK; display code remains disabled. MIT license retained. |
+| nanopb | [7307ce399b81ddcb3c3a5dc862c52d4754328d38](https://github.com/zephyrproject-rtos/nanopb/tree/7307ce399b81ddcb3c3a5dc862c52d4754328d38) | Exact pinned Zephyr optional-manifest revision for Studio protobuf encoding. Upstream license retained. |
+| Studio messages | [6cb4c283e76209d59c45fbcb218800cd19e9339d](https://github.com/zmkfirmware/zmk-studio-messages/tree/6cb4c283e76209d59c45fbcb218800cd19e9339d) | Exact pinned ZMK manifest revision, consumed directly for ordinary Studio RPC. MIT license retained. |
 
 `soc/westberry/wb32fq95/soc.c` adapts the clock and USB electrical sequences
 from Westberry's Apache-2.0

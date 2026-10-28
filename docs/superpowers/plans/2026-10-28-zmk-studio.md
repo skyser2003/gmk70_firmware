@@ -36,11 +36,11 @@
 
 **Interfaces:** `studio_layout.generate(keyboard: Path, via: Path) -> str` emits a physical-layout DTS fragment in maintained matrix order. Build variant `wired-studio-updater` selects it, a bounded code region, standard CDC and Studio settings policy; existing variants retain current metadata/configuration.
 
-- [ ] Write layout tests with hand-checked first row, left Fn `(4,2)` and right space geometry; reject missing/duplicate matrix positions, malformed KLE and non-centi geometry. Observe RED before implementation.
-- [ ] Implement generator and configure-time dependencies before DTS preprocessing; generate only under `.work/zmk/wired-studio-updater/updater/`.
-- [ ] Add exact nanopb `7307ce399b81ddcb3c3a5dc862c52d4754328d38` and Studio-messages `6cb4c283e76209d59c45fbcb218800cd19e9339d` pins from upstream manifests. Lock needed protobuf compiler/runtime tools; explicitly run `make setup-zmk`.
-- [ ] Run generator/workspace Python format, strict mypy and dedicated tests via its uv project; verify clean exact dependencies. Expected: PASS; no device operation.
-- [ ] Commit this deliverable and record test command/results.
+- [x] Write layout tests with hand-checked first row, left Fn `(4,2)` and right space geometry; reject missing/duplicate matrix positions, malformed KLE and non-centi geometry. Observe RED before implementation.
+- [x] Implement generator and configure-time dependencies before DTS preprocessing; generate only under `.work/zmk/wired-studio-updater/updater/`.
+- [x] Add exact nanopb `7307ce399b81ddcb3c3a5dc862c52d4754328d38` and Studio-messages `6cb4c283e76209d59c45fbcb218800cd19e9339d` pins from upstream manifests. Lock needed protobuf compiler/runtime tools; explicitly run `make setup-zmk`.
+- [x] Run generator/workspace Python format, strict mypy and dedicated tests via its uv project; verify clean exact dependencies. Expected: PASS; no device operation.
+- [x] Commit this deliverable and record test command/results.
 
 ### Task 2: Durable page settings and flash ownership
 
