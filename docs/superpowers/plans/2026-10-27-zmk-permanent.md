@@ -221,4 +221,4 @@ INSTALL is needed after verified success. See the durable
 - [x] Prove distinct-image right B→A and left A→B/B→A through LEFT USB; independently verify final A/A identities, 61 seconds both-half health and unchanged residents. Final strict manual stage was unexecuted; final read-only evidence establishes installation without an automatic-restart claim.
 - [x] Record final-image user evidence: typing seems functional, but Fn+Left produced word navigation resembling Ctrl+Left; expected Home is unverified/unexpected, with no established cause.
 - [ ] Verify expected Fn/Home behavior and hardware peer-disconnect release; no further device operation is part of this completed installation phase.
-- [ ] Commit/push reviewed evidence and report current firmware, working features, deferred features and unresolved limits.
+- [x] Commit/push reviewed evidence and report current firmware, working features, deferred features and unresolved limits. Evidence commit `fbbd780` was pushed and independently matched against the remote branch; Fn/Home and peer-release checks remain open above.
