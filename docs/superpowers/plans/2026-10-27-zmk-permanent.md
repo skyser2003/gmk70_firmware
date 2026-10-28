@@ -110,6 +110,24 @@ behavior unchanged. This is a controlled single-variable hypothesis; require
 review, rebuilt A/B/Q and actual automatic native restart evidence before calling
 it a fix. Successful prior staging does not establish its cause either way.
 
+Experiment outcome: the 50-ms startup interval did not restore automatic restart.
+The new A read back correctly and passed fresh health after another joined-left
+USB reconnect. Preserve that failed epoch and remove the isolated timing change
+before testing another behavior. Primary-manual review did not establish a cache
+or oscillator defect; do not change those registers speculatively.
+
+The next concrete board omission is the USB pull-up supply control. Maintained
+`config.h` defines USB_POWER_EN_PIN as B1; `gmk70.c` preloads it low before output
+mode, and `drivers/wireless/transport.c` identifies its connect/disconnect hooks
+as power control for the USB D+ pull-up resistor. Native ZMK never configures B1.
+Add a wired-board-only initializer before USB96 using the existing GPIO driver
+to configure B1 as GPIO_OUTPUT_LOW. Keep its source contract explicit and its
+legacy exclusion tested; preserve unrelated pins. No high pulse, delay, clock,
+watchdog, flash or resident change is justified. Test actual init registration,
+GPIO configuration and attach ordering before a separately reviewed left-only
+automatic restart experiment. The missing initialization is established in the
+source; its causal role in the observed failures still needs hardware proof.
+
 For left staging, coordinate the existing Vial trial client and a temporary qualification HID handle in one process: open the qualification handle only after its unique product enumerates, inspect local health/INFO and old right INFO, optionally BEGIN-clearing only isolated metadata then ABORT, and close it before Vial recovery observation. For right staging, native left USB stays connected: use one shared handle that dispatches namespace0x71 trial packets and namespace0x70/0x72 reads, observe immediately after the successful RUN acknowledgement during the bounded three-second trial, then restore the trial client's request correlation before normal recovery checks. Its existing nine-second post-RUN sleep would miss this window without the inline observer. Budget the existing USB exchange's two-second blocking bound; do not accept replies after observer deadlines. Confirm exact qualification size/CRC and staging health before any right application replacement. Left legacy Vial recovery requires its existing30-second observation; right health-capable Vial recovery requires60 seconds and advancing uptime/feeds. Never invent a retained record or weaken the watchdog recovery checks to advance migration.
 
 - [ ] Freeze reviewed packages and resident identities; fresh backup and read-only running identities. Prove bounded left staging USB/receiver and right Vial transport; do not overwrite executing staging code.
