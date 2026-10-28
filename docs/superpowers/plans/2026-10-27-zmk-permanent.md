@@ -128,6 +128,35 @@ GPIO configuration and attach ordering before a separately reviewed left-only
 automatic restart experiment. The missing initialization is established in the
 source; its causal role in the observed failures still needs hardware proof.
 
+B1 experiment outcome: the separately reviewed new A also failed automatic
+restart verification on 2026-10-28 (16:44:22–16:46:35 UTC). The concurrent USB
+monitor observed removal without return; no right application write followed.
+Preserve this seventh failed device epoch. B1 remains a source-backed board
+initialization repair, but it has not resolved the restart failure. Do not add
+another clock/cache/watchdog behavior change without evidence locating the fault.
+
+The next bounded diagnostic is one separately reviewed, explicitly labeled
+identical-image LEFT reinstall after physical recovery and a fresh 60-second
+health baseline. Keep the proof-stage procedure unchanged. Freeze the exact
+running package, residents and right Vial identity; verify the installer/padding
+lineage supporting matching application pages. The resident should still validate
+staging/application and clear commit, while skipping matching application-page
+erase/program. Require contemporaneous USB removal/reappearance, fresh pre/post
+uptime and feed evidence of an actual restart, exact identities and another
+60-second health window. Same CRC alone cannot prove restart. Record this as a
+diagnostic control, never as a different-image update success or permission for
+right-side progression. Preserve failed reports and keep any manual recovery
+separate. At most one control is planned; no unattended retry loop.
+
+If it returns automatically, investigate dependence on application replacement,
+changed bytes or extra copy time/state. If it fails, application-page replacement
+may not be required, subject to the padding premise; reset, validation, commit
+clearing, resident transfer and application startup remain unresolved. Neither
+outcome identifies cache or watchdog behavior by itself. A future retained boot
+trace requires an independent extraction path while USB is absent; a new USB
+getter alone is insufficient. No automatic fallback is established, and the
+resident remains unchanged.
+
 For left staging, coordinate the existing Vial trial client and a temporary qualification HID handle in one process: open the qualification handle only after its unique product enumerates, inspect local health/INFO and old right INFO, optionally BEGIN-clearing only isolated metadata then ABORT, and close it before Vial recovery observation. For right staging, native left USB stays connected: use one shared handle that dispatches namespace0x71 trial packets and namespace0x70/0x72 reads, observe immediately after the successful RUN acknowledgement during the bounded three-second trial, then restore the trial client's request correlation before normal recovery checks. Its existing nine-second post-RUN sleep would miss this window without the inline observer. Budget the existing USB exchange's two-second blocking bound; do not accept replies after observer deadlines. Confirm exact qualification size/CRC and staging health before any right application replacement. Left legacy Vial recovery requires its existing30-second observation; right health-capable Vial recovery requires60 seconds and advancing uptime/feeds. Never invent a retained record or weaken the watchdog recovery checks to advance migration.
 
 - [ ] Freeze reviewed packages and resident identities; fresh backup and read-only running identities. Prove bounded left staging USB/receiver and right Vial transport; do not overwrite executing staging code.
