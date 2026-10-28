@@ -90,6 +90,26 @@ verified unchanged-Vial returns; do not reuse their failed chains for installs.
 
 Device work uses the existing isolated Windows Python/HID runtime through left USB, both halves joined, normal switches; no driver installation or right-only cable/pad procedure. Freeze the reviewed A/B/qualification artifacts into the current device folder alongside the exact left/right Vial recovery packages and native backup recorded in its baseline JSON. Gate each dependent write on verified current application and resident identities. Device scripts are explicit operations, never called from build/test/setup, and require offline ordering/identity tests plus review before execution.
 
+Native restart investigation (2026-10-28): initial Vial-to-A and subsequent
+healthy native A-to-B transfers both failed automatic restart verification.
+After each joined-left USB reconnect, the requested new application and unchanged
+residents read back correctly and left health passed a fresh 60-second window.
+Right remains Vial and must remain untouched until a different-image native left
+update automatically restarts and passes health. Preserve both failed reports;
+post-reconnect readback does not turn them into automated update successes.
+
+Test one startup hypothesis before further migration: QMK explicitly drives USB
+D+ low for 50 ms before connecting after reset; native startup has no equivalent
+interval. Add a wired-board-only APPLICATION89 initializer that calls the existing
+electrical disconnect helper, then sleeps 50 ms in the initialization thread,
+before service90 and USB96. Keep the delay outside the USB driver's interrupt
+lock. Exercise actual initialization registration and driver attach in a focused
+failing regression, including enabled interrupts during sleep and exclusion from
+legacy trial builds. Leave reset, oscillator, watchdog, flash and resident
+behavior unchanged. This is a controlled single-variable hypothesis; require
+review, rebuilt A/B/Q and actual automatic native restart evidence before calling
+it a fix. Successful prior staging does not establish its cause either way.
+
 For left staging, coordinate the existing Vial trial client and a temporary qualification HID handle in one process: open the qualification handle only after its unique product enumerates, inspect local health/INFO and old right INFO, optionally BEGIN-clearing only isolated metadata then ABORT, and close it before Vial recovery observation. For right staging, native left USB stays connected: use one shared handle that dispatches namespace0x71 trial packets and namespace0x70/0x72 reads, observe immediately after the successful RUN acknowledgement during the bounded three-second trial, then restore the trial client's request correlation before normal recovery checks. Its existing nine-second post-RUN sleep would miss this window without the inline observer. Budget the existing USB exchange's two-second blocking bound; do not accept replies after observer deadlines. Confirm exact qualification size/CRC and staging health before any right application replacement. Left legacy Vial recovery requires its existing30-second observation; right health-capable Vial recovery requires60 seconds and advancing uptime/feeds. Never invent a retained record or weaken the watchdog recovery checks to advance migration.
 
 - [ ] Freeze reviewed packages and resident identities; fresh backup and read-only running identities. Prove bounded left staging USB/receiver and right Vial transport; do not overwrite executing staging code.
