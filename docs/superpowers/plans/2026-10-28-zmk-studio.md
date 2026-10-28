@@ -73,8 +73,8 @@
 
 **Interfaces:** Use maintained firmware updater with explicit LEFT target; use standard Studio serial protocol with pinned messages for readback and reversible save/reload. Preserve a frozen current A recovery package and exact residents before writing.
 
-- [ ] Dispatch one fresh whole-feature code review against this task's base, spec/plan and review-focus cases; settle findings and verify fixes before hardware.
-- [ ] Independently validate actual package hashes/build facts, current LEFT/RIGHT identities and health through existing USB, then freeze reviewed image/operator inputs.
-- [ ] Install only LEFT Studio. Wait for verified return or explicit restart timeout, inspect actual USB presence, and use joined-left reconnection only if necessary. Never replay INSTALL to fix a timeout.
-- [ ] Verify keyboard/Feature updater and standard CDC serial, actual Studio device/layout/keymap RPC, both-half health and unchanged residents. Test a reversible keymap save, reload and compatible LEFT self-update retention; restore original mapping and reverify. Keep RIGHT image unchanged.
-- [ ] Record actual typing/UI confirmation when available; keep unsupported/unmeasured cases explicit. Update usage instructions, commit/push reviewed results, preserve evidence privately and finish.
+- [x] Dispatch one fresh whole-feature code review against this task's base, spec/plan and review-focus cases; settle findings and verify fixes before hardware.
+- [x] Independently validate actual package hashes/build facts, current LEFT/RIGHT identities and health through existing USB, then freeze reviewed image/operator inputs.
+- [x] Install only LEFT Studio. Wait for verified return or explicit restart timeout, inspect actual USB presence, and use joined-left reconnection only if necessary. Never replay INSTALL to fix a timeout.
+- [x] Verify keyboard/Feature updater and standard CDC serial, actual Studio device/layout/keymap RPC, both-half health and unchanged residents. Test a reversible keymap save, reload and compatible LEFT self-update retention; restore original mapping and reverify. Keep RIGHT image unchanged.
+- [x] Record actual typing/UI confirmation when available; keep unsupported/unmeasured cases explicit. Update usage instructions, commit/push reviewed results, preserve evidence privately and finish.

@@ -1,9 +1,17 @@
 # GMK70 ZMK wired development and staging trials
 
-Current hardware milestone/status and the updater verification/fallback workflow are
+The [Studio central](../../docs/ZMK-STUDIO.md) is now installed and verified on
+LEFT, with the original permanent RIGHT unchanged. The local Studio app connects,
+saves bindings/layer names, and preserves them across a distinct-image LEFT
+update. The original Base/Fn map was restored. Build it with
+`make build-zmk-wired-studio-updater`; it is a separate unlocked development
+variant with standard CDC, Feature updater and a 16 KiB settings reservation.
+See [Studio validation](../../docs/validation/2026-10-28-zmk-studio/README.md).
+
+The earlier permanent milestone/status and updater verification/fallback workflow are
 recorded in [Permanent wired ZMK](../../docs/ZMK-PERMANENT-WIRED.md) and its
 [sanitized evidence](../../docs/validation/2026-10-28-zmk-permanent/README.md).
-Both halves now run normal permanent A, with fresh final A/A readback and
+At that earlier checkpoint, both halves ran normal permanent A, with final A/A readback and
 61 seconds of both-half health. Distinct-image left/right updates through LEFT
 USB passed. Automatic restart remains unresolved; joined-left cycling is a
 tested fallback after a restart timeout, and a transfer ACK alone is not success.
@@ -53,8 +61,9 @@ evidence. `--inspect-only --qualification` reads bounded staging identity/health
 without claiming permanent watchdog service. The callable `HealthReader` accepts
 an existing link so qualification scripts can share one HID handle.
 
-Radio, RGB, encoder rotation, power saving, Studio and persistent ZMK settings
-remain outside this wired milestone. Building/native testing cannot establish
+Radio, RGB, encoder rotation and power saving remain outside this wired
+milestone. Studio and persistent settings are provided by the separate Studio
+central described above. Building/native testing cannot establish
 silicon timing, USB/UART behavior or physical key input. An inherited permanent
 IWDG also makes arbitrary warm rollback to frozen Vial unqualified; retain the
 separate recovery procedure and do not fabricate a trial record.

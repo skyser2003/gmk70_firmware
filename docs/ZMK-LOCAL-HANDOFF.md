@@ -2,6 +2,18 @@
 
 ## Current status — 2026-10-28
 
+[Wired ZMK Studio](ZMK-STUDIO.md) is now implemented and hardware-verified.
+LEFT runs the experimental unlocked Studio central (61,696 bytes/CRC32
+`1010245074`); RIGHT remains permanent normal A (36,576/`1296309606`). The installed
+local Studio app connects via USB serial COM3, displays 72 keys and Base/Fn, and
+saved edits survived a distinct-image LEFT update. The full original map was
+restored and reloaded. Final both-half health passed 61 seconds with zero
+transport/relay retries; residents remain `1770733249`. No RIGHT flash or pad
+recovery was used. Warm restart still needs the documented joined-left cycle
+after a timeout. See [Studio validation](validation/2026-10-28-zmk-studio/README.md).
+
+## Previous permanent checkpoint — 2026-10-28
+
 The permanent wired milestone has superseded the software-only/staging handoff
 below. Read [Permanent wired ZMK](ZMK-PERMANENT-WIRED.md) and the
 [sanitized validation](validation/2026-10-28-zmk-permanent/README.md) first.

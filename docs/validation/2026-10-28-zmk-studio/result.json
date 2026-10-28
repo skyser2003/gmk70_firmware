@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-28",
+  "firmware_source": "f6cbeda",
+  "left": {
+    "variant": "wired-studio-updater",
+    "profile": "zmk-studio",
+    "size": 61696,
+    "crc32": 1010245074,
+    "sha256": "1aa746786927b03d3a19e2a13aeda33f50ef4a72b3b62c336c5256907df88d51"
+  },
+  "right": {
+    "variant": "original permanent normal A",
+    "size": 36576,
+    "crc32": 1296309606,
+    "flashed": false
+  },
+  "resident_crc32_both": 1770733249,
+  "resident_writes": false,
+  "local_studio": {
+    "application": "installed Windows ZMK Studio",
+    "usb_serial": "COM3",
+    "device_name": "GMK70 ZMK Studio",
+    "physical_keys": 72,
+    "layers": [
+      "Base",
+      "Fn"
+    ],
+    "bindings_per_layer": 72,
+    "storage_unlocked": true,
+    "key_binding_save_reload_verified": true,
+    "nineteen_character_layer_name_save_reload_verified": true,
+    "distinct_image_update_preserved_settings": true,
+    "original_full_keymap_restored_and_reloaded": true,
+    "unsaved_changes": false
+  },
+  "health": {
+    "verified_window_seconds": 61.046999999991385,
+    "transport_retries": 0,
+    "relay_retries": 0,
+    "reconnects": 0
+  },
+  "flash_bytes": 61696,
+  "static_ram_bytes": 26632,
+  "automatic_warm_restart_verified": false,
+  "joined_left_power_cycles": 2,
+  "install_replays": 0,
+  "right_only_usb_or_pad_recovery": false,
+  "physical_typing_observed_this_studio_run": false,
+  "real_brownout_tested": false
+}

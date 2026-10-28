@@ -6,7 +6,7 @@ Bluetooth and 2.4 GHz. Native ZMK development currently targets wired USB.
 ## Base versions
 
 - **QMK/VIA:** official [QMK 0.34.4](https://github.com/qmk/qmk_firmware/tree/0.34.4).
-- **ZMK:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), native permanent wired updater and separate bounded staging targets.
+- **ZMK:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), native wired firmware, an experimental Studio central, updater and separate bounded staging targets.
 - **Vial:** [vial-qmk at `dd43959ae5c0`](https://github.com/vial-kb/vial-qmk/commit/dd43959ae5c08d8a28d38a1acf7b04e86b14a344).
 
 Upstream dependencies remain unmodified. Exact framework, library and
@@ -31,14 +31,18 @@ integration are selected separately from `firmware/qmk-via/` and
   a separate [radio diagnostic build](docs/RADIO-DIAGNOSTICS.md) provides RAM counters.
 
 Complete stock equivalence and hardware validation of the latest Vial/updater
-changes remain unverified. The [permanent wired ZMK milestone](docs/ZMK-PERMANENT-WIRED.md)
-now has permanent normal ZMK on both halves: final A/A identity/resident checks
-and 61 seconds of both-half health passed. Different-image left and right updates
-through left USB were demonstrated. Automatic restart remains unresolved; a
-joined-left USB cycle is a tested fallback after a restart-verification timeout,
-followed by actual inspection/health verification.
-ZMK is an unlocked development build with a static keymap; wireless and the other
-deferred features are not part of this milestone.
+changes remain unverified. Native wired ZMK is permanent on both halves. The
+[Studio central](docs/ZMK-STUDIO.md) is installed on LEFT, with the original
+normal RIGHT unchanged. The local Studio app displays 72 keys and Base/Fn, saves
+edits and retained them across a distinct-image LEFT update. The original map
+was restored. Final both-half health passed 61 seconds, with unchanged resident
+CRCs and no transport/relay retries.
+
+ZMK remains an explicitly unlocked development build. Automatic warm restart is
+unresolved; use the documented joined-left cycle only after a restart timeout,
+then verify the actual image. Wireless and other deferred features remain outside
+this milestone. The [earlier permanent qualification](docs/ZMK-PERMANENT-WIRED.md)
+records distinct-image left/right updates and the original A/A checkpoint.
 
 ## Build
 
@@ -64,6 +68,7 @@ Choose a build target:
 | `make build-vial` | Normal Vial firmware |
 | `make build-vial-updater` | Vial firmware with split updater |
 | `make build-vial-radio-diagnostic` | Optional Vial updater with RAM radio capture |
+| `make build-zmk-wired-studio-updater` | LEFT Studio central, persistent settings and Feature updater |
 | `make build-zmk-wired-updater` | Native permanent wired ZMK application/updater A |
 | `make build-zmk-wired-update-test` | Different native wired update-test image B |
 | `make build-zmk-wired-qualification` | Bounded no-feed staging Q; trial packages only |
@@ -72,10 +77,11 @@ Choose a build target:
 
 Builds write firmware, checksums and matching source archives to
 `artifacts/qmk/<variant>/` or `artifacts/vial/<variant>/`. ZMK outputs are under
-`artifacts/zmk/{wired-updater,wired-update-test,wired-qualification,left-trial,right-trial}/`;
+`artifacts/zmk/{wired-studio-updater,wired-updater,wired-update-test,wired-qualification,left-trial,right-trial}/`;
 see the [build instructions](firmware/zmk/README.md). Native A/B packages use
 `profile=zmk`, require the exact existing resident and do not emit a full initial
-installer. Qualification Q emits target-specific staging packages only.
+installer. The LEFT-only Studio package uses `profile=zmk-studio`, with a 104KiB
+application limit and separate 16KiB settings reservation. Qualification Q emits target-specific staging packages only.
 Builds read `dependencies/` and `firmware/` directly, without copying or symlinking
 source trees. Generated headers and objects live under `.work/`; `make clean`
 removes them. See [external-source builds](docs/EXTERNAL-BUILD.md).
@@ -93,7 +99,8 @@ artifacts. See [release instructions](docs/RELEASING.md).
 
 ## Using the firmware
 
-For native ZMK, follow the [wired status and manual updater workflow](docs/ZMK-PERMANENT-WIRED.md).
+For native ZMK, see the [Studio workflow](docs/ZMK-STUDIO.md) and the
+[wired updater workflow](docs/ZMK-PERMANENT-WIRED.md).
 Transfer and installation verification are separate; never replay INSTALL after a
 restart-verification timeout. The user reports typing seems functional and
 Fn+number sends function keys. A follow-up Windows observation confirmed Fn+Left/Right as
