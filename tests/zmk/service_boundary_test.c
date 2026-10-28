@@ -98,9 +98,6 @@ void gmk_zmk_raw_hid_poll(const gmk_zmk_update_env_t *env) {
         mutate_gates(change_after_admission);
     }
 }
-void k_thread_start(void *thread) {
-    (void)thread;
-}
 void k_sleep(int ms) {
     assert(ms == 1);
     if (traffic)

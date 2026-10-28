@@ -7,7 +7,7 @@
 #include <string.h>
 static jmp_buf              leave_worker;
 static bool                 watchdog_ok = true;
-static unsigned             feeds, steps, starts, reset_calls, early_calls, raw_polls;
+static unsigned             feeds, steps, reset_calls, early_calls, raw_polls;
 static gmk_zmk_update_env_t observed;
 static void (*wire_handler)(const uint8_t[32], uint8_t[32]);
 static int raw_init_result;
@@ -57,10 +57,6 @@ void gmk_zmk_receiver_step(const gmk_zmk_update_env_t *env) {
     ++steps;
     observed = *env;
 }
-void k_thread_start(void *thread) {
-    (void)thread;
-    ++starts;
-}
 void k_sleep(int ms) {
     assert(ms > 0);
     longjmp(leave_worker, 1);
@@ -75,7 +71,7 @@ void sys_reboot(int type) {
 #include "service.c"
 int main(void) {
     assert(watchdog_init() == 0 && early_calls == 1);
-    assert(service_init() == 0 && starts == 1 && wire_handler);
+    assert(service_init() == 0 && wire_handler);
     if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
     assert(steps == 1 && raw_polls == 1 && observed.uptime_ms == 1234 && observed.matrix_events == 0);
 #ifdef CONFIG_GMK70_STAGING_QUALIFICATION
@@ -92,7 +88,7 @@ int main(void) {
     if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
     assert(feeds == previous && !observed.watchdog_ready);
     raw_init_result = -1;
-    assert(service_init() == -1 && starts == 1);
+    assert(service_init() == -1);
     gmk_zmk_update_reset();
     assert(reset_calls == 1);
     puts("ZMK worker/watchdog service tests passed");

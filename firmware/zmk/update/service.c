@@ -8,7 +8,9 @@
 #include <zmk/usb.h>
 
 /* Written before any threads/callbacks run, immutable thereafter. */
-static bool     watchdog_ready;
+static bool watchdog_ready;
+/* APPLICATION init publishes success before Zephyr starts static threads. */
+static bool     service_ready;
 static uint32_t feed_calls;
 
 static int watchdog_init(void) {
@@ -51,6 +53,7 @@ static void worker(void *a, void *b, void *c) {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
     ARG_UNUSED(c);
+    if (!service_ready) return;
     for (;;) {
         struct gmk_wired_stats stats;
         /* Never enqueue this worker behind the responder/scanner mutex.
@@ -74,7 +77,9 @@ static void worker(void *a, void *b, void *c) {
         k_sleep(K_MSEC(1));
     }
 }
-K_THREAD_DEFINE(update_worker, 2048, worker, NULL, NULL, NULL, 6, 0, SYS_FOREVER_MS);
+/* Static thread setup runs after APPLICATION init in the pinned Zephyr.
+ * Autostart then; k_thread_start() from service_init would precede setup. */
+K_THREAD_DEFINE(update_worker, 2048, worker, NULL, NULL, NULL, 6, 0, 0);
 
 static int service_init(void) {
     int result = gmk_zmk_raw_hid_init();
@@ -83,7 +88,7 @@ static int service_init(void) {
     env.uptime_ms            = k_uptime_get_32();
     gmk_zmk_receiver_init(&env);
     gmk_wired_set_update_handler(peer_receive);
-    k_thread_start(update_worker);
+    service_ready = true;
     return 0;
 }
 /* HID1 must be registered before keyboard HID0 (95) enables USB (96). */

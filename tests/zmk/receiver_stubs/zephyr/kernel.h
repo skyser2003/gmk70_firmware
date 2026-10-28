@@ -45,7 +45,7 @@ static inline int k_msgq_get(struct k_msgq *q, void *data, int timeout) {
 }
 #define K_FOREVER (-1)
 #define K_MSEC(x) (x)
-#define K_THREAD_DEFINE(name, stack, fn, a, b, c, prio, opts, delay) static void *name = (void *)&fn
+#define K_THREAD_DEFINE(name, stack, fn, a, b, c, prio, opts, delay) static void *name __attribute__((used)) = (void *)&fn
 void     k_thread_start(void *);
 void     k_sleep(int);
 uint32_t k_uptime_get_32(void);
