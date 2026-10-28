@@ -135,13 +135,17 @@ The strict `verify-left-A-final` manual stage was **not executed** because no
 final cycle confirmation was available. No confirmation was invented. The final
 physical action is unknown, so this result proves installed A/A and updating,
 not automatic restart or completion of every guarded manual stage. The user
-reports typing seems functional. Fn+Left produced word navigation resembling
-Ctrl+Left, so the expected Home action is unexpected/unverified; no cause has
-been established. The actual compiled normal A mapping has `&mo 1` at left
-row 4/column 2 and HID Home (`0x7004a`) on the function-layer Left position;
-that confirms intent, not the observed hardware event or its cause. Hardware
-peer-disconnect release remains untested. A
-zero/unavailable matrix-event count is not typing evidence.
+reports typing seems functional and Fn+number produces function keys. An initial
+Fn+Left test in this input field appeared to jump by words. A follow-up,
+user-confirmed Left / Fn+Left / Fn+Right sequence was observed as Windows
+Left / Home / End, with no Ctrl held in any of the 61 recorded navigation states.
+Separate Ctrl presses were visible to the same observer. This confirms the
+tested mappings at the OS key-state boundary; it does not localize the field's
+visual navigation behavior or constitute raw USB capture. The actual compiled
+normal A mapping agrees: `&mo 1` at left row 4/column 2, HID Home (`0x7004a`)
+and End (`0x7004d`) on the function-layer arrows. No firmware change was needed.
+Hardware peer-disconnect release remains untested. A zero/unavailable
+matrix-event count is not typing evidence.
 
 There is no old-application rollback slot or proven universal automatic fallback.
 Joined-left cycling cannot repair every possible unreachable right image. Arbitrary

@@ -122,6 +122,9 @@ The final independently healthy A/A result does not retroactively prove automati
 restart or relabel prior failures. Future cycling is fallback only after failed
 return/verification, never mandatory after verified success.
 
-The final user observation is limited: typing seems functional, while Fn+Left
-produced word navigation and expected Home remains unverified/unexpected. No
-cause was inferred and no firmware change followed from that observation.
+The initial user observation was limited: typing seemed functional, while Fn+Left
+appeared to produce word navigation. A follow-up confirmed Fn+number function
+keys and, during the user-confirmed navigation sequence, Windows Left/Home/End
+states with no Ctrl held. This validates the tested Fn mappings at the OS state
+boundary without establishing raw USB events or the cause of the input field's
+visual behavior. No firmware change followed from either observation.

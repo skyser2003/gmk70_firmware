@@ -37,7 +37,15 @@ uptime 72246→133181ms/feed 59347→109441. Final independent evidence digests:
 restart failures as failures. [Workflow decision and review readiness](workflow-decision.md)
 records the rationale and limits. Full immutable reports/reviews and native
 configuration backups remain private; no post-ZMK settings readback is claimed.
-The user reports typing seems functional. Fn+Left produced whole-word navigation
-resembling Ctrl+Left, so the expected Home action remains unverified/unexpected,
-with no established cause. Hardware peer-disconnect release is untested.
-Matrix-event zero/unavailable supplies no physical-key proof.
+The user reports typing seems functional and Fn+number produces function keys.
+Fn+Left initially appeared to jump by words in this input field. A follow-up
+user-confirmed Left / Fn+Left / Fn+Right sequence produced Windows Left / Home /
+End states. All 61 navigation states lacked Ctrl; separate Ctrl presses were
+observed. The bounded observer used only the current-down high bit of
+[GetAsyncKeyState](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getasynckeystate)
+for navigation/modifier keys and recorded no text. Its source-report SHA256 is
+`bb5b414db6a18b7439d913edbc9f8b30a0ab62cb72ac58e473e088e11a9b419c`.
+The tested Fn mappings pass at the OS state boundary. This is not device-specific
+raw USB evidence, and the field's visual behavior remains unlocalized. No
+firmware change followed. Hardware peer-disconnect release remains untested;
+matrix-event zero/unavailable supplies no physical-key proof.

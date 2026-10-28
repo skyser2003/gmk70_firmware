@@ -729,7 +729,6 @@
     }
   ],
   "pending": {
-    "Fn_expected_Home": "unverified/unexpected: user reports word navigation",
     "peer_disconnect_release": "untested on hardware"
   },
   "privacy": "Allowlisted counts/identities/timing/hashes only; no HID paths, serials or configuration contents",
@@ -826,15 +825,45 @@
     "source": "user report relayed by parent after final A/A verification",
     "verbatim": "It seems to work,, but what is that key? It seems to work as control, it jumps over a whole word as if ctrl + arrow key would do.",
     "typing": "seems functional; user report only",
-    "Fn_plus_Left": "whole-word navigation reported; expected Home unverified/unexpected",
-    "cause": "not established",
-    "Fn_pass": false,
+    "Fn_plus_Left": "initial apparent word navigation; follow-up observed Windows Home",
+    "cause": "input field visual behavior not localized",
+    "Fn_pass": true,
     "peer_disconnect_release": "untested",
     "compiled_mapping": {
       "source": "parent inspection of actual normal A zephyr.dts",
       "Fn": "physical transform index63 = RC(4,2), binding &mo 1",
       "Fn_Left": "function-layer left-arrow index69 = HID Home 0x7004a",
       "limit": "intended compiled mapping; does not establish hardware event behavior or cause"
+    },
+    "Fn_pass_scope": "User-reported Fn+number function keys and user-confirmed Fn+Left/Right observed as Windows Home/End; not raw USB capture",
+    "follow_up": {
+      "user_report": "I tested in this input field.  fn+number works as function keys, but arrow key also works as word jumping.  Weird",
+      "user_confirmed_requested_sequence_completed": true,
+      "requested_sequence": [
+        "Left",
+        "Fn+Left",
+        "Fn+Right"
+      ],
+      "observed_first_navigation_states": [
+        "Left",
+        "Home",
+        "End"
+      ],
+      "first_navigation_elapsed_seconds": [
+        124.172,
+        125.922,
+        126.329
+      ],
+      "method": "Windows GetAsyncKeyState current-down high bit; navigation/modifiers only",
+      "finished_at_utc": "2026-10-28T19:06:12.637688+00:00",
+      "duration_seconds": 180.0,
+      "state_count": 112,
+      "navigation_state_count": 61,
+      "navigation_states_with_ctrl": 0,
+      "separate_ctrl_state_count": 3,
+      "source_report_sha256": "bb5b414db6a18b7439d913edbc9f8b30a0ab62cb72ac58e473e088e11a9b419c",
+      "limitations": "OS-level state, no device attribution or raw USB proof; short presses may be missed; no observed key is not proof of absence",
+      "firmware_changed": false
     }
   }
 }

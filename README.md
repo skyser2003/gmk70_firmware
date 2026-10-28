@@ -95,8 +95,9 @@ artifacts. See [release instructions](docs/RELEASING.md).
 
 For native ZMK, follow the [wired status and manual updater workflow](docs/ZMK-PERMANENT-WIRED.md).
 Transfer and installation verification are separate; never replay INSTALL after a
-restart-verification timeout. The user reports typing seems functional; Fn+Left
-produced word navigation, so the expected Home action remains unverified.
+restart-verification timeout. The user reports typing seems functional and
+Fn+number sends function keys. A follow-up Windows observation confirmed Fn+Left/Right as
+Home/End without Ctrl held; the input field's word-like navigation is not localized.
 
 For normal QMK/Vial releases, back up your configuration before updating and
 install the same build on both halves. The experimental ZMK trials have separate

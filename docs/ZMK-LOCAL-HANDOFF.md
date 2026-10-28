@@ -12,8 +12,10 @@ Automatic restart remains unresolved; a joined-left USB cycle is a tested fallba
 when restart verification times out, followed by read-only verification. The final
 strict manual stage was unexecuted because cycle confirmation was unavailable;
 independent final readback/health establishes A/A without an automatic-restart
-claim. The user reports typing seems functional, but Fn+Left produced word
-navigation; expected Home remains unverified. Hardware peer-release is untested.
+claim. The user reports typing seems functional and Fn+number sends function keys.
+Follow-up Windows observation confirmed Fn+Left/Right as Home/End without Ctrl held;
+the input field's word-like navigation remains unexplained. Hardware peer-release
+is untested.
 
 Native permanent source is `0554dff`; the manual plan is `0e0a699`. Maintained
 integration remains in this repository. Existing private configuration backups
