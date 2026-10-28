@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "failures": [
+    {
+      "attempt": "zmk-permanent-2026-10-27",
+      "stage": "qualify-left",
+      "outcome": "FAILED",
+      "failure_category": "qualification observer failed",
+      "source_report_sha256": "000e143c94d968c33c5b8153fad3487059cdbba2902af63c4a41194859a44485",
+      "started_at": "2026-10-27T21:15:00.098436+00:00",
+      "finished_at": "2026-10-27T21:15:53.641074+00:00",
+      "observer_verified": false,
+      "recovery_verified": true,
+      "staged_record_identity": {
+        "size": 36076,
+        "crc": 1368027226,
+        "phase": 3,
+        "reset_flags": 36
+      },
+      "native_Q_runtime_observed": false
+    },
+    {
+      "attempt": "zmk-permanent-timed-2026-10-27",
+      "stage": "qualify-left",
+      "outcome": "FAILED",
+      "failure_category": "qualification observer failed",
+      "source_report_sha256": "0c433c4ae3d9c937950aa929e5a1008976600da1391a89246d2dde44f3eaa179",
+      "started_at": "2026-10-27T21:40:57.665084+00:00",
+      "finished_at": "2026-10-27T21:41:54.343176+00:00",
+      "observer_verified": false,
+      "recovery_verified": true,
+      "staged_record_identity": {
+        "size": 36076,
+        "crc": 1368027226,
+        "phase": 3,
+        "reset_flags": 36
+      },
+      "native_Q_runtime_observed": false
+    },
+    {
+      "attempt": "zmk-permanent-present-2026-10-27",
+      "stage": "qualify-left",
+      "outcome": "FAILED",
+      "failure_category": "qualification observer failed",
+      "source_report_sha256": "ff3cac15871a18f4100582f316d0321982bd3c8a69e8ce6b0e837f43cb03d4f7",
+      "started_at": "2026-10-28T13:29:16.839066+00:00",
+      "finished_at": "2026-10-28T13:30:41.779423+00:00",
+      "observer_verified": false,
+      "recovery_verified": true,
+      "staged_record_identity": {
+        "size": 36076,
+        "crc": 1368027226,
+        "phase": 3,
+        "reset_flags": 36
+      },
+      "native_Q_runtime_observed": false
+    },
+    {
+      "attempt": "zmk-permanent-worker-start-2026-10-28",
+      "stage": "install-left-A",
+      "outcome": "FAILED",
+      "failure_category": "automatic restart verification failed",
+      "source_report_sha256": "42b9467e9b41215fb812a114cd77f7acac9d1687a721ecd2c84a08f7b598ae86",
+      "started_at": "2026-10-28T13:58:18.132525+00:00",
+      "finished_at": "2026-10-28T14:17:40.977444+00:00",
+      "requested_identity": {
+        "app_size": 36516,
+        "app_crc": 22835769,
+        "app_sha256": "de6dcdb46d7a04f96ce4f46c0da8d8f2ed80ef1a6e8a9ab53c1a7124f7a3e35a"
+      }
+    },
+    {
+      "attempt": "zmk-permanent-adopt-left-A-2026-10-28",
+      "stage": "install-left-B",
+      "outcome": "FAILED",
+      "failure_category": "automatic restart verification failed",
+      "source_report_sha256": "ab69ad3385ada74c9e8a0f90a7ca54fcde82dda593e017492189064abe5a0bb7",
+      "started_at": "2026-10-28T14:55:56.953389+00:00",
+      "finished_at": "2026-10-28T14:58:09.849045+00:00",
+      "requested_identity": {
+        "app_size": 36540,
+        "app_crc": 3294451973,
+        "app_sha256": "5e5b92194c910441ae449d38c3a58d8eab4651e044fce1dfbcc2c7f3d1eea7d7"
+      }
+    },
+    {
+      "attempt": "zmk-permanent-usb-startup-2026-10-28",
+      "stage": "install-left-A",
+      "outcome": "FAILED",
+      "failure_category": "automatic restart verification failed",
+      "source_report_sha256": "f87920004ffc19c40e2cfec328ee0796a6d4e3fe3744c14d11f5bed2a44463f4",
+      "started_at": "2026-10-28T15:40:51.660473+00:00",
+      "finished_at": "2026-10-28T15:43:04.541684+00:00",
+      "requested_identity": {
+        "app_size": 36612,
+        "app_crc": 577606054,
+        "app_sha256": "57c767a24315cc0bc7a86916d4502d50a9ddb4cfd7aa9ca9cf986ba31fac2d8b"
+      }
+    },
+    {
+      "attempt": "zmk-permanent-usb-power-2026-10-28",
+      "stage": "install-left-A",
+      "outcome": "FAILED",
+      "failure_category": "automatic restart verification failed",
+      "source_report_sha256": "fe4f63449e755fd4be5c7a73834ced7e0f4bb9135441ee11323d600eb1f588f6",
+      "started_at": "2026-10-28T16:44:22.541787+00:00",
+      "finished_at": "2026-10-28T16:46:35.187303+00:00",
+      "requested_identity": {
+        "app_size": 36576,
+        "app_crc": 1296309606,
+        "app_sha256": "f92309fb2ce8112173eeb3f7445fb3fb750c1be8433b3fa051141c652f4a5218"
+      }
+    }
+  ],
+  "interpretation": "All failures retain their original outcome. Eventual physical recovery does not establish automatic update success. No cause isolated."
+}

@@ -1,5 +1,15 @@
 # GMK70 ZMK wired development and staging trials
 
+Current hardware milestone/status and the updater verification/fallback workflow are
+recorded in [Permanent wired ZMK](../../docs/ZMK-PERMANENT-WIRED.md) and its
+[sanitized evidence](../../docs/validation/2026-10-28-zmk-permanent/README.md).
+Both halves now run normal permanent A, with fresh final A/A readback and
+61 seconds of both-half health. Distinct-image left/right updates through LEFT
+USB passed. Automatic restart remains unresolved; joined-left cycling is a
+tested fallback after a restart timeout, and a transfer ACK alone is not success.
+
+Native USB/B1 tests require a host C++20 compiler (`c++`) as well as a C compiler.
+
 ## Experimental permanent wired updater
 
 The universal `gmk70_wired` board runs the pinned ZMK application with a combined
@@ -59,8 +69,8 @@ not establish those results.
 
 The [2026-10-27 left qualification](../../docs/ZMK-LEFT-FIRST-TRIAL.md) flashed this
 left trial, observed its unique keyboard/consumer USB identity, and verified
-automatic watchdog return to Vial. Physical key input and both-half ZMK operation
-remain untested. That left sequence preserved the right application and both residents.
+automatic watchdog return to Vial. That historical trial did not test physical key input or simultaneous both-half
+ZMK operation; see the current status above. That left sequence preserved the right application and both residents.
 
 Initialize sources and build tools explicitly:
 

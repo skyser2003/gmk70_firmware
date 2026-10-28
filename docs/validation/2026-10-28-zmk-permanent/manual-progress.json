@@ -1,0 +1,840 @@
+{
+  "schema": 1,
+  "draft": false,
+  "status_as_of_utc": "2026-10-28T18:45:28.770393+00:00",
+  "firmware_source_commit": "0554dffec19bfb6fb50f3afd87c3c5afb9f9820a",
+  "manual_plan_commit": "0e0a6996fa44339703c869729625077d561a936b",
+  "workflow": "transfer through LEFT USB; separate identity/health verification; joined-LEFT cycle as tested fallback if restart verification fails",
+  "automatic_restart_qualified": false,
+  "stages": [
+    {
+      "stage": "prepare",
+      "kind": "checkpoint",
+      "completed": true,
+      "outcome": "verified",
+      "started_at": "2026-10-28T18:20:13.608302+00:00",
+      "finished_at": "2026-10-28T18:21:34.246540+00:00",
+      "source_report_sha256": "a7c4771dc3967881845bfdc45b3a6d151c09004efc254248de7b5fc987b0eb7a",
+      "before": {
+        "left": {
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "after": {
+        "left": {
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "health": {
+        "read_only": true,
+        "verified_window_seconds": 60.14100000000326,
+        "duration_seconds": 60.187999999994645,
+        "transport_retries": 0,
+        "relay_retries": 0,
+        "reconnects": 0,
+        "max_gap_seconds": 2.0,
+        "sample_count": 61,
+        "counters": {
+          "0": {
+            "first": {
+              "uptime_ms": 3616549,
+              "feed_calls": 3233231,
+              "flags": 3
+            },
+            "last": {
+              "uptime_ms": 3676626,
+              "feed_calls": 3286954,
+              "flags": 7
+            }
+          }
+        }
+      }
+    },
+    {
+      "stage": "probe-right-shared",
+      "kind": "probe",
+      "completed": true,
+      "outcome": "verified",
+      "started_at": "2026-10-28T18:22:03.550991+00:00",
+      "finished_at": "2026-10-28T18:23:24.034084+00:00",
+      "recovery_verified": true,
+      "automatic_restart_verified": false,
+      "source_report_sha256": "c94ec72b7606c791febed9cffd8b0c784e764da798b13bd8d0f0c9cd2d7d29cc",
+      "before": {
+        "left": {
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "after": {
+        "left": {
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "trial": {
+        "success": true,
+        "action": "probe",
+        "target": "right",
+        "expected_reset": "watchdog",
+        "stable_seconds": 60.155999999988126,
+        "before": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 2,
+          "boot_crc": 1770733249,
+          "role": 0
+        },
+        "after": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 2,
+          "boot_crc": 1770733249,
+          "role": 0
+        },
+        "result": {
+          "action": 2,
+          "phase": 3,
+          "reset_flags": 36,
+          "size": 0,
+          "crc": 0,
+          "role": 0
+        },
+        "retries": 0,
+        "relay_retries": 0,
+        "transport_retries": 0,
+        "health": {
+          "uptime_ms": 65914,
+          "feed_count": 60137,
+          "flags": 1,
+          "magic": 826821959
+        }
+      },
+      "right_terminal": {
+        "action": 2,
+        "phase": 3,
+        "reset_flags": 36,
+        "size": 0,
+        "crc": 0,
+        "role": 0
+      }
+    },
+    {
+      "stage": "transfer-left-B",
+      "kind": "transfer",
+      "completed": true,
+      "outcome": "install-requested-unverified",
+      "started_at": "2026-10-28T18:23:40.232248+00:00",
+      "finished_at": "2026-10-28T18:24:02.082087+00:00",
+      "installation_verified": false,
+      "install_requested": true,
+      "install_ack": "acknowledged",
+      "automatic_restart_verified": false,
+      "source_report_sha256": "1465fc73cd08d4ae98affa1dd2053b0828bbb93752a72a2e5ce5e6aa266fa56e",
+      "before": {
+        "left": {
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "right_before": {
+        "uptime_ms": 92938,
+        "feed_count": 99382,
+        "flags": 1,
+        "magic": 826821959
+      },
+      "left_before": {
+        "uptime_ms": 3819606,
+        "feed_calls": 3393036,
+        "matrix_events": null,
+        "flags": 3,
+        "role": 3
+      }
+    },
+    {
+      "stage": "verify-left-B-shared",
+      "kind": "verification",
+      "completed": true,
+      "outcome": "verified",
+      "started_at": "2026-10-28T18:24:45.358499+00:00",
+      "finished_at": "2026-10-28T18:25:55.476541+00:00",
+      "installation_verified": true,
+      "shared_recovery_verified": true,
+      "manual_distinct_left_update_verified": true,
+      "automatic_restart_verified": false,
+      "source_report_sha256": "4628f00611b95c8ce3e4c408108b625b1323a0f06381968afdeab70252181d99",
+      "before": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "after": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "health": {
+        "read_only": true,
+        "verified_window_seconds": 60.296999999991385,
+        "duration_seconds": 60.35999999998603,
+        "transport_retries": 0,
+        "relay_retries": 0,
+        "reconnects": 0,
+        "max_gap_seconds": 2.0,
+        "sample_count": 60,
+        "counters": {
+          "0": {
+            "first": {
+              "uptime_ms": 29636,
+              "feed_calls": 26283,
+              "flags": 3
+            },
+            "last": {
+              "uptime_ms": 89880,
+              "feed_calls": 79283,
+              "flags": 3
+            }
+          }
+        }
+      },
+      "ordinary_vial_right": {
+        "read_only": true,
+        "verified_window_seconds": 60.375,
+        "transport_retries": 0,
+        "relay_retries": 0,
+        "reconnects": 0,
+        "sample_count": 61,
+        "counters": {
+          "1": {
+            "first": {
+              "uptime_ms": 30096,
+              "feed_count": 0,
+              "flags": 0
+            },
+            "last": {
+              "uptime_ms": 90471,
+              "feed_count": 0,
+              "flags": 0
+            }
+          }
+        }
+      },
+      "right_result_post": {
+        "action": 0,
+        "phase": 0,
+        "reset_flags": 0,
+        "size": 0,
+        "crc": 0,
+        "role": 0
+      },
+      "right_first_post": {
+        "uptime_ms": 30096,
+        "feed_count": 0,
+        "flags": 0,
+        "magic": 826821959
+      },
+      "left_first_post": {
+        "uptime_ms": 29573,
+        "feed_calls": 26270,
+        "matrix_events": null,
+        "flags": 3,
+        "role": 3
+      }
+    },
+    {
+      "stage": "qualify-right",
+      "kind": "qualification",
+      "completed": true,
+      "outcome": "verified",
+      "started_at": "2026-10-28T18:26:13.465997+00:00",
+      "finished_at": "2026-10-28T18:28:07.753470+00:00",
+      "observer_verified": true,
+      "recovery_verified": true,
+      "automatic_restart_verified": false,
+      "source_report_sha256": "ab1aac668489f14b2a966572de9ce4457548e3fbf32d20b26c34831dccc88de7",
+      "before": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "after": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "trial": {
+        "success": true,
+        "action": "run",
+        "target": "right",
+        "expected_reset": "watchdog",
+        "stable_seconds": 60.14100000000326,
+        "before": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 2,
+          "boot_crc": 1770733249,
+          "role": 0
+        },
+        "after": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 2,
+          "boot_crc": 1770733249,
+          "role": 0
+        },
+        "result": {
+          "action": 1,
+          "phase": 3,
+          "reset_flags": 36,
+          "size": 36152,
+          "crc": 3681276862,
+          "role": 0
+        },
+        "retries": 0,
+        "relay_retries": 0,
+        "transport_retries": 0,
+        "health": {
+          "uptime_ms": 68682,
+          "feed_count": 64190,
+          "flags": 1,
+          "magic": 826821959
+        }
+      },
+      "qualification": {
+        "identity": {
+          "size": 36152,
+          "crc": 3681276862,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        },
+        "health": {
+          "uptime_ms": 111,
+          "feed_calls": 0,
+          "matrix_events": null,
+          "flags": 10,
+          "role": 0
+        },
+        "observer_finished_before_deadline": true,
+        "required_reads_completed_seconds": 0.75
+      }
+    },
+    {
+      "stage": "transfer-right-B",
+      "kind": "transfer",
+      "completed": true,
+      "outcome": "install-requested-unverified",
+      "started_at": "2026-10-28T18:28:38.257738+00:00",
+      "finished_at": "2026-10-28T18:29:14.934751+00:00",
+      "installation_verified": false,
+      "install_requested": true,
+      "install_ack": "acknowledged",
+      "automatic_restart_verified": false,
+      "source_report_sha256": "7a0598a404cd665be5ef9860073308af739f0ccb61b56d074696dbfb0b561a4d",
+      "before": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 95908,
+          "crc": 2635584202,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      }
+    },
+    {
+      "stage": "verify-right-B",
+      "kind": "verification",
+      "completed": true,
+      "outcome": "verified",
+      "started_at": "2026-10-28T18:33:35.735181+00:00",
+      "finished_at": "2026-10-28T18:34:46.147056+00:00",
+      "installation_verified": true,
+      "joined_left_cycle_confirmed": true,
+      "automatic_restart_verified": false,
+      "resident_writes": 0,
+      "configuration_writes": 0,
+      "physical_keys_verified": false,
+      "source_report_sha256": "77d989274d381a14201f42fb690b538eedcb97e0f0d127e79f955fbaf6d795a6",
+      "before": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "after": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "usb": {
+        "product": "GMK70 ZMK Wired Update Test",
+        "keyboard_interfaces": 1,
+        "raw_interfaces": 1,
+        "physical_keys_verified": false
+      },
+      "health": {
+        "read_only": true,
+        "verified_window_seconds": 60.984000000025844,
+        "duration_seconds": 61.14000000001397,
+        "transport_retries": 0,
+        "relay_retries": 0,
+        "reconnects": 0,
+        "max_gap_seconds": 2.0,
+        "sample_count": 122,
+        "counters": {
+          "0": {
+            "first": {
+              "uptime_ms": 23491,
+              "feed_calls": 20960,
+              "flags": 3
+            },
+            "last": {
+              "uptime_ms": 84434,
+              "feed_calls": 75370,
+              "flags": 3
+            }
+          },
+          "1": {
+            "first": {
+              "uptime_ms": 22813,
+              "feed_calls": 18672,
+              "flags": 3
+            },
+            "last": {
+              "uptime_ms": 83740,
+              "feed_calls": 68764,
+              "flags": 3
+            }
+          }
+        }
+      }
+    },
+    {
+      "stage": "transfer-right-A",
+      "kind": "transfer",
+      "completed": true,
+      "outcome": "install-requested-unverified",
+      "started_at": "2026-10-28T18:35:07.941615+00:00",
+      "finished_at": "2026-10-28T18:36:01.736065+00:00",
+      "installation_verified": false,
+      "joined_left_cycle_confirmed": false,
+      "automatic_restart_verified": false,
+      "resident_writes": 0,
+      "configuration_writes": 0,
+      "physical_keys_verified": false,
+      "source_report_sha256": "ebdc35a54034d614e42f946daa330f4dd5c96c4c0aca16290f59858e616238bb",
+      "install_requested": true,
+      "install_ack": "acknowledged",
+      "requested_image": "A",
+      "requested_target": 1,
+      "requested_sha256": "f92309fb2ce8112173eeb3f7445fb3fb750c1be8433b3fa051141c652f4a5218",
+      "before": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      }
+    },
+    {
+      "stage": "verify-right-A",
+      "kind": "verification",
+      "completed": true,
+      "outcome": "verified",
+      "started_at": "2026-10-28T18:38:58.662940+00:00",
+      "finished_at": "2026-10-28T18:40:09.850668+00:00",
+      "installation_verified": true,
+      "joined_left_cycle_confirmed": true,
+      "automatic_restart_verified": false,
+      "resident_writes": 0,
+      "configuration_writes": 0,
+      "physical_keys_verified": false,
+      "source_report_sha256": "714caa80d9bb98f0aba9e0603211166594afbe529c456d9a71c458345bbdcaa5",
+      "before": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "after": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      },
+      "health": {
+        "read_only": true,
+        "verified_window_seconds": 61.0,
+        "duration_seconds": 61.14100000000326,
+        "transport_retries": 0,
+        "relay_retries": 0,
+        "reconnects": 0,
+        "max_gap_seconds": 2.0,
+        "sample_count": 122,
+        "counters": {
+          "0": {
+            "first": {
+              "uptime_ms": 24937,
+              "feed_calls": 22264,
+              "flags": 7
+            },
+            "last": {
+              "uptime_ms": 85886,
+              "feed_calls": 76675,
+              "flags": 3
+            }
+          },
+          "1": {
+            "first": {
+              "uptime_ms": 24259,
+              "feed_calls": 19858,
+              "flags": 3
+            },
+            "last": {
+              "uptime_ms": 85193,
+              "feed_calls": 69950,
+              "flags": 3
+            }
+          }
+        }
+      },
+      "usb": {
+        "product": "GMK70 ZMK Wired Update Test",
+        "keyboard_interfaces": 1,
+        "raw_interfaces": 1,
+        "physical_keys_verified": false
+      }
+    },
+    {
+      "stage": "transfer-left-A-final",
+      "kind": "transfer",
+      "completed": true,
+      "outcome": "install-requested-unverified",
+      "started_at": "2026-10-28T18:40:40.536619+00:00",
+      "finished_at": "2026-10-28T18:41:01.825669+00:00",
+      "installation_verified": false,
+      "joined_left_cycle_confirmed": false,
+      "automatic_restart_verified": false,
+      "resident_writes": 0,
+      "configuration_writes": 0,
+      "physical_keys_verified": false,
+      "source_report_sha256": "5043c1704c52b5d9706a8d267ce790f1f5585ca51f74398b7a954afc9964baac",
+      "install_requested": true,
+      "install_ack": "acknowledged",
+      "requested_image": "A",
+      "requested_target": 0,
+      "requested_sha256": "f92309fb2ce8112173eeb3f7445fb3fb750c1be8433b3fa051141c652f4a5218",
+      "before": {
+        "left": {
+          "size": 36600,
+          "crc": 752626188,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 3,
+          "state": 0
+        },
+        "right": {
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249,
+          "role": 0,
+          "state": 0
+        }
+      }
+    }
+  ],
+  "pending": {
+    "Fn_expected_Home": "unverified/unexpected: user reports word navigation",
+    "peer_disconnect_release": "untested on hardware"
+  },
+  "privacy": "Allowlisted counts/identities/timing/hashes only; no HID paths, serials or configuration contents",
+  "images": {
+    "A": {
+      "size": 36576,
+      "crc": 1296309606,
+      "sha256": "f92309fb2ce8112173eeb3f7445fb3fb750c1be8433b3fa051141c652f4a5218"
+    },
+    "B": {
+      "size": 36600,
+      "crc": 752626188,
+      "sha256": "41bc53a2c3892851f3459fcc9dd6061b402954f33e43e39f9f00bae2b5bb35eb"
+    },
+    "Q": {
+      "size": 36152,
+      "crc": 3681276862,
+      "sha256": "8ac173e499d5f47829f2b94907e2be29f638e6c74800bf387a1b46393dfbaefa"
+    }
+  },
+  "final_independent_verification": {
+    "read_only": true,
+    "installation_verified": true,
+    "verified_at_utc": "2026-10-28T18:45:28.770393+00:00",
+    "identities": {
+      "left": {
+        "size": 36576,
+        "crc": 1296309606,
+        "abi": 1,
+        "boot_crc": 1770733249,
+        "role": 3,
+        "state": 0
+      },
+      "right": {
+        "size": 36576,
+        "crc": 1296309606,
+        "abi": 1,
+        "boot_crc": 1770733249,
+        "role": 0,
+        "state": 0
+      }
+    },
+    "usb": {
+      "product": "GMK70 ZMK Wired",
+      "keyboard_interfaces": 1,
+      "raw_interfaces": 1,
+      "physical_keys_verified": false
+    },
+    "health": {
+      "read_only": true,
+      "verified_window_seconds": 61.0,
+      "duration_seconds": 61.14100000000326,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "max_gap_seconds": 2.0,
+      "sample_count": 122,
+      "counters": {
+        "0": {
+          "first": {
+            "uptime_ms": 71579,
+            "feed_calls": 64186,
+            "flags": 3
+          },
+          "last": {
+            "uptime_ms": 132528,
+            "feed_calls": 118603,
+            "flags": 7
+          }
+        },
+        "1": {
+          "first": {
+            "uptime_ms": 72246,
+            "feed_calls": 59347,
+            "flags": 3
+          },
+          "last": {
+            "uptime_ms": 133181,
+            "feed_calls": 109441,
+            "flags": 3
+          }
+        }
+      }
+    },
+    "identity_log_sha256": "3fd6ed0f724cf34e922c044f5334ac4dad9a8534229bd956d26a46149de96a7b",
+    "health_report_sha256": "55373b53e3e7d4a4e04536b78943e6138b99fa7f15a91e07680605cd32a19f7a",
+    "after_health_state_sha256": "12bd80f18c768c8ee0588356366381af3173e81816d0eca40de7a388ee6484a7",
+    "manual_cycle_confirmation_available": false,
+    "physical_action_during_final_restart": "unknown",
+    "automatic_restart_claimed": false,
+    "strict_verify_left_A_final_stage": "unexecuted; cycle confirmation unavailable; independent final evidence establishes installed A/A"
+  },
+  "physical_observation": {
+    "source": "user report relayed by parent after final A/A verification",
+    "verbatim": "It seems to work,, but what is that key? It seems to work as control, it jumps over a whole word as if ctrl + arrow key would do.",
+    "typing": "seems functional; user report only",
+    "Fn_plus_Left": "whole-word navigation reported; expected Home unverified/unexpected",
+    "cause": "not established",
+    "Fn_pass": false,
+    "peer_disconnect_release": "untested",
+    "compiled_mapping": {
+      "source": "parent inspection of actual normal A zephyr.dts",
+      "Fn": "physical transform index63 = RC(4,2), binding &mo 1",
+      "Fn_Left": "function-layer left-arrow index69 = HID Home 0x7004a",
+      "limit": "intended compiled mapping; does not establish hardware event behavior or cause"
+    }
+  }
+}

@@ -1,5 +1,31 @@
 # Local continuation: updater-preserving ZMK development
 
+## Current status — 2026-10-28
+
+The permanent wired milestone has superseded the software-only/staging handoff
+below. Read [Permanent wired ZMK](ZMK-PERMANENT-WIRED.md) and the
+[sanitized validation](validation/2026-10-28-zmk-permanent/README.md) first.
+Both halves now run permanent normal A (36576 bytes/CRC32 `1296309606`), with
+unchanged residents and 61 seconds of fresh both-half health. Shared recovery,
+right Q and distinct-image left/right updating through LEFT USB were verified.
+Automatic restart remains unresolved; a joined-left USB cycle is a tested fallback
+when restart verification times out, followed by read-only verification. The final
+strict manual stage was unexecuted because cycle confirmation was unavailable;
+independent final readback/health establishes A/A without an automatic-restart
+claim. The user reports typing seems functional, but Fn+Left produced word
+navigation; expected Home remains unverified. Hardware peer-release is untested.
+
+Native permanent source is `0554dff`; the manual plan is `0e0a699`. Maintained
+integration remains in this repository. Existing private configuration backups
+and residents are preserved; no post-ZMK settings readback is claimed.
+
+## Historical handoff and staging checkpoints
+
+The text below records the 2026-10-26/27 investigation and its then-current
+state/authorization boundaries. Its Vial-only status and disabled-RUN notes are
+historical; use the current milestone above for present operation and permissions.
+
+
 Handoff prepared 2026-10-26. The user requested continuing this work in the local
 `gmk70_firmware` project. The immediate goal is to develop ZMK without repeatedly
 moving USB between the halves or losing the working updater during early tests.
@@ -137,7 +163,7 @@ The [execution continuation](ZMK-TRIAL-EXECUTION.md) now implements the ABI 2
 pre-CRT launcher and watchdog backend, with the explicitly requested unlocked
 Vial release variant. Consult that document for current validation status.
 
-The latest checkpoint is the [first actual right ZMK trial](ZMK-RIGHT-FIRST-TRIAL.md),
+The final staging-trial checkpoint recorded here was the [first actual right ZMK trial](ZMK-RIGHT-FIRST-TRIAL.md),
 following the [left USB trial](ZMK-LEFT-FIRST-TRIAL.md). Right staging was flashed
 through left USB; actual ZMK main and matrix readiness preceded the expected
 software reset. Watchdog, bare return, bare hang and actual ZMK all returned
@@ -145,20 +171,20 @@ automatically to Vial and passed 60 seconds of continuous uptime/feed checks.
 Short right relay retries are allowed only within bounded observation gaps;
 transport interruptions and reboot/stopped-feed evidence are not waived.
 
-The left application is unchanged at 95,772 bytes / CRC32 `44883505`. The right
-now runs the experimental health-capable trial updater, 95,908 bytes / CRC32
+At that 2026-10-27 checkpoint, the left application was unchanged at 95,772 bytes / CRC32 `44883505`. The right
+ran the experimental health-capable trial updater, 95,908 bytes / CRC32
 `2635584202`, source `5308274`. Both resident CRCs remain `1770733249`; all 263
 saved-configuration getters match without writes. Upgrading the right updater
 required one left USB reconnect with both halves joined after its warm restart
 timed out. That restart cause is unmeasured. No pad bridge or direct right USB
 flashing was required during the right qualification.
 
-Current sources are on `codex/zmk-trial-launcher`. Maintained ZMK integration is
+This historical checkpoint used `codex/zmk-trial-launcher`. Maintained ZMK integration is
 under `firmware/zmk/`, with exact dependencies in the root lockfile and explicit
 `make setup-zmk`. `make build-zmk` builds the real application without device
 operations; `make build-zmk-right-trial` builds the right main-return target.
 These are separate bounded trials: physical input, simultaneous ZMK split/radio
-and permanent ZMK operation remain future work. Both halves currently run Vial;
-ZMK stays in staging and does not launch at power-on. Preserve the user's
+and permanent ZMK operation remain future work. At that checkpoint both halves ran Vial;
+ZMK stayed in staging and did not launch at power-on. Preserve the user's
 preference to avoid right-only physical recovery, and keep the updater warm
 restart limitation explicit before any further application upgrade.

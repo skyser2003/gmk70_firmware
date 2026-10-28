@@ -133,8 +133,11 @@ lost after joined-left cycling, restarted counters and stable identities/health
 support practical shared recovery; they do not guarantee recovery of every
 future native-right failure. Review the remaining first permanent right APP/
 watchdog/relay risk explicitly. Q and unchanged residents remain mandatory.
-Only post-reconnection identity/health checks can establish installation success;
-transfer-request completion alone cannot. The identical-image diagnostic is
+Only actual running-image identity/health checks can establish installation
+success; transfer-request completion alone cannot. Joined-left reconnection is a
+tested fallback when restart verification fails, not a mandatory operation after
+verified return. Final independent A/A readback/health may establish installation
+without claiming automatic restart or a confirmed manual cycle. The identical-image diagnostic is
 deferred to avoid an extra possible recovery cycle. See the implementation plan
 for individually guarded stages and required evidence.
 

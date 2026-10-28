@@ -195,13 +195,30 @@ cycle and actual expected both-half identities/residents/native USB/relay and
 60-second advancing native uptime/feeds pass. The distinct right B→A and left
 A→B/B→A results prove manual updating through left USB. Failed/incomplete stages
 block descendants, with no retries or old-stage replay. Final status/instructions
-must identify manual restart as required and retain automatic restart as unresolved.
+must retain automatic restart as unresolved. The final execution ruling below
+records cycling as a tested fallback rather than requiring an unnecessary cycle
+after successful return and verification.
 
 For left staging, coordinate the existing Vial trial client and a temporary qualification HID handle in one process: open the qualification handle only after its unique product enumerates, inspect local health/INFO and old right INFO, optionally BEGIN-clearing only isolated metadata then ABORT, and close it before Vial recovery observation. For right staging, native left USB stays connected: use one shared handle that dispatches namespace0x71 trial packets and namespace0x70/0x72 reads, observe immediately after the successful RUN acknowledgement during the bounded three-second trial, then restore the trial client's request correlation before normal recovery checks. Its existing nine-second post-RUN sleep would miss this window without the inline observer. Budget the existing USB exchange's two-second blocking bound; do not accept replies after observer deadlines. Confirm exact qualification size/CRC and staging health before any right application replacement. Left legacy Vial recovery requires its existing30-second observation; right health-capable Vial recovery requires60 seconds and advancing uptime/feeds. Never invent a retained record or weaken the watchdog recovery checks to advance migration.
 
-- [ ] Freeze reviewed packages and resident identities; fresh backup and read-only running identities. Prove bounded left staging USB/receiver and right Vial transport; do not overwrite executing staging code.
-- [ ] Install permanent left only; verify both INFO identities, stable uptime and unchanged residents before dependent writes. Retain right Vial while proving a different-image left ZMK self-update. Frozen Vial may need a power cycle after inherited IWDG; do not invent a recovery record or claim general warm rollback.
-- [ ] Use native left's optional peer trial relay to launch right staging qualification while right still runs Vial. Observe actual right ZMK INFO/health and automatic Vial return using one coordinated host handle before any right application replacement.
-- [ ] Install permanent right through left; verify both genuine ZMK applications, wired matrix/USB behavior and no reboot loop. Preserve resident/configuration evidence and physical limitations honestly.
-- [ ] Prove right update and left self-update through left USB using normal/update-test product-label builds; an identical-image resident skip is insufficient. Install left normal then left update-test, qualify right staging, install right update-test, update right to normal, then left to normal. Verify both final identities/uptime/residents. Diagnose failures without blind retries or right-only recovery requests.
-- [ ] Commit/push reviewed evidence and report current firmware, working features, deferred features and any unresolved limitation.
+Execution outcome (2026-10-28): all prerequisite review, shared-recovery and
+right-Q gates passed. Different-image left A→B, first right B and right B→A
+passed separate identity/resident/health verification after confirmed joined-left
+cycles. The final left B→A transfer was followed by independently observed USB,
+A/A identity inspection, 61 seconds of both-half advancing health and a fresh
+post-health identity/USB check. No final cycle confirmation was received, so
+`verify-left-A-final` remains unexecuted; the strict guarded chain is not claimed
+complete. The independent evidence establishes installed A/A. The final physical
+action is unknown and supplies no automatic-restart proof. Joined-left cycling
+is a tested fallback only when return/verification fails; no further cycle or
+INSTALL is needed after verified success. See the durable
+[validation record](../../validation/2026-10-28-zmk-permanent/README.md).
+
+- [x] Freeze reviewed packages/residents/backups and fresh identities; prove bounded native left staging and exact old right transport without overwriting executing staging code.
+- [x] Install permanent left and verify stable native health/unchanged residents; prove distinct-image A→B updating through LEFT USB under the separately reviewed manual workflow. Earlier automatic failures stay failed; general warm Vial rollback is unqualified.
+- [x] Demonstrate genuine right PROBE/shared reset evidence, then actual right Q INFO/no-feed health within 3 seconds and genuine Vial return/60-second feeds using one coordinated host handle before first right replacement.
+- [x] Install permanent right through LEFT USB; verify B/B and sustained native uptime/feeds, native USB/relay and unchanged residents. Hardware typing/Fn/peer-release limits are recorded separately below.
+- [x] Prove distinct-image right B→A and left A→B/B→A through LEFT USB; independently verify final A/A identities, 61 seconds both-half health and unchanged residents. Final strict manual stage was unexecuted; final read-only evidence establishes installation without an automatic-restart claim.
+- [x] Record final-image user evidence: typing seems functional, but Fn+Left produced word navigation resembling Ctrl+Left; expected Home is unverified/unexpected, with no established cause.
+- [ ] Verify expected Fn/Home behavior and hardware peer-disconnect release; no further device operation is part of this completed installation phase.
+- [ ] Commit/push reviewed evidence and report current firmware, working features, deferred features and unresolved limits.

@@ -1,12 +1,12 @@
 # GMK70 firmware
 
-Firmware for the ZUOYA GMK70 split keyboard (WB32FQ95), supporting USB,
-Bluetooth and 2.4 GHz.
+Firmware for the ZUOYA GMK70 split keyboard (WB32FQ95). QMK/Vial support USB,
+Bluetooth and 2.4 GHz. Native ZMK development currently targets wired USB.
 
 ## Base versions
 
 - **QMK/VIA:** official [QMK 0.34.4](https://github.com/qmk/qmk_firmware/tree/0.34.4).
-- **ZMK trials:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), experimental left and right staging targets.
+- **ZMK:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), native permanent wired updater and separate bounded staging targets.
 - **Vial:** [vial-qmk at `dd43959ae5c0`](https://github.com/vial-kb/vial-qmk/commit/dd43959ae5c08d8a28d38a1acf7b04e86b14a344).
 
 Upstream dependencies remain unmodified. Exact framework, library and
@@ -31,14 +31,21 @@ integration are selected separately from `firmware/qmk-via/` and
   a separate [radio diagnostic build](docs/RADIO-DIAGNOSTICS.md) provides RAM counters.
 
 Complete stock equivalence and hardware validation of the latest Vial/updater
-changes remain unverified. Experimental [left USB](docs/ZMK-LEFT-FIRST-TRIAL.md)
-and [right main-return](docs/ZMK-RIGHT-FIRST-TRIAL.md) ZMK trials have run separately
-and returned automatically to Vial; full ZMK split/radio support is pending.
+changes remain unverified. The [permanent wired ZMK milestone](docs/ZMK-PERMANENT-WIRED.md)
+now has permanent normal ZMK on both halves: final A/A identity/resident checks
+and 61 seconds of both-half health passed. Different-image left and right updates
+through left USB were demonstrated. Automatic restart remains unresolved; a
+joined-left USB cycle is a tested fallback after a restart-verification timeout,
+followed by actual inspection/health verification.
+ZMK is an unlocked development build with a static keymap; wireless and the other
+deferred features are not part of this milestone.
 
 ## Build
 
-Use Linux x86_64 or WSL2 with Git, make, curl, tar, xz, a native C compiler and
-Python 3.12 or newer. Setup installs the ARM compiler and Python build tools locally.
+Use Linux x86_64 or WSL2 with Git, make, curl, tar, xz, a native C compiler, a
+C++20-capable native `c++` compiler and Python 3.12 or newer. The C++ compiler
+is used by the native USB/B1 regression. Setup installs the ARM compiler and
+Python build tools locally.
 
 ```sh
 make setup        # pinned QMK sources and build tools
@@ -57,12 +64,18 @@ Choose a build target:
 | `make build-vial` | Normal Vial firmware |
 | `make build-vial-updater` | Vial firmware with split updater |
 | `make build-vial-radio-diagnostic` | Optional Vial updater with RAM radio capture |
+| `make build-zmk-wired-updater` | Native permanent wired ZMK application/updater A |
+| `make build-zmk-wired-update-test` | Different native wired update-test image B |
+| `make build-zmk-wired-qualification` | Bounded no-feed staging Q; trial packages only |
 | `make build-zmk` | Experimental left ZMK staging trial; requires `make setup-zmk` |
 | `make build-zmk-right-trial` | Experimental right ZMK trial with post-main reset proof |
 
 Builds write firmware, checksums and matching source archives to
-`artifacts/qmk/<variant>/` or `artifacts/vial/<variant>/`. ZMK trial outputs are
-under `artifacts/zmk/{left-trial,right-trial}/`; see the [build instructions](firmware/zmk/README.md).
+`artifacts/qmk/<variant>/` or `artifacts/vial/<variant>/`. ZMK outputs are under
+`artifacts/zmk/{wired-updater,wired-update-test,wired-qualification,left-trial,right-trial}/`;
+see the [build instructions](firmware/zmk/README.md). Native A/B packages use
+`profile=zmk`, require the exact existing resident and do not emit a full initial
+installer. Qualification Q emits target-specific staging packages only.
 Builds read `dependencies/` and `firmware/` directly, without copying or symlinking
 source trees. Generated headers and objects live under `.work/`; `make clean`
 removes them. See [external-source builds](docs/EXTERNAL-BUILD.md).
@@ -80,6 +93,11 @@ artifacts. See [release instructions](docs/RELEASING.md).
 
 ## Using the firmware
 
+For native ZMK, follow the [wired status and manual updater workflow](docs/ZMK-PERMANENT-WIRED.md).
+Transfer and installation verification are separate; never replay INSTALL after a
+restart-verification timeout. The user reports typing seems functional; Fn+Left
+produced word navigation, so the expected Home action remains unverified.
+
 For normal QMK/Vial releases, back up your configuration before updating and
 install the same build on both halves. The experimental ZMK trials have separate
 [left](docs/ZMK-LEFT-FIRST-TRIAL.md) and [right](docs/ZMK-RIGHT-FIRST-TRIAL.md)
@@ -96,7 +114,7 @@ Updater builds contain a small resident installer and the keyboard application.
 Initially install `install.bin` or `install.hex` on each half separately over USB;
 each half must have a verified 256 KB MCU.
 
-For later updates, connect the left half by USB in wired mode and keep the halves
+For later QMK/Vial updates, connect the left half by USB in wired mode and keep the halves
 linked. The host tool uses `application.bin` and `update.json` from a compatible
 updater package, updating and verifying the right half through the split cable
 before updating the left. Incoming images are staged and checked before the
