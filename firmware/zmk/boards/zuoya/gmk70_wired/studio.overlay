@@ -9,5 +9,7 @@
         compatible = "zephyr,cdc-acm-uart";
     };
 };
-&{/keymap/base_layer} { display-name = "Base"; };
-&{/keymap/function_layer} { display-name = "Fn"; };
+/ { keymap {
+    base_layer { display-name = "Base"; };
+    function_layer { display-name = "Fn"; };
+}; };

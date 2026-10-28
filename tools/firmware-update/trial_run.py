@@ -89,11 +89,10 @@ class TrialUsbLink(UsbLink):
                 original = self._pending_request
         else:
             self._pending_request = packet
-        if self._device.write(b"\0" + packet) != 33:
-            raise OSError("Incomplete USB write")
+        self._send_packet(packet)
         deadline = time.monotonic() + 2
         while (remaining := deadline - time.monotonic()) > 0:
-            response = bytes(self._device.read(32, max(1, int(remaining * 1000))))
+            response = self._read_packet(max(1, int(remaining * 1000)))
             if not response:
                 break
             if correlated(response, original, packet):

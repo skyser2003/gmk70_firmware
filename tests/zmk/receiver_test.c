@@ -522,6 +522,27 @@ static void trial_relay(void) {
 }
 #endif
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+static void studio_size_bounds(void) {
+    setup();
+    packet(GMK_BEGIN);
+    gmk_write_u32(request + 16, 0x1a000);
+    receive();
+    finish();
+    assert(response[5] == GMK_OK && writes == 1);
+    setup();
+    packet(GMK_BEGIN);
+    gmk_write_u32(request + 16, 0x1a004);
+    receive();
+    finish();
+    assert(response[5] == GMK_BAD_REQUEST && writes == 0);
+    setup();
+    packet(GMK_BEGIN);
+    request[3] = 1;
+    gmk_write_u32(request + 16, 0x1e000);
+    receive();
+    gmk_zmk_receiver_step(&env);
+    assert(relays == 1 && writes == 0);
+}
 static void storage_exclusion(void) {
     setup();
     assert(gmk_zmk_receiver_storage_claim());
@@ -545,6 +566,7 @@ static void storage_exclusion(void) {
 int main(void) {
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
     storage_exclusion();
+    studio_size_bounds();
 #endif
     setup();
     begin();

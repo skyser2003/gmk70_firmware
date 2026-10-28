@@ -33,6 +33,30 @@ class WiredImageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             check_image.validate_wired_elf(bytes(data), image, base, base + 1024)
 
+    def test_studio_limit_is_independent_of_common_resident_abi(self) -> None:
+        base = 0x08002000
+        for size in (0x1A000, 0x1A004):
+            image = struct.pack("<16I", 0x20006FC0, *([base + 0x201] * 15)) + bytes(
+                size - 64
+            )
+            data = bytearray(0x100 + size)
+            data[:7] = b"\x7fELF\x01\x01\x01"
+            struct.pack_into("<H", data, 18, 40)
+            struct.pack_into("<II", data, 24, base + 0x201, 52)
+            struct.pack_into("<HH", data, 42, 32, 1)
+            struct.pack_into("<8I", data, 52, 1, 0x100, base, base, size, size, 5, 4)
+            data[0x100:] = image
+            check_image.validate_wired_elf(bytes(data), image, base, base + size)
+            if size == 0x1A000:
+                check_image.validate_wired_elf(
+                    bytes(data), image, base, base + size, 0x1A000
+                )
+            else:
+                with self.assertRaises(ValueError):
+                    check_image.validate_wired_elf(
+                        bytes(data), image, base, base + size, 0x1A000
+                    )
+
     def test_combined_physical_layout_and_stock_fn(self) -> None:
         import json
         import re

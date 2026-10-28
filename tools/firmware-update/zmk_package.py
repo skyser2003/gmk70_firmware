@@ -17,7 +17,8 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
     if (
         not isinstance(checked, dict)
         or checked.get("board") != "gmk70_wired"
-        or checked.get("variant") not in ("wired-updater", "wired-update-test")
+        or checked.get("variant")
+        not in ("wired-updater", "wired-update-test", "wired-studio-updater")
         or checked.get("load_address") != 0x08002000
         or checked.get("bytes") != len(payload)
         or checked.get("image_end") != 0x08002000 + len(payload)
@@ -40,7 +41,9 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
         "format": 1,
         "board": "zuoya/gmk70",
         "mcu": "WB32FQ95-256K",
-        "profile": "zmk",
+        "profile": "zmk-studio"
+        if checked["variant"] == "wired-studio-updater"
+        else "zmk",
         "app_address": 0x08002000,
         "app_size": len(payload),
         "app_crc": zlib.crc32(payload),

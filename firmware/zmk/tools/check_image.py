@@ -89,10 +89,12 @@ def check(
     return result
 
 
-def validate_wired_elf(data: bytes, image: bytes, base: int, image_end: int) -> None:
+def validate_wired_elf(
+    data: bytes, image: bytes, base: int, image_end: int, max_size: int = 0x1E000
+) -> None:
     """Check the entire physical load image, including initialized SRAM data."""
     vectors = validate_vectors(image, base)
-    if not 1024 <= len(image) <= 0x1E000 or len(image) % 4:
+    if not 1024 <= len(image) <= max_size or len(image) % 4:
         raise ValueError("Wired image must satisfy updater size/alignment contract")
     for index, vector in enumerate(struct.unpack_from("<15I", image, 4)):
         if vector == 0 and index > 2:
@@ -137,7 +139,7 @@ def validate_wired_elf(data: bytes, image: bytes, base: int, image_end: int) -> 
         if filesz > memsz or offset + filesz > len(data):
             raise ValueError("Truncated ELF load segment")
         if not (
-            base <= address <= address + memsz <= base + 0x1E000
+            base <= address <= address + memsz <= base + max_size
             or RAM_START <= address <= address + memsz <= RAM_END
         ):
             raise ValueError("ELF segment overlaps protected memory")
@@ -175,7 +177,12 @@ def validate_wired_elf(data: bytes, image: bytes, base: int, image_end: int) -> 
 
 
 def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | int]:
-    if variant not in ("wired-updater", "wired-update-test", "wired-qualification"):
+    if variant not in (
+        "wired-updater",
+        "wired-update-test",
+        "wired-qualification",
+        "wired-studio-updater",
+    ):
         raise ValueError("Universal wired board requires explicit supported variant")
     qualification = variant == "wired-qualification"
     base = FLASH_START if qualification else 0x08002000
@@ -233,7 +240,36 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
         or symbols["__gmk_image_end"] != base + symbols["_flash_used"]
     ):
         raise ValueError("Wrong full-image checksum linker contract")
-    validate_wired_elf(elf.read_bytes(), payload, base, symbols["__gmk_image_end"])
+    validate_wired_elf(
+        elf.read_bytes(),
+        payload,
+        base,
+        symbols["__gmk_image_end"],
+        0x1A000 if variant == "wired-studio-updater" else 0x1E000,
+    )
+    if variant == "wired-studio-updater":
+        for name in (
+            "settings_backend_init",
+            "gmk_zmk_settings_poll",
+            "gmk_zmk_settings_flash_page",
+            "__wrap_usb_hid_register_device",
+            "__wrap_zmk_studio_core_get_lock_state",
+            "uart_rpc_interface_init",
+        ):
+            if name not in symbols:
+                raise ValueError(f"Missing Studio integration symbol {name}")
+        disassembly = subprocess.check_output(
+            ["arm-none-eabi-objdump", "-d", str(elf)], text=True
+        )
+        import re
+
+        bodies = re.split(r"(?m)^[0-9a-f]+ <([^>]+)>:\n", disassembly)
+        functions = dict(zip(bodies[1::2], bodies[2::2], strict=True))
+        if not re.search(
+            r"\bblx?\s+[^\n]*<__wrap_usb_hid_register_device>",
+            functions.get("zmk_usb_hid_init", ""),
+        ):
+            raise ValueError("Keyboard registration bypasses Studio Feature wrapper")
     result.update(
         application="dependencies/zmk/app",
         board="gmk70_wired",
@@ -273,7 +309,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--variant",
-        choices=("wired-updater", "wired-update-test", "wired-qualification"),
+        choices=(
+            "wired-updater",
+            "wired-update-test",
+            "wired-qualification",
+            "wired-studio-updater",
+        ),
     )
     args = parser.parse_args()
     try:

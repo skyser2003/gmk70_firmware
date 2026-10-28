@@ -60,12 +60,12 @@
 
 **Interfaces:** Existing `gmk_zmk_raw_hid_init/poll` names remain, with a Studio branch binding HID0 and using EP0 Feature frames. A single `usb_hid_register_device` wrapper appends report4 vendor collection and preserves upstream callbacks. `UsbLink` shared `_send_packet`/`_read_packet` helpers select legacy usage61 or Feature usage62 without probing and are reused by trial/health correlation. `zmk-studio` packages have LEFT-only install admission and max104KiB.
 
-- [ ] Write RED native tests for one registration, actual descriptor prefix/feature suffix, invalid report rejection, single request admission, old-response invalidation and EP0 snapshot stability while the worker publishes.
-- [ ] Implement Feature callback/worker adapter without interrupt writes or keyboard semaphore changes; preserve all original keyboard callbacks.
-- [ ] Write host RED tests for both usages/framings, ambiguity, wrong IDs/short frames, not-ready polling, stale/session/nonce responses and legacy→Studio reconnect; implement shared helpers and retain specialized trial correlation.
-- [ ] Test receiver/package maximum exactly `0x1a000` and rejection above it before BEGIN touches commit; enforce LEFT profile target. Existing profile limits remain unchanged.
-- [ ] Build actual Studio and affected normal/qualification ZMK variants. Verify Studio symbols, native physical layout, CDC/Feature descriptor endpoint total, wrapper interception, Flash/RAM, pinned resident and old trial hashes. Diagnose real compiler/configuration failures before changing assumptions.
-- [ ] Run C format, `make test-zmk`, `make test`, both affected Python uv format/Ruff/strict mypy/dedicated suites. Expected: PASS. Commit and ledger actual results.
+- [x] Write RED native tests for one registration, actual descriptor prefix/feature suffix, invalid report rejection, single request admission, old-response invalidation and EP0 snapshot stability while the worker publishes.
+- [x] Implement Feature callback/worker adapter without interrupt writes or keyboard semaphore changes; preserve all original keyboard callbacks.
+- [x] Write host RED tests for both usages/framings, ambiguity, wrong IDs/short frames, not-ready polling, stale/session/nonce responses and legacy→Studio reconnect; implement shared helpers and retain specialized trial correlation.
+- [x] Test receiver/package maximum exactly `0x1a000` and rejection above it before BEGIN touches commit; enforce LEFT profile target. Existing profile limits remain unchanged.
+- [x] Build actual Studio and affected normal/qualification ZMK variants. Verify Studio symbols, native physical layout, CDC/Feature descriptor endpoint total, wrapper interception, Flash/RAM, pinned resident and old trial hashes. Diagnose real compiler/configuration failures before changing assumptions.
+- [x] Run C format, `make test-zmk`, `make test`, both affected Python uv format/Ruff/strict mypy/dedicated suites. Expected: PASS. Commit and ledger actual results.
 
 ### Task 4: Independent review and LEFT-only hardware qualification
 

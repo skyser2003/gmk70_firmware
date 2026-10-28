@@ -11,5 +11,5 @@ if(GMK70_STUDIO)
     COMMAND_ERROR_IS_FATAL ANY)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${gmk_layout_generator}" "${gmk_keyboard}" "${gmk_via}")
-  list(APPEND DTC_OVERLAY_FILE "${gmk_layout}")
+  list(APPEND EXTRA_DTC_OVERLAY_FILE "${gmk_layout}")
 endif()

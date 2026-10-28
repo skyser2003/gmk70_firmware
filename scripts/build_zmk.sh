@@ -86,9 +86,13 @@ fi
             printf 'Only target-specific left/right TrialPackage manifests are emitted.\n'
         else
             printf 'Application at 0x08002000; native updater and permanent live-worker watchdog.\n'
-            printf 'profile=zmk package; exact pinned resident prerequisite preserved.\n'
+            if [[ "$variant" == wired-studio-updater ]]; then
+                printf 'profile=zmk-studio; LEFT only; CDC Studio, Feature updater, 16KiB settings reservation.\n'
+            else
+                printf 'profile=zmk package; exact pinned resident prerequisite preserved.\n'
+            fi
         fi
-        printf 'No radio, RGB, encoder rotation, persistent settings, EEPROM or device operations.\n'
+        printf 'No radio, RGB, encoder rotation, external Vial EEPROM or device operations.\n'
     else
         printf 'EXPERIMENTAL actual ZMK %s staging trial; not a normal updater image.\n' "$variant"
         printf 'Source: dependencies/zmk/app\nBoard: %s\nFlash: 0x08020000, maximum 120 KiB\n' "$board"

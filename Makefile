@@ -67,6 +67,7 @@ test-zmk:
 	bash ./tests/zmk/run_update_platform_tests.sh
 	bash ./tests/zmk/run_receiver_tests.sh
 	bash ./tests/zmk/run_studio_settings_tests.sh
+	bash ./tests/zmk/run_studio_feature_tests.sh
 	bash -c 'set -euo pipefail; source ./scripts/project.sh; uv run --offline --frozen --project firmware/zmk/tools python -m unittest discover -s tests/zmk -p "test_*.py" -v'
 .PHONY: test-zmk
 
@@ -81,3 +82,7 @@ build-zmk-wired-update-test:
 build-zmk-wired-qualification:
 	bash ./scripts/build.sh zmk wired-qualification
 .PHONY: build-zmk-wired-updater build-zmk-wired-update-test build-zmk-wired-qualification
+
+build-zmk-wired-studio-updater:
+	bash ./scripts/build_zmk.sh wired-studio-updater
+.PHONY: build-zmk-wired-studio-updater

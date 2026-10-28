@@ -188,7 +188,14 @@ void gmk_zmk_receiver_step(const gmk_zmk_update_env_t *env) {
     } else if (remote) {
         if (!gmk_wired_update(request, response)) reply(request, response, result, env);
     } else {
-        result = gmk_update_process(&update, request);
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+        /* Reject before BEGIN can invalidate the pending commit page. Keep
+         * the common resident ABI and right peer's application limit intact. */
+        if (request[4] == GMK_BEGIN && gmk_read_u32(request + 16) > 0x1a000U)
+            result = GMK_BAD_REQUEST;
+        else
+#endif
+            result = gmk_update_process(&update, request);
         gmk_update_response(&update, request, result, response);
         response[7] = (env->left ? 1 : 0) | (env->left && env->usb_configured ? 2 : 0);
         if (request[4] == GMK_INFO && result == GMK_OK) {

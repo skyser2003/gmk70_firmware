@@ -41,7 +41,7 @@ class Package:
         manifest = self.manifest
         image = self.image
         if (
-            manifest["profile"] not in ("debug", "release", "vial", "zmk")
+            manifest["profile"] not in ("debug", "release", "vial", "zmk", "zmk-studio")
             or manifest["format"] != 1
             or manifest["board"] != "zuoya/gmk70"
             or manifest["mcu"] != "WB32FQ95-256K"
@@ -53,6 +53,8 @@ class Package:
             or manifest["app_sha256"] != hashlib.sha256(image).hexdigest()
         ):
             raise ValueError("Invalid or corrupt application package")
+        if manifest["profile"] == "zmk-studio" and len(image) > 0x1A000:
+            raise ValueError("Studio application overlaps settings reservation")
         stack, reset = struct.unpack_from("<II", image)
         if not (
             0x20000000 < stack <= 0x20007000
@@ -63,7 +65,7 @@ class Package:
             raise ValueError(
                 "Wrong application link address; staging cannot be installed"
             )
-        if manifest["profile"] == "zmk" and (
+        if manifest["profile"] in ("zmk", "zmk-studio") and (
             manifest["boot_sha256"] != ZMK_BOOT_SHA256
             or manifest["boot_crc"] != ZMK_BOOT_CRC
         ):
@@ -143,7 +145,7 @@ class UsbLink:
             item
             for item in self._hid.enumerate(0x342D, 0xE491)
             if item["usage_page"] == 0xFF60
-            and item["usage"] == 0x61
+            and item["usage"] in (0x61, 0x62)
             and item["manufacturer_string"] in ("HS", "LEO")
         ]
         if len(candidates) != 1:
@@ -152,6 +154,9 @@ class UsbLink:
             )
         self._device = self._hid.device()
         self._device.open_path(candidates[0]["path"])
+        self._feature = candidates[0]["usage"] == 0x62
+        if self._feature:
+            return
         # Drain once without waiting. Correlate subsequent replies instead of
         # paying a timed empty read before every request and STATUS poll.
         if self._device.set_nonblocking(1) != 0:
@@ -163,6 +168,23 @@ class UsbLink:
         finally:
             if self._device.set_nonblocking(0) != 0:
                 raise OSError("Could not restore blocking HID reads")
+
+    def _send_packet(self, packet: bytes) -> None:
+        if self._feature:
+            written = self._device.send_feature_report(b"\x04" + packet)
+        else:
+            written = self._device.write(b"\0" + packet)
+        if written != 33:
+            raise OSError("Incomplete USB write")
+
+    def _read_packet(self, timeout_ms: int) -> bytes:
+        if not self._feature:
+            return bytes(self._device.read(32, timeout_ms))
+        frame = bytes(self._device.get_feature_report(4, 33))
+        if len(frame) != 33 or frame[0] != 4 or frame[1:] == bytes(32):
+            time.sleep(0.001)
+            return bytes(32)  # invalid/not-ready: correlation loop keeps polling
+        return frame[1:]
 
     def exchange(self, packet: bytes) -> bytes:
         if len(packet) != 32:
@@ -176,11 +198,10 @@ class UsbLink:
                 expected_packet = self._pending_request
         else:
             self._pending_request = packet
-        if self._device.write(b"\0" + packet) != 33:
-            raise OSError("Incomplete USB write")
+        self._send_packet(packet)
         deadline = time.monotonic() + 2
         while (remaining := deadline - time.monotonic()) > 0:
-            response = bytes(self._device.read(32, max(1, int(remaining * 1000))))
+            response = self._read_packet(max(1, int(remaining * 1000)))
             if not response:
                 break
             if len(response) != 32 or response[:4] != packet[:4]:
@@ -309,6 +330,8 @@ class Updater:
         return reply
 
     def install(self, target: int, package: Package) -> None:
+        if package.manifest["profile"] == "zmk-studio" and target != 0:
+            raise ValueError("Studio development image supports LEFT installation only")
         package.validate_application()
         before = self.inspect(target, package)
         if before.state != 0:
@@ -407,7 +430,7 @@ def main() -> None:
     if (
         not args.inspect
         and args.target != "right"
-        and package.manifest["profile"] not in ("debug", "vial", "zmk")
+        and package.manifest["profile"] not in ("debug", "vial", "zmk", "zmk-studio")
     ):
         parser.error(
             "Left updates require debug, Vial or ZMK updater firmware so completion can be verified over USB"

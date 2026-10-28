@@ -6,6 +6,10 @@ struct usb_setup_packet {
     uint16_t wValue;
 };
 struct hid_ops {
+    int (*get_report)(const struct device *, struct usb_setup_packet *, int32_t *, uint8_t **);
+    void (*int_in_ready)(const struct device *);
+    void (*protocol_change)(const struct device *, uint8_t);
+    void (*on_idle)(const struct device *, uint16_t);
     int (*set_report)(const struct device *, struct usb_setup_packet *, int32_t *, uint8_t **);
     void (*int_out_ready)(const struct device *);
 };
