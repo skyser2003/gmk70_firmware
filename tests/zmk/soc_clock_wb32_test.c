@@ -62,11 +62,25 @@ int main(void) {
     assert(sys_read32(0x40010028U) == 0);
     assert(sys_read32(0x4001002cU) == 0);
 
+    /* Startup disconnect must work before the USB clock/PHY is enabled. */
+    wb32_usb_disconnect();
+    struct wb32_gpio *const porta = (void *)WB32_GPIOA_BASE;
+    assert((sys_read32(WB32_RCC_BASE + 0x48) & (BIT(15) | BIT(5))) == (BIT(15) | BIT(5)));
+    assert(porta->cfgmsk == (uint16_t)~BIT(12));
+    assert(porta->moder == (1U << 24));
+    assert(porta->otyper == BIT(12));
+    assert(porta->afrh == 0 && porta->pupdr == 0);
+    assert(porta->bsrr == BIT(28)); /* PA12/D+ driven low. */
+    assert(sys_read32(WB32_RCC_BASE + 0x6c) == 0);
+    assert(sys_read32(WB32_RCC_BASE + 0x7c) == 0);
+
     wb32_usb_clock_enable();
     assert(sys_read32(0x40014c40U) == 2);
     assert(sys_read32(WB32_RCC_BASE + 0x34) == 1);
     assert(sys_read32(WB32_RCC_BASE + 0x14) == (BIT(3) | BIT(0)));
     assert(((struct wb32_gpio *)WB32_GPIOA_BASE)->moder == ((2U << 22) | (2U << 24)));
+    assert(porta->afrh == ((3U << 12) | (3U << 16)));
+    assert(porta->otyper == 0);
     wb32_usb_clock_disable();
     assert(sys_read32(WB32_RCC_BASE + 0x6c) == 0);
     assert(sys_read32(WB32_RCC_BASE + 0x7c) == 0);

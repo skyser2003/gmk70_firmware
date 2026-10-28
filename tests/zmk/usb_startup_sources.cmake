@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Evaluate the production source selection, including both board profiles.
+function(zephyr_library)
+endfunction()
+function(zephyr_library_sources_ifdef config)
+  if(${config})
+    foreach(source IN LISTS ARGN)
+      file(APPEND "${OUTPUT}" "${CMAKE_CURRENT_LIST_DIR}/${source}\n")
+    endforeach()
+  endif()
+endfunction()
+set(CONFIG_USB_DC_WB32 ON)
+file(WRITE "${OUTPUT}" "")
+include("${CMAKE_CURRENT_LIST_DIR}/../../firmware/zmk/drivers/usb/device/CMakeLists.txt")
