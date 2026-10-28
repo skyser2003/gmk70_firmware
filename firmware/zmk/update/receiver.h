@@ -15,3 +15,9 @@ void gmk_zmk_receiver_receive(const uint8_t request[32], uint8_t response[32], b
 void gmk_zmk_receiver_step(const gmk_zmk_update_env_t *env);
 /* Platform reset, used only by the dedicated worker after the ACK grace. */
 void gmk_zmk_update_reset(void);
+
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+/* Atomically exclude upload admission until the worker completes a settings job. */
+bool gmk_zmk_receiver_storage_claim(void);
+void gmk_zmk_receiver_storage_release(void);
+#endif

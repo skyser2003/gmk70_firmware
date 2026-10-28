@@ -97,7 +97,11 @@ void gmk_wb32_flash_ram_operation(void) {
     REG(FMC + 8) = fail_operation == operations ? 4 : 0;
     if (REG(FMC + 8)) return;
     uint32_t address = REG(FMC + 0x10);
-    assert(address >= GMK_STAGE_BASE && address <= GMK_COMMIT_BASE);
+    assert((address >= GMK_STAGE_BASE && address <= GMK_COMMIT_BASE)
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+           || (address >= 0x0801c000U && address < 0x08020000U)
+#endif
+    );
     assert(address % GMK_PAGE_SIZE == 0);
     switch (REG(FMC) & 0x1fU) {
         case 8:
@@ -196,6 +200,26 @@ static void flash_tests(void) {
 #endif
 }
 
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+extern bool gmk_zmk_settings_flash_page(uint32_t, const uint8_t[256]);
+static void settings_bounds(void) {
+    uint8_t page[256];
+    memset(page, 0x53, sizeof(page));
+    const uint32_t bad[] = {0, GMK_FLASH_BASE, GMK_APP_BASE, 0x0801bf00, 0x0801c001, GMK_STAGE_BASE, GMK_COMMIT_BASE, UINT32_MAX};
+    for (unsigned i = 0; i < sizeof(bad) / sizeof(*bad); ++i) {
+        reset();
+        assert(!gmk_zmk_settings_flash_page(bad[i], page));
+        assert(!writes && !reads && !operations);
+    }
+    assert(!gmk_zmk_settings_flash_page(0x0801c000, NULL));
+    for (uint32_t a = 0x0801c000; a < 0x08020000; a += 256) {
+        reset();
+        assert(gmk_zmk_settings_flash_page(a, page));
+        assert(memcmp(gmk_flash_view(a), page, 256) == 0);
+        assert_restored(0);
+    }
+}
+#endif
 static void watchdog_tests(void) {
     reset();
     gmk_zmk_watchdog_feed();
@@ -247,6 +271,10 @@ int main(int argc, char **argv) {
         assert(gmk_running_size() == 0x304);
     }
     if (argc == 1 || strcmp(argv[1], "watchdog") == 0) watchdog_tests();
+
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+    settings_bounds();
+#endif
     assert(munmap(flash, 0x40000) == 0);
     puts("WB32 update platform tests passed");
     return 0;

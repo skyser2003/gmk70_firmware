@@ -3,9 +3,10 @@ set -euo pipefail
 source "$(dirname "$0")/../../scripts/project.sh"
 ulimit -c 0
 mkdir -p artifacts/tests/zmk
-for profile in permanent qualification relay; do
+for profile in permanent qualification relay studio; do
     flags=()
     if [[ "$profile" == qualification ]]; then flags+=(-DCONFIG_GMK70_STAGING_QUALIFICATION=1); fi
+    if [[ "$profile" == studio ]]; then flags+=(-DCONFIG_GMK70_ZMK_STUDIO_SETTINGS=1); fi
     if [[ "$profile" == relay ]]; then flags+=(-DCONFIG_GMK70_ZMK_PEER_TRIAL_RELAY=1); fi
     cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -fno-pie -no-pie \
         -Itests/zmk/receiver_stubs -Ifirmware/zmk/update -Ifirmware/zmk/wired -Ifirmware/qmk-common/keyboards/zuoya/gmk70/update "${flags[@]}" \

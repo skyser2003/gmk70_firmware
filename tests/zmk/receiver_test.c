@@ -521,7 +521,31 @@ static void trial_relay(void) {
     assert(response[5] == GMK_UNAVAILABLE && response[8] == 0x12);
 }
 #endif
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+static void storage_exclusion(void) {
+    setup();
+    assert(gmk_zmk_receiver_storage_claim());
+    assert(!gmk_zmk_receiver_storage_claim());
+    packet(GMK_BEGIN);
+    receive();
+    assert(response[5] == GMK_UNAVAILABLE && writes == 0);
+    gmk_zmk_receiver_step(&env);
+    assert(writes == 0);
+    gmk_zmk_receiver_storage_release();
+    packet(GMK_INFO);
+    receive();
+    assert(!gmk_zmk_receiver_storage_claim());
+    gmk_zmk_receiver_step(&env);
+    assert(gmk_zmk_receiver_storage_claim());
+    gmk_zmk_receiver_storage_release();
+    begin();
+    assert(!gmk_zmk_receiver_storage_claim());
+}
+#endif
 int main(void) {
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+    storage_exclusion();
+#endif
     setup();
     begin();
     gates();

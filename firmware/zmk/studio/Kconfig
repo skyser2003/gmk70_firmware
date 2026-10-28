@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+config GMK70_ZMK_STUDIO_SETTINGS
+    bool "Experimental GMK70 page settings backend for Studio"
+    depends on GMK70_ZMK_UPDATER && SETTINGS_CUSTOM && ZMK_STUDIO
+    depends on !GMK70_STAGING_QUALIFICATION
+    help
+      Reserves the final 16 KiB of the application region for two snapshot
+      banks. Only the updater worker writes complete WB32 flash pages.

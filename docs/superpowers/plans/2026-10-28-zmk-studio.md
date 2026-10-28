@@ -48,11 +48,11 @@
 
 **Interfaces:** Store core exposes initialize/load/save/delete via explicit flash view/page-write callbacks; journal pages256, two8192-byte banks at the exact spec addresses. `gmk_zmk_settings_poll(env)` executes queued synchronous settings jobs on the update worker. `gmk_zmk_receiver_storage_idle()` reports no pending local mutation or active upload/commit. `gmk_zmk_settings_ready()`/health status gates unsafe Studio mutation after failed initialization. A settings page adapter writes only the reservation; existing `gmk_flash_page` guards remain.
 
-- [ ] Write native RED tests for blank mount, persistent key/value/delete/no-op, malformed storage and exact region bounds using the real format implementation and an array-backed page fault injector.
-- [ ] Implement bounded flash-offset index, packed snapshots, one-record journal pages and commit-last bank switching. Validate all on-flash lengths/version/generation/CRCs; reject capacity/oversize before mutation.
-- [ ] Extend tests to every interrupted erase/program in append and compaction, stale generations/torn tails, retries after uncertain writes, overwrite/delete and unchanged unrelated data. Expected: only old/new single-setting state, no resurrected deletion, no silent format.
-- [ ] Add native Zephyr settings adapter and worker request/completion, trusted startup writes, updater admission exclusion and storage-fault handling. Test load APIs, initialization ordering, queue saturation, concurrent BEGIN/INSTALL and no watchdog feeding through unfinished work.
-- [ ] Run new sanitizer/native suites, existing update/receiver suites, formatting and `make test`. Expected: PASS. Commit and ledger evidence.
+- [x] Write native RED tests for blank mount, persistent key/value/delete/no-op, malformed storage and exact region bounds using the real format implementation and an array-backed page fault injector.
+- [x] Implement bounded flash-offset index, packed snapshots, one-record journal pages and commit-last bank switching. Validate all on-flash lengths/version/generation/CRCs; reject capacity/oversize before mutation.
+- [x] Extend tests to every interrupted erase/program in append and compaction, stale generations/torn tails, retries after uncertain writes, overwrite/delete and unchanged unrelated data. Expected: only old/new single-setting state, no resurrected deletion, no silent format.
+- [x] Add native Zephyr settings adapter and worker request/completion, trusted startup writes, updater admission exclusion and storage-fault handling. Test load APIs, initialization ordering, queue saturation, concurrent BEGIN/INSTALL and no watchdog feeding through unfinished work.
+- [x] Run new sanitizer/native suites, existing update/receiver suites, formatting and `make test`. Expected: PASS. Commit and ledger evidence.
 
 ### Task 3: Studio USB, host framing and complete build
 

@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "raw_hid.h"
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+#    include "../studio/settings_backend.h"
+#endif
 #include "wb32_watchdog.h"
 #include "wired.h"
 #include <zephyr/init.h>
@@ -66,6 +69,10 @@ static void worker(void *a, void *b, void *c) {
          * mode/USB/role after USB work, immediately before protocol dispatch. */
         env = worker_environment(peer);
         gmk_zmk_receiver_step(&env);
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+        env = worker_environment(peer);
+        gmk_zmk_settings_poll(&env);
+#endif
 #ifndef CONFIG_GMK70_STAGING_QUALIFICATION
         /* Feed only after this live worker completed its current flash/relay
          * work. A stalled controller or worker cannot refresh the watchdog. */

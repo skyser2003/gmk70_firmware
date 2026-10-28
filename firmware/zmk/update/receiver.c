@@ -16,6 +16,21 @@ static uint8_t              queued[32], last[3][32], remote_health_request[32], 
 static bool                 pending, queued_usb, remote_health_valid, committed;
 static uint32_t             last_activity, reset_at;
 static gmk_zmk_update_env_t health;
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+static bool storage_busy;
+bool        gmk_zmk_receiver_storage_claim(void) {
+    k_spinlock_key_t key  = k_spin_lock(&lock);
+    bool             idle = !storage_busy && !pending && !committed && update.state == GMK_IDLE;
+    if (idle) storage_busy = true;
+    k_spin_unlock(&lock, key);
+    return idle;
+}
+void gmk_zmk_receiver_storage_release(void) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    storage_busy         = false;
+    k_spin_unlock(&lock, key);
+}
+#endif
 
 static bool health_packet(const uint8_t *request) {
     if (request[0] != 0x7f || request[1] != 0x72 || request[2] != 1 || request[3] > 1 || request[4] != 0x20 || request[5] || request[6] || request[7] || !gmk_read_u32(request + 8)) return false;
@@ -110,7 +125,12 @@ void gmk_zmk_receiver_receive(const uint8_t request[32], uint8_t response[32], b
     bool             remote = usb && request[3] == 1;
     unsigned         index  = cache_index(request);
     k_spinlock_key_t key    = k_spin_lock(&lock);
-    if (is_health && !remote) {
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+    if (storage_busy && !readonly(request)) {
+        reply(request, response, GMK_UNAVAILABLE, env);
+    } else
+#endif
+        if (is_health && !remote) {
         health_reply(request, response, env);
     } else if (pending) {
         /* An unrelated request is never misidentified as the pending command.

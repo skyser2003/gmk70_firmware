@@ -59,6 +59,8 @@ static bool addressed_operation(uint32_t address, uint32_t op) {
     return operation(op);
 }
 
+static bool replace_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]);
+
 bool gmk_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
     bool staging = address >= GMK_STAGE_BASE && address < GMK_STAGE_BASE + GMK_APP_SIZE;
     if (!data || address % GMK_PAGE_SIZE || (!staging && address != GMK_COMMIT_BASE)) return false;
@@ -70,6 +72,17 @@ bool gmk_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
         if (data[i] != 0xff) return false;
     }
 #endif
+    return replace_page(address, data);
+}
+
+#if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) && !defined(CONFIG_GMK70_STAGING_QUALIFICATION)
+bool gmk_zmk_settings_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
+    if (!data || address % GMK_PAGE_SIZE || address < 0x0801c000U || address >= 0x08020000U) return false;
+    return replace_page(address, data);
+}
+#endif
+
+static bool replace_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
     /* Snapshot first: the caller may supply flash memory, including the page
      * being replaced, and the FMC latch accepts aligned 32-bit words only. */
     uint32_t page[GMK_PAGE_SIZE / sizeof(uint32_t)];
