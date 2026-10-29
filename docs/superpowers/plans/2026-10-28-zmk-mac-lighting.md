@@ -1,6 +1,6 @@
 # GMK70 Mac layers and lighting implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build four-layer, lighting-capable native ZMK candidates and document restart evidence without disturbing the installed keyboard.
 
@@ -31,11 +31,11 @@
 
 **Interfaces:** Preserve public settings functions and flash bounds; new pages version 2 accept compact canonical binding names; legacy version 1 remains readable.
 
-- [ ] Add failing capacity/legacy migration tests covering 288 bindings, metadata, remount and page cuts.
-- [ ] Replace RAM entry metadata with record offsets, encode binding names, retain legacy decoding and commit-last compaction.
-- [ ] Add four stock Windows/Mac layers and mode switches with semantic mapping checks.
-- [ ] Tune matched CDC/RPC rings, inspect compiled RPC stack usage, and build Studio within RAM bounds.
-- [ ] Run native settings/framing/keymap tests and commit the deliverable.
+- [x] Add failing capacity/legacy migration tests covering 288 bindings, metadata, remount and page cuts.
+- [x] Replace RAM entry metadata with record offsets, encode binding names, retain legacy decoding and commit-last compaction.
+- [x] Add four stock Windows/Mac layers and mode switches with semantic mapping checks.
+- [x] Tune matched CDC/RPC rings, inspect compiled RPC stack usage, and build Studio within RAM bounds.
+- [x] Run native settings/framing/keymap tests and commit the deliverable.
 
 ### Task 2: Native lighting driver and both-half transport
 
@@ -43,11 +43,11 @@
 
 **Interfaces:** Virtual 77-pixel strip; local 36/41 pixel hardware; transaction 11 retains exactly 16 input bytes. Worker-side render only; updater ABI unchanged.
 
-- [ ] Add failing native tests for RGB encoding, finite peripheral timeout, transaction CRC, full-frame commit and loss/reordering/reconnect.
-- [ ] Implement the WB32 hardware adapter from pinned vendor sources with explicit provenance and bounded progress.
-- [ ] Implement queued split-frame transport and scanner-side output outside the wire lock.
-- [ ] Enable native ZMK RGB behaviors and stock Fn lighting keys on both OS function layers.
-- [ ] Run affected native tests and actual Studio/normal/qualification builds; commit.
+- [x] Add failing native tests for RGB encoding, finite peripheral timeout, transaction CRC, full-frame commit and loss/reordering/reconnect.
+- [x] Implement the WB32 hardware adapter from pinned vendor sources with explicit provenance and bounded progress.
+- [x] Implement queued split-frame transport and scanner-side output outside the wire lock.
+- [x] Enable native ZMK RGB behaviors and stock Fn lighting keys on both OS function layers.
+- [x] Run affected native tests and actual Studio/normal/qualification builds; commit.
 
 ### Task 3: Analysis, documentation and complete verification
 
@@ -55,7 +55,7 @@
 
 **Interfaces:** Evidence report has no device side effects; hardware validation and installation remain explicitly outstanding.
 
-- [ ] Compare actual reset/resident/clock paths with vendor and upstream evidence, distinguish facts from hypotheses.
-- [ ] Document OS detection support, default-layer limits, Studio lighting controls and all Fn bindings.
-- [ ] Format edited sources; run make test, make test-zmk, tooling checks and affected ARM builds.
-- [ ] Obtain one fresh whole-feature review, address Important/Critical issues with regression tests, archive ledger and commit final evidence.
+- [x] Compare actual reset/resident/clock paths with vendor and upstream evidence, distinguish facts from hypotheses.
+- [x] Document OS detection support, default-layer limits, Studio lighting controls and all Fn bindings.
+- [x] Format edited sources; run make test, make test-zmk, tooling checks and affected ARM builds.
+- [x] Obtain one fresh whole-feature review, address Important/Critical issues with regression tests, archive ledger and commit final evidence.

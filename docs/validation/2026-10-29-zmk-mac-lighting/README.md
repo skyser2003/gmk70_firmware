@@ -15,7 +15,7 @@ resident identities remain the [earlier Studio checkpoint](../2026-10-28-zmk-stu
 the preserved padded resident identity, checks and outstanding hardware work.
 All four builds passed the real ARM ELF/image checker. Their artifact directories
 are `artifacts/zmk/<variant>/`; frozen task evidence is kept under the private
-recovery archive after review. The original installed images remain frozen in
+recovery archive `artifacts/recovery/2026-10-29-mac-lighting/`. The original installed images remain frozen in
 their earlier recovery directories.
 
 `make test` passed native suites, 7 migration tests and 88 repository tests.
