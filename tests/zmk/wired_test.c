@@ -30,7 +30,13 @@ static void clear(void *ctx) {
     f->pos = f->n;
 }
 static unsigned calls;
-static void     update(const uint8_t in[32], uint8_t out[32]) {
+static unsigned light_calls;
+static uint8_t  last_light[16];
+static void     lighting(const uint8_t packet[16]) {
+    ++light_calls;
+    memcpy(last_light, packet, 16);
+}
+static void update(const uint8_t in[32], uint8_t out[32]) {
     ++calls;
     out[0] = in[0] + 1;
 }
@@ -65,6 +71,12 @@ int main(void) {
         frame[0]          = id;
         assert(server(&p, &f, frame, 1 + sizes[id]));
     }
+    p.lighting        = lighting;
+    uint8_t light[17] = {11, 0xd7};
+    assert(!server(&p, &f, light, 16));
+    assert(light_calls == 0);
+    assert(server(&p, &f, light, 17));
+    assert(light_calls == 1 && !memcmp(last_light, light + 1, 16));
     uint8_t info[5] = {13, 0, 18, 32, 32};
     info[1]         = gmk_wire_crc8(info + 2, 3);
     p.update        = update;

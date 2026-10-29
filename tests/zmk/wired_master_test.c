@@ -26,10 +26,20 @@ static void clear(void *ctx) {
     ++((struct fixture *)ctx)->clears;
 }
 int main(void) {
-    struct fixture     f       = {0};
-    struct gmk_wire_io io      = {&f, receive, send, clear};
-    uint8_t            in[32]  = {42}, out[32];
-    uint8_t            acks[4] = {13 ^ 19, 14 ^ 19, 15 ^ 19, 16 ^ 19};
+    struct fixture     f            = {0};
+    struct gmk_wire_io io           = {&f, receive, send, clear};
+    uint8_t            in[32]       = {42}, out[32];
+    uint8_t            acks[4]      = {13 ^ 19, 14 ^ 19, 15 ^ 19, 16 ^ 19};
+    uint8_t            lighting[16] = {0xd7, 3, 7};
+    f.replies[0]                    = 11 ^ 19;
+    f.len                           = 1;
+    assert(gmk_protocol_lighting(&io, lighting));
+    assert(f.sent == 17 && f.written[0] == 11 && !memcmp(f.written + 1, lighting, 16));
+    f.pos = f.sent = f.clears = 0;
+    f.replies[0] ^= 1;
+    assert(!gmk_protocol_lighting(&io, lighting));
+    assert(f.sent == 1);
+    f.pos = f.sent = f.clears = 0;
     memcpy(f.replies, acks, 4);
     memset(f.replies + 4, 0x5a, 32);
     f.len = 36;

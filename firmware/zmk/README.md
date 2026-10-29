@@ -1,5 +1,9 @@
 # GMK70 ZMK wired development and staging trials
 
+Current sources add an offline [four-layer/RGB candidate](../../docs/ZMK-MAC-LIGHTING.md).
+It has not been installed or hardware-qualified; the verified checkpoint below
+remains unchanged. Read the memory/stack and restart limits before installation.
+
 The [Studio central](../../docs/ZMK-STUDIO.md) is now installed and verified on
 LEFT, with the original permanent RIGHT unchanged. The local Studio app connects,
 saves bindings/layer names, and preserves them across a distinct-image LEFT
@@ -61,8 +65,8 @@ evidence. `--inspect-only --qualification` reads bounded staging identity/health
 without claiming permanent watchdog service. The callable `HealthReader` accepts
 an existing link so qualification scripts can share one HID handle.
 
-Radio, RGB, encoder rotation and power saving remain outside this wired
-milestone. Studio and persistent settings are provided by the separate Studio
+Radio, encoder rotation and power saving remain outside this wired
+milestone. RGB is present in the current uninstalled candidate; Studio and persistent settings are provided by the separate Studio
 central described above. Building/native testing cannot establish
 silicon timing, USB/UART behavior or physical key input. An inherited permanent
 IWDG also makes arbitrary warm rollback to frozen Vial unqualified; retain the

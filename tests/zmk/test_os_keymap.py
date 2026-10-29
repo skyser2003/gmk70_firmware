@@ -8,6 +8,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class OsKeymapTests(unittest.TestCase):
+    def test_stock_lighting_controls_on_both_os_fn_layers(self) -> None:
+        native = (
+            ROOT / "firmware/zmk/boards/zuoya/gmk70_wired/gmk70_wired.keymap"
+        ).read_text()
+        layers = re.findall(r"bindings\s*=\s*<(.*?)>;", native, re.S)
+        expected = {
+            17: "RGB_EFF",
+            28: "RGB_HUD",
+            29: "RGB_HUI",
+            30: "RGB_EFR",
+            42: "RGB_SAD",
+            43: "RGB_SAI",
+            48: "RGB_TOG",
+            59: "RGB_BRI",
+            69: "RGB_SPD",
+            70: "RGB_BRD",
+            71: "RGB_SPI",
+        }
+        for layer in (layers[1], layers[3]):
+            bindings = [b.strip() for b in re.findall(r"&\w+(?:\s+[^&\n]+)?", layer)]
+            for position, command in expected.items():
+                self.assertEqual(bindings[position], f"&rgb_ug {command}")
+
     def test_stock_os_layers_and_mode_switches(self) -> None:
         stock = (
             ROOT / "firmware/qmk-common/keyboards/zuoya/gmk70/keymaps/stock_keymap.h"
@@ -17,10 +40,10 @@ class OsKeymapTests(unittest.TestCase):
         ).read_text()
         native_layers = re.findall(r"bindings\s*=\s*<(.*?)>;", native, re.S)
         self.assertEqual(len(native_layers), 4)
-        layers = [re.findall(r"&\w+(?:\s+[^&\n]+)?", l) for l in native_layers]
-        layers = [[b.strip() for b in l] for l in layers]
-        for l in layers:
-            self.assertEqual(len(l), 72)
+        layers = [re.findall(r"&\w+(?:\s+[^&\n]+)?", layer) for layer in native_layers]
+        layers = [[b.strip() for b in layer] for layer in layers]
+        for layer in layers:
+            self.assertEqual(len(layer), 72)
         # The stock base maps differ only at Fn and the three Alt/GUI positions.
         self.assertIn("MO(_MFL), KC_LGUI", stock)
         self.assertEqual(

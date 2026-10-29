@@ -92,7 +92,8 @@ fi
                 printf 'profile=zmk package; exact pinned resident prerequisite preserved.\n'
             fi
         fi
-        printf 'No radio, RGB, encoder rotation, external Vial EEPROM or device operations.\n'
+        printf 'Four Windows/Mac layers; native RGB and bounded wired pixel synchronization.\n'
+        printf 'No radio, encoder rotation, external Vial EEPROM or device operations.\n'
     else
         printf 'EXPERIMENTAL actual ZMK %s staging trial; not a normal updater image.\n' "$variant"
         printf 'Source: dependencies/zmk/app\nBoard: %s\nFlash: 0x08020000, maximum 120 KiB\n' "$board"

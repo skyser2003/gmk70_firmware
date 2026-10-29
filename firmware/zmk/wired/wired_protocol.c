@@ -57,6 +57,11 @@ bool gmk_protocol_serve(struct gmk_protocol *p, const struct gmk_wire_io *io) {
         case 3:
             out[0] = gmk_wire_crc8(out, 8);
             break;
+        case 11:
+            /* Existing 16-byte core RGB transaction. The native handler only
+             * validates/queues pixels; no LED/flash work under the wire lock. */
+            if (p->lighting) p->lighting(in);
+            break;
         case 13:
             invalidate(p);
             if (in[0] != gmk_wire_crc8(in + 1, 3) || in[1] < 17 || in[1] >= 19 || in[2] > 32 || in[3] > 32) goto fail;
@@ -111,6 +116,9 @@ bool gmk_protocol_update(const struct gmk_wire_io *io, const uint8_t in[32], uin
     }
     memcpy(out, response, 32);
     return true;
+}
+bool gmk_protocol_lighting(const struct gmk_wire_io *io, const uint8_t packet[16]) {
+    return transaction(io, 11, packet, 16, NULL, 0);
 }
 bool gmk_protocol_poll(const struct gmk_wire_io *io, uint16_t rows[5]) {
     uint8_t checksum, data[10];

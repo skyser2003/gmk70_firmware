@@ -16,6 +16,7 @@
  */
 #include "wired.h"
 #include "wired_protocol.h"
+#include "../lighting/lighting.h"
 #include "gmk70_wired_pins.h"
 #include <soc.h>
 #include <zephyr/kernel.h>
@@ -171,9 +172,10 @@ void gmk_wired_poll(void) {
     k_mutex_lock(&wired_lock, K_FOREVER);
     if (mode_now()) {
         ++counters.polls;
-        if (gmk_protocol_poll(&master_wire, rows))
+        if (gmk_protocol_poll(&master_wire, rows)) {
             gmk_peer_set(&peer, rows, k_uptime_get_32());
-        else
+            gmk_lighting_wire_poll(&master_wire);
+        } else
             ++counters.failures;
     } else
         peer.connected = false;
@@ -234,6 +236,7 @@ static void serial_thread(void *a, void *b, void *c) {
 }
 K_THREAD_DEFINE(gmk_serial_thread, 1536, serial_thread, NULL, NULL, NULL, 4, 0, 0);
 static int wired_init(void) {
+    protocol.lighting = gmk_lighting_receive;
     sys_set_bits(WB32_RCC_BASE + 0x48, (1U << 15) | (1U << 14) | (1U << 7) | (1U << 6) | (1U << 5));
     pin_mode(gmk_role_pin, 0, 0);
     left = pin_read(gmk_role_pin);

@@ -57,3 +57,16 @@ EN_RM2905025_WB32FQ95xx_V01, sections 5.4.9/10, 7.2.12, 7.3.11/16, 11.4.6/7,
 18 and 27.4.2. The new adapter retains that GPL identifier. Permanent firmware
 establishes the longest IWDG period for both stopped and inherited running
 watchdogs; staging qualification neither initializes nor feeds IWDG.
+
+`lighting/wb32_pixels.c` adapts WB32 SPIM2 and DMAC2 register programming from
+Westberry's Apache-2.0 SPIv1 and DMAv1 drivers, `wb32_dma.h`, `wb32_rcc.h` and
+CMSIS definitions at ChibiOS-Contrib
+[`5a9ad82b6ba4f649cdb800e8c2bbc9be2d3ce767`](https://github.com/qmk/ChibiOS-Contrib/tree/5a9ad82b6ba4f649cdb800e8c2bbc9be2d3ce767).
+The `1000`/`1110` four-bit WS2812 encoding follows pinned GPL QMK
+[`ws2812_spi.c`](https://github.com/qmk/qmk_firmware/blob/08c662f286ddfd12a985f57b584b02eca5af0ae6/platforms/chibios/drivers/ws2812_spi.c).
+The local adapter retains Westberry attribution and uses GPL-2.0-or-later.
+The source reference is also Westberry EN_RM2905025_WB32FQ95xx_V01, DMA chapter 10
+(request interface mapping p136, raw status p139) and SPIM chapter 21 (FIFO p291).
+Maintained board sources supply B15/AF5, RGB byte order, A5/A8 active-high power
+and 36/41 half counts. Neither upstream source tree is modified or linked into
+the native ZMK runtime. DMAC2 channel 0 is exclusively owned by this driver.

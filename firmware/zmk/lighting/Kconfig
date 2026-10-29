@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+config GMK70_WB32_RGB
+    bool "GMK70 native WB32 RGB strip and wired frame transport"
+    depends on BOARD_GMK70_WIRED && ZMK_RGB_UNDERGLOW
+    default y
+    help
+      B15/SPIM2 and DMAC2 channel 0 drive the 36/41 RGB-order WS2812 LEDs.
+      The left renders a virtual 77-pixel strip and synchronizes complete
+      peripheral frames over the existing 16-byte wired RGB transaction.

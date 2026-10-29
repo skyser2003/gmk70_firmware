@@ -2,6 +2,7 @@
 /dts-v1/;
 #include <westberry/wb32fq95.dtsi>
 #include <dt-bindings/zmk/matrix_transform.h>
+#include <zephyr/dt-bindings/led/led.h>
 / {
     model = "ZUOYA GMK70 universal wired updater";
     compatible = "zuoya,gmk70-wired-board";
@@ -11,6 +12,12 @@
         zephyr,usb-device = &usb0;
         zmk,kscan = &kscan0;
         zmk,matrix-transform = &default_transform;
+        zmk,underglow = &rgb_strip;
+    };
+    rgb_strip: rgb_strip {
+        compatible = "zuoya,gmk70-rgb";
+        chain-length = <77>;
+        color-mapping = <LED_COLOR_ID_RED LED_COLOR_ID_GREEN LED_COLOR_ID_BLUE>;
     };
     kscan0: kscan {
         compatible = "zuoya,gmk70-wired";

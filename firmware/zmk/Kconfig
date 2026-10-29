@@ -6,6 +6,7 @@ if BOARD_GMK70_WIRED
 rsource "drivers/kscan/Kconfig"
 rsource "update/Kconfig"
 rsource "studio/Kconfig"
+rsource "lighting/Kconfig"
 endif
 
 config GMK70_TRIAL_MAIN_RETURN

@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+description: GMK70 virtual RGB strip over WB32 SPIM2 and the wired peripheral
+compatible: "zuoya,gmk70-rgb"
+include: led-strip.yaml

@@ -5,6 +5,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/irq.h>
 #include "wired.h"
+#include "../../lighting/lighting.h"
 
 struct gmk_kscan_data {
     kscan_callback_t callback;
@@ -42,6 +43,7 @@ static void scan_once(void) {
         gmk_wired_poll();
         gmk_wired_remote_matrix(rows + 5);
     }
+    gmk_lighting_poll();
     if (scanner) {
         struct gmk_kscan_data *data     = scanner->data;
         unsigned               key      = irq_lock();

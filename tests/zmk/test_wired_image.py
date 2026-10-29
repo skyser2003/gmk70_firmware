@@ -77,10 +77,10 @@ class WiredImageTests(unittest.TestCase):
         ]
         self.assertEqual(mapped, coords)
         bindings = re.findall(
-            r"&(?:kp\s+\w+|mo\s+\d+|none|trans)",
+            r"&(?:kp\s+\w+|(?:mo|to)\s+\d+|rgb_ug\s+\w+|none|trans)",
             (board / "gmk70_wired.keymap").read_text(),
         )
-        self.assertEqual(len(bindings), 2 * len(coords))
+        self.assertEqual(len(bindings), 4 * len(coords))
         self.assertEqual(bindings[coords.index((4, 2))], "&mo 1")
 
 
