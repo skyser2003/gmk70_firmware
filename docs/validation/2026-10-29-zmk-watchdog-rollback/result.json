@@ -1,0 +1,195 @@
+{
+  "source_commit": "610946f",
+  "scope": "LEFT application-only removal of permanent watchdog and original SYSRESETREQ update comparison",
+  "installed_left": {
+    "variant": "wired-studio-watchdog-rollback",
+    "product": "GMK70 Studio No Watchdog",
+    "app_size": 70340,
+    "app_crc": 1796245169,
+    "app_sha256": "b083449cc51e501368744d27d84767ea20eb3e96a7a6a899b7c08349f83613c6",
+    "watchdog_started": false,
+    "watchdog_feeds": 0,
+    "outgoing_resident_handoff": false,
+    "studio_saving": true
+  },
+  "right_unchanged": {
+    "app_size": 36576,
+    "app_crc": 1296309606
+  },
+  "resident_crc_both": 1770733249,
+  "health": {
+    "baseline": {
+      "verified_window_seconds": 60.95299999997951,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 71684,
+          "crc": 2883208108,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    },
+    "cold_no_watchdog": {
+      "verified_window_seconds": 70.5,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 70340,
+          "crc": 2513332713,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    },
+    "hardware_reset_a_to_b": {
+      "verified_window_seconds": 70.48399999999674,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 70352,
+          "crc": 1589421046,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    },
+    "hardware_reset_b_to_final": {
+      "verified_window_seconds": 70.51600000000326,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 70340,
+          "crc": 1796245169,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    }
+  },
+  "install_requests": {
+    "bootstrap": 1,
+    "ab": 1,
+    "final": 1,
+    "restore": 0
+  },
+  "bootstrap_inherited_watchdog": {
+    "automatic_stable_recovery": false,
+    "observation_seconds": 191.68800000002375,
+    "last_accepted_left_uptime_ms": 29814,
+    "last_accepted_feed_calls": 0,
+    "joined_left_cold_cycle_user_confirmed": true
+  },
+  "original_hardware_reset_updates": {
+    "a_to_b": "automatic return and verified health",
+    "b_to_final": "automatic return and verified health",
+    "additional_cycle_requested_or_reported": false
+  },
+  "studio": {
+    "layers": [
+      "Windows",
+      "Fn",
+      "Mac",
+      "Mac Fn"
+    ],
+    "positions_per_layer": 72,
+    "all_original_bindings_and_names_preserved": true,
+    "save_reload_verified": true,
+    "no_unsaved_changes": true,
+    "normal_local_app_connected": true,
+    "remote_debugging_disabled": true
+  },
+  "inference": "With watchdog init/feed disabled, original SYSRESETREQ updates returned automatically in two LEFT tests. This implicates the watchdog path; failing PC/reset-retention mechanism remains unmeasured.",
+  "limits": [
+    "RIGHT reset/update not tested or changed",
+    "No hardware watchdog recovery in installed LEFT build",
+    "Ordinary variants retain watchdog; use separately labeled rollback target",
+    "Nominal165s bootstrap observer took191.688s due blocking host enumeration",
+    "No fresh human typing or visual RGB qualification"
+  ],
+  "private_evidence_inventory": {
+    "path": "artifacts/recovery/2026-10-29-watchdog-rollback/SHA256SUMS.json",
+    "sha256": "9cfc344e7fb80b47a10d6ec28f039eddf92b6e962f7177ba77dd029c59eadea6",
+    "files": 81
+  }
+}

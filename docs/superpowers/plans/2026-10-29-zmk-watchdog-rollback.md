@@ -47,15 +47,43 @@ existing Python build/package tooling and separate one-shot device operators.
 - [x] One LEFT bootstrap INSTALL; observe inherited watchdog expiry/recovery.
 - [x] Require 70 seconds of stable zero-feed diagnostic health.
 - [x] One A-to-B INSTALL using SYSRESETREQ; bounded return observation.
-- [ ] Install final no-watchdog image with Studio saving restored; verify both identities/health/Studio.
-- [ ] Record exact results, limitations and current hardware state; commit work.
+- [x] Install final no-watchdog image with Studio saving restored; verify both identities/health/Studio.
+- [x] Record exact results, limitations and current hardware state; commit work.
 
 ## Progress
 
-Historical sources reviewed; current hardware still matches the frozen handoff
-checkpoint. Ruling: continue autonomously under the user's explicit rollback/test
-request; no repeated design approval or new checkout is needed.
+Preflight: historical sources reviewed; hardware matched the frozen handoff
+checkpoint. Ruling: continue autonomously on the existing development branch
+under the user's explicit rollback/test request.
 
-Offline results: repository88 + migration7 tests, ZMK native fixtures/13 Python tests, updater113 tests (one optional integration skipped) passed. Changed Python Ruff/format/strict mypy pass. Linked diagnostic init/feed are no-op and reset calls sys_reboot; ordinary handoff rebuild is byte-identical to installed A. Independent firmware review found no blocker. Independent device-operator review found and corrected stale-report/boot-continuity guards before writes; final review passed. One LEFT bootstrap INSTALL was acknowledged. Initial zero-feed runtime lasted about30seconds, then startup-uptime guard failed and USB became unavailable. No second INSTALL was sent; user confirmed a single joined-LEFT cold cycle and fresh70-second qualification is in progress.
+Offline diagnostic: repository 88 plus migration 7 tests, native ZMK fixtures
+and 13 Python tests, and 113 updater tests (one optional skip) passed. Changed
+Python Ruff/format/strict mypy passed. Independent code/artifact review passed.
+Operator review corrected stale-report and boot-continuity guards before writes.
 
-Ruling after hardware comparison: A→B SYSRESETREQ returned automatically and passed70.484seconds of zero-feed health. Keep the user-requested watchdog removal installed instead of reintroducing it via the old recovery image. Extend the labeled opt-in with Studio journal saving; ordinary builds and RIGHT remain unchanged. New settings/health tests observed RED then GREEN; independent code/artifact review passed. One final B→functional no-watchdog image update remains.
+Bootstrap: one LEFT INSTALL acknowledged; initial zero-feed runtime reached
+29,814 ms before the startup-uptime guard failed and USB became unavailable.
+No next write occurred. User confirmed one joined-LEFT cold cycle; A then passed
+70.500 seconds of uninterrupted zero-feed health.
+
+Hardware comparison: A→B SYSRESETREQ returned automatically and passed 70.484
+seconds of zero-feed health. Ruling: keep the requested watchdog removal installed
+and restore Studio journal saving, instead of reintroducing the watchdog via the
+old recovery image. Ordinary builds and RIGHT remain unchanged.
+
+Final implementation: source `610946f`; settings/health regressions observed RED
+then GREEN, independent code/linked-image/operator reviews passed. Final suite:
+repository 88 plus migration 7 tests, native ZMK fixtures and 13 Python tests,
+and 115 updater tests (one optional skip). Changed Python checks and affected
+ARM builds pass; ordinary handoff remains byte-identical.
+
+Final hardware: one B→final INSTALL; original SYSRESETREQ returned automatically
+and passed 70.516 seconds of both-half zero-feed health. Actual Studio save/reload
+of a temporary Fn name passed, all original names and 288 bindings were restored,
+and no unsaved changes remain. Normal Studio reopened without remote debugging,
+COM3 connected and four layers visible. Final identity/health after UI work
+confirmed LEFT 70,340/1796245169, RIGHT unchanged and both residents unchanged,
+with zero retries. No further cycle after bootstrap cold start.
+
+See `docs/ZMK-WATCHDOG-ROLLBACK.md` and sanitized validation. Private evidence is
+frozen separately and must not be published or replayed.

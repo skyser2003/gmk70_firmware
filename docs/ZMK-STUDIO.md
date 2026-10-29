@@ -1,5 +1,11 @@
 # GMK70 wired ZMK Studio
 
+Current 2026-10-29 checkpoint: [LEFT watchdog rollback](ZMK-WATCHDOG-ROLLBACK.md) passed two
+automatic original-SYSRESETREQ updates and Studio save/reload. Installed LEFT is
+70,340/1796245169 with no watchdog; RIGHT and residents are unchanged. This
+supersedes the installed-state notes below. The exact reset/retention mechanism
+remains unmeasured; ordinary watchdog-enabled variants are unchanged.
+
 Current LEFT checkpoint: the [resident-handoff experiment](ZMK-RESIDENT-HANDOFF.md) now runs four-layer Studio and passed automatic A→B→A updates. RIGHT and both residents remain unchanged. The two-layer result below is the earlier milestone.
 
 The experimental `wired-studio-updater` image adds standard USB serial Studio

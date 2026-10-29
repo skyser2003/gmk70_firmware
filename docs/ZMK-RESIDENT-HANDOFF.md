@@ -1,5 +1,11 @@
 # Experimental application-only update activation
 
+Current 2026-10-29 checkpoint: [LEFT watchdog rollback](ZMK-WATCHDOG-ROLLBACK.md) passed two
+automatic original-SYSRESETREQ updates and Studio save/reload. Installed LEFT is
+70,340/1796245169 with no watchdog; RIGHT and residents are unchanged. This
+supersedes the installed-state notes below. The exact reset/retention mechanism
+remains unmeasured; ordinary watchdog-enabled variants are unchanged.
+
 The 2026-10-29 investigation adds separately labeled LEFT Studio builds that
 can enter the **unchanged resident installer directly** after an update. This
 is an experimental workaround for update activation; ordinary SYSRESETREQ

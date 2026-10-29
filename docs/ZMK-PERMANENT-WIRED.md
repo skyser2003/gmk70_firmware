@@ -1,5 +1,11 @@
 # Permanent wired ZMK
 
+Current 2026-10-29 checkpoint: [LEFT watchdog rollback](ZMK-WATCHDOG-ROLLBACK.md) passed two
+automatic original-SYSRESETREQ updates and Studio save/reload. Installed LEFT is
+70,340/1796245169 with no watchdog; RIGHT and residents are unchanged. This
+supersedes the installed-state notes below. The exact reset/retention mechanism
+remains unmeasured; ordinary watchdog-enabled variants are unchanged.
+
 Later LEFT checkpoint: [Studio with experimental resident handoff](ZMK-RESIDENT-HANDOFF.md) now passes automatic A→B→A updates. RIGHT retains the normal image described below; its handoff remains untested.
 
 As of 2026-10-28, both halves run the normal permanent native ZMK image A

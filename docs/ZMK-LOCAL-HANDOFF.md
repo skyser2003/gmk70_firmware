@@ -1,5 +1,18 @@
 # Local continuation: updater-preserving ZMK development
 
+## Current LEFT watchdog rollback — 2026-10-29
+
+[Watchdog removal](ZMK-WATCHDOG-ROLLBACK.md) restored the original SYSRESETREQ
+update path on LEFT in two distinct-image tests, without further cycles after
+one bootstrap cold start. LEFT now runs the separately labeled no-watchdog
+Studio image 70,340/1796245169; RIGHT remains 36,576/1296309606 and both resident
+CRCs 1770733249. Both updates passed 70-second health; actual Studio save/reload
+and complete original four-layer map restoration passed. Normal Studio connects.
+LEFT no longer has watchdog hang recovery or outgoing resident handoff. Ordinary
+variants retain the watchdog; RIGHT reset behavior is untested. The exact
+watchdog/reset-retention mechanism remains unmeasured. Use the linked validation
+for the current checkpoint; the handoff experiment below is historical.
+
 ## LEFT update activation workaround — 2026-10-29
 
 The [experimental resident handoff](ZMK-RESIDENT-HANDOFF.md) is now hardware-tested

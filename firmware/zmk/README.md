@@ -1,5 +1,11 @@
 # GMK70 ZMK wired development and staging trials
 
+Current 2026-10-29 checkpoint: [LEFT watchdog rollback](../../docs/ZMK-WATCHDOG-ROLLBACK.md) passed two
+automatic original-SYSRESETREQ updates and Studio save/reload. Installed LEFT is
+70,340/1796245169 with no watchdog; RIGHT and residents are unchanged. This
+supersedes the installed-state notes below. The exact reset/retention mechanism
+remains unmeasured; ordinary watchdog-enabled variants are unchanged.
+
 Current hardware checkpoint: the [LEFT resident-handoff variant](../../docs/ZMK-RESIDENT-HANDOFF.md) runs four-layer Studio/local RGB and passed automatic A→B→A activation. RIGHT remains unchanged. Ordinary builds retain SYSRESETREQ; use the explicitly labeled handoff targets for the qualified LEFT experiment.
 
 Current sources add an offline [four-layer/RGB candidate](../../docs/ZMK-MAC-LIGHTING.md).

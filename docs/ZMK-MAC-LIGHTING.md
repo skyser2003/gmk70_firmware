@@ -1,5 +1,11 @@
 # GMK70 Mac layers and lighting candidate
 
+Current 2026-10-29 checkpoint: [LEFT watchdog rollback](ZMK-WATCHDOG-ROLLBACK.md) passed two
+automatic original-SYSRESETREQ updates and Studio save/reload. Installed LEFT is
+70,340/1796245169 with no watchdog; RIGHT and residents are unchanged. This
+supersedes the installed-state notes below. The exact reset/retention mechanism
+remains unmeasured; ordinary watchdog-enabled variants are unchanged.
+
 2026-10-29 hardware follow-up: the [LEFT handoff variant](ZMK-RESIDENT-HANDOFF.md) now includes four layers and local RGB and connects in Studio. RIGHT remains on the older image; full peer lighting and the ordinary variants below remain unqualified on this keyboard. The offline task record below predates this separate experiment.
 
 Implemented offline on 2026-10-28/29. **Not installed or hardware-qualified.** The
