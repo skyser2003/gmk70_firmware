@@ -1,0 +1,162 @@
+{
+  "source_commit": "cc8f290",
+  "scope": "LEFT Studio automatic application activation through unchanged resident",
+  "underlying_sysresetreq_fault_localized": false,
+  "left_update_handoff_qualified": true,
+  "resident_writes": 0,
+  "right_application_writes": 0,
+  "radio_writes": 0,
+  "initial_old_sender_reset": {
+    "install_acknowledged": true,
+    "returned_within_80_seconds": false,
+    "read_only_observation_seconds": 80.125,
+    "user_confirmed_joined_left_cycle": true
+  },
+  "health": {
+    "bootstrap": {
+      "verified_window_seconds": 61.0,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 71684,
+          "crc": 2883208108,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    },
+    "roundtrip-b": {
+      "verified_window_seconds": 60.96899999998277,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 71692,
+          "crc": 3407121084,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    },
+    "roundtrip-a": {
+      "verified_window_seconds": 60.04599999997299,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 71684,
+          "crc": 2883208108,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    }
+  },
+  "images": {
+    "candidate-a": {
+      "app_size": 71684,
+      "app_crc": 2883208108,
+      "app_sha256": "32b797e270659eb0ab0bd1c0ac70d964054188cd4f607a3af2bf1a383c8ec024",
+      "boot_crc": 1770733249,
+      "boot_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a"
+    },
+    "candidate-b": {
+      "app_size": 71692,
+      "app_crc": 3407121084,
+      "app_sha256": "ecdcda6e6fc605b76472475bc5770dfdd92d0307f23c312b9d637f8c7b7e08f7",
+      "boot_crc": 1770733249,
+      "boot_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a"
+    }
+  },
+  "studio": {
+    "four_layers": true,
+    "bindings_per_layer": 72,
+    "base_bindings_preserved": true,
+    "saved_fn_name_preserved": true,
+    "unsaved_changes": false,
+    "fn_default_changed_positions": [
+      17,
+      28,
+      29,
+      30,
+      33,
+      34,
+      42,
+      43,
+      48,
+      59,
+      64,
+      67,
+      69,
+      70,
+      71
+    ]
+  },
+  "additional_user_cycles_between_a_b_a": 0,
+  "right_handoff_tested": false,
+  "normal_studio": {
+    "normal_launch": true,
+    "selected_gmk_port": true,
+    "four_layers_visible": true
+  },
+  "evidence_inventory_sha256": "ecee418ddf4b7f6d2b555cd1effcccf783d067727e54a7eb9642a4703e668cf8",
+  "evidence_file_count": 77
+}

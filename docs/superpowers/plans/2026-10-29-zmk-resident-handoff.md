@@ -29,28 +29,28 @@
 
 Files: `firmware/zmk/update/resident_handoff.{c,h,S}`, `service.c`, `Kconfig`, `CMakeLists.txt`; native fixtures under `tests/zmk/`.
 
-- [ ] Write/run failing service tests: selected permanent path calls handoff; ordinary and qualification paths still reset.
-- [ ] Test rejection of wrong resident, wrong vectors, wrong clocks/watchdog and non-thread/unprivileged contexts before detaching.
-- [ ] Implement `bool gmk_zmk_resident_handoff(void)`; rejection returns false, admitted path never returns. Verify detach interval, mask/SysTick/NVIC/DMA ordering and final watchdog reload with a simulated MMIO fixture.
-- [ ] Add stack-free ARM tail, inspect linked instructions and ensure it branches to the installed reset vector.
-- [ ] Run native suites and commit only verified software.
+- [x] Write/run failing service tests: selected permanent path calls handoff; ordinary and qualification paths still reset.
+- [x] Test rejection of wrong resident, wrong vectors, wrong clocks/watchdog and non-thread/unprivileged contexts before detaching.
+- [x] Implement `bool gmk_zmk_resident_handoff(void)`; rejection returns false, admitted path never returns. Verify detach interval, mask/SysTick/NVIC/DMA ordering and final watchdog reload with a simulated MMIO fixture.
+- [x] Add stack-free ARM tail, inspect linked instructions and ensure it branches to the installed reset vector.
+- [x] Run native suites and commit only verified software.
 
 ### Task 2: Separately labeled build and package
 
 Files: `scripts/build_zmk.sh`, board `.conf` files, `firmware/zmk/tools/check_image.py`, `tools/firmware-update/zmk_package.py`, Makefile and focused tooling tests.
 
-- [ ] Add `wired-studio-handoff` and distinct-product `wired-studio-handoff-test` experimental variants, with Studio settings reservation and explicit handoff option.
-- [ ] Verify packaging retains LEFT-only `zmk-studio` profile and unchanged resident.
-- [ ] Compile both variants and existing supported affected variants; run `make test`, `make test-zmk` and affected Python formatter/mypy/tests.
-- [ ] Obtain a fresh code review before any hardware operation.
+- [x] Add `wired-studio-handoff` and distinct-product `wired-studio-handoff-test` experimental variants, with Studio settings reservation and explicit handoff option.
+- [x] Verify packaging retains LEFT-only `zmk-studio` profile and unchanged resident.
+- [x] Compile both variants and existing supported affected variants; run `make test`, `make test-zmk` and affected Python formatter/mypy/tests.
+- [x] Obtain a fresh code review before any hardware operation.
 
 ### Task 3: Hardware qualification or precise limitation
 
-- [ ] Freeze current evidence/candidate bytes and preserve settings before any write.
-- [ ] Inspect current identities, residents and healthy both-half operation.
-- [ ] Install LEFT only once. The old sender may still require the established joined-left cycle; do not replay INSTALL after timeout.
-- [ ] If reachable and healthy, test distinct-image handoff update; require automatic return and exact readback plus 60-second both-half health.
-- [ ] Preserve failures and stop dependent writes. Record actual result and distinguish bootstrap reset, handoff updating and ordinary hardware reboot.
+- [x] Freeze current evidence/candidate bytes and preserve settings before any write.
+- [x] Inspect current identities, residents and healthy both-half operation.
+- [x] Install LEFT only once. The old sender may still require the established joined-left cycle; do not replay INSTALL after timeout.
+- [x] If reachable and healthy, test distinct-image handoff update; require automatic return and exact readback plus 60-second both-half health.
+- [x] Preserve failures and stop dependent writes. Record actual result and distinguish bootstrap reset, handoff updating and ordinary hardware reboot.
 
 ## Progress
 
@@ -78,6 +78,16 @@ Final opt-in candidates before hardware: A 71684 bytes/CRC32 2883208108, SHA256
 `32b797e270659eb0ab0bd1c0ac70d964054188cd4f607a3af2bf1a383c8ec024`;
 B 71692/3407121084, SHA256
 `ecdcda6e6fc605b76472475bc5770dfdd92d0307f23c312b9d637f8c7b7e08f7`.
-Both retain resident CRC32 1770733249. Task 3 remains unexecuted: no firmware
-installation or reset has occurred. The existing Studio Save action was invoked
-to preserve the current working map before snapshot/installation preparation.
+Both retain resident CRC32 1770733249. Task 3 bootstrap was acknowledged, but
+old-sender SYSRESETREQ did not return USB for 80.125 seconds. The user confirmed
+one joined-LEFT power cycle; initial readback then verified A, unchanged RIGHT,
+and unchanged residents. Bootstrap health passed 61.000 seconds. Actual new-path
+A→B→A activations returned automatically; B passed 60.969 and final A 60.046
+seconds of both-half health, all retries/reconnects zero. RIGHT uptime continued,
+its image stayed unchanged, and both resident CRCs remained 1770733249. No
+further user cycle was requested/reported. Final Studio RPC verified four
+72-position layers, preserved base bindings/saved Fn name and no unsaved
+changes; normal Studio was reopened/reconnected. See
+`docs/ZMK-RESIDENT-HANDOFF.md` and its sanitized result. This completes the LEFT
+activation experiment; ordinary SYSRESETREQ diagnosis and RIGHT handoff remain
+outside the result.

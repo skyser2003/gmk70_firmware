@@ -1,5 +1,7 @@
 # GMK70 wired ZMK Studio
 
+Current LEFT checkpoint: the [resident-handoff experiment](ZMK-RESIDENT-HANDOFF.md) now runs four-layer Studio and passed automatic A→B→A updates. RIGHT and both residents remain unchanged. The two-layer result below is the earlier milestone.
+
 The experimental `wired-studio-updater` image adds standard USB serial Studio
 communication and persistent keymap editing to the LEFT central. The existing
 RIGHT wired ZMK scanner supplies all right-hand keys; it needs no Studio flash.

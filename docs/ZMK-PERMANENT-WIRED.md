@@ -1,5 +1,7 @@
 # Permanent wired ZMK
 
+Later LEFT checkpoint: [Studio with experimental resident handoff](ZMK-RESIDENT-HANDOFF.md) now passes automatic A→B→A updates. RIGHT retains the normal image described below; its handoff remains untested.
+
 As of 2026-10-28, both halves run the normal permanent native ZMK image A
 (36576 bytes, CRC32 `1296309606`) with unchanged residents. Fresh independent
 readback and 61 seconds of both-half uptime/feed progress verified A/A through

@@ -1,5 +1,7 @@
 # GMK70 Mac layers and lighting candidate
 
+2026-10-29 hardware follow-up: the [LEFT handoff variant](ZMK-RESIDENT-HANDOFF.md) now includes four layers and local RGB and connects in Studio. RIGHT remains on the older image; full peer lighting and the ordinary variants below remain unqualified on this keyboard. The offline task record below predates this separate experiment.
+
 Implemented offline on 2026-10-28/29. **Not installed or hardware-qualified.** The
 keyboard remains on the verified two-layer Studio LEFT and original wired RIGHT
 documented in [Studio validation](validation/2026-10-28-zmk-studio/README.md).

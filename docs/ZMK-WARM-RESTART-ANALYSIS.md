@@ -1,5 +1,10 @@
 # GMK70 warm-restart analysis — 2026-10-28
 
+2026-10-29 follow-up: [application-only resident handoff](ZMK-RESIDENT-HANDOFF.md)
+successfully activated two distinct LEFT Studio updates without another power
+cycle, preserving both residents and the RIGHT application. This is an update
+workflow workaround. The SYSRESETREQ root cause analyzed below remains unknown.
+
 ## Finding and scope
 
 **The failure is not localized and no fix is established.** The strongest new

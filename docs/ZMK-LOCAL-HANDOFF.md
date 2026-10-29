@@ -1,5 +1,18 @@
 # Local continuation: updater-preserving ZMK development
 
+## LEFT update activation workaround — 2026-10-29
+
+The [experimental resident handoff](ZMK-RESIDENT-HANDOFF.md) is now hardware-tested
+on LEFT. After one bootstrap cycle required by the old sender, distinct-image
+A→B→A updates returned automatically and passed both-half health with zero
+retries/reconnects. LEFT now runs the separately labeled Studio handoff A
+(71,684 bytes/CRC32 `2883208108`); RIGHT remains 36,576/`1296309606`. Residents
+remain `1770733249`. Actual Studio RPC reads four layers; normal Studio reconnects.
+LEFT renders local RGB only; peer lighting is disabled in these experiment
+variants to leave the older RIGHT untouched. Ordinary SYSRESETREQ remains
+undiagnosed, and RIGHT handoff is untested. Use the linked current evidence
+instead of assuming every normal build includes the workaround.
+
 ## Offline candidate — 2026-10-29
 
 [Mac layers and native lighting](ZMK-MAC-LIGHTING.md) are implemented and built

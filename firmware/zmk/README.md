@@ -1,5 +1,7 @@
 # GMK70 ZMK wired development and staging trials
 
+Current hardware checkpoint: the [LEFT resident-handoff variant](../../docs/ZMK-RESIDENT-HANDOFF.md) runs four-layer Studio/local RGB and passed automatic A→B→A activation. RIGHT remains unchanged. Ordinary builds retain SYSRESETREQ; use the explicitly labeled handoff targets for the qualified LEFT experiment.
+
 Current sources add an offline [four-layer/RGB candidate](../../docs/ZMK-MAC-LIGHTING.md).
 It has not been installed or hardware-qualified; the verified checkpoint below
 remains unchanged. Read the memory/stack and restart limits before installation.
