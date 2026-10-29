@@ -105,7 +105,7 @@ fi
                 printf 'profile=zmk package; exact pinned resident prerequisite preserved.\n'
             fi
         fi
-        printf 'Four Windows/Mac layers; lighting selected by variant (Studio local only, peripheral disabled).\n'
+        printf 'Four Windows/Mac layers; native local RGB and wired peer lighting.\n'
         printf 'No radio, encoder rotation, external Vial EEPROM or device operations.\n'
     else
         printf 'EXPERIMENTAL actual ZMK %s staging trial; not a normal updater image.\n' "$variant"
