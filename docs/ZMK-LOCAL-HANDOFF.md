@@ -1,5 +1,16 @@
 # Local continuation: updater-preserving ZMK development
 
+## Right-half RGB restoration — 2026-10-29
+
+[RGB-enabled canonical builds](ZMK-RIGHT-RGB.md) are now installed on both
+halves: LEFT 70,672/1286125312; RIGHT 43,752/2368050678. Both returned automatically
+through joined LEFT USB, with no reconnect or pad procedure. Final both-half
+health passed 70.234 seconds with zero retries/reconnects/feeds; resident CRCs
+remain 1770733249. Studio connects and the user's freshly saved four-layer map
+is preserved exactly. Visible right LEDs and synchronized Fn+X await confirmation.
+The watchdog-removal checkpoint below is the preceding installation.
+
+
 ## Permanent watchdog removal — 2026-10-29
 
 The user-requested [permanent removal](ZMK-PERMANENT-WATCHDOG-REMOVAL.md) now

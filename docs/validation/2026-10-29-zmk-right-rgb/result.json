@@ -1,0 +1,70 @@
+{
+  "source_commit": "0fcf8f286cb3b0343f39e3f229d88aa75edb56ed",
+  "installed": true,
+  "install_order": [
+    "right",
+    "left"
+  ],
+  "install_requests_per_half": 1,
+  "automatic_return_both": true,
+  "physical_reconnects_required": 0,
+  "right_only_usb_or_pads": false,
+  "residents_unchanged": true,
+  "resident_crc32": 1770733249,
+  "both_no_watchdog": true,
+  "studio_map": {
+    "four_layers": true,
+    "all_288_bindings_and_names_preserved": true,
+    "no_unsaved_changes": true,
+    "no_map_writes": true
+  },
+  "normal_studio": {
+    "normal_launch": true,
+    "selected_gmk_port": true,
+    "four_layers_visible": true
+  },
+  "visible_rgb_confirmation": "pending",
+  "health": {
+    "baseline": {
+      "verified_window_seconds": 70.17199999996228,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0
+    },
+    "right": {
+      "verified_window_seconds": 70.10899999999674,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0
+    },
+    "left": {
+      "verified_window_seconds": 70.23399999999674,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0
+    }
+  },
+  "installed_identities": [
+    {
+      "role": 3,
+      "size": 70672,
+      "crc": 1286125312,
+      "boot_crc": 1770733249,
+      "abi": 1,
+      "state": 0
+    },
+    {
+      "role": 0,
+      "size": 43752,
+      "crc": 2368050678,
+      "boot_crc": 1770733249,
+      "abi": 1,
+      "state": 0
+    }
+  ],
+  "private_inventory": {
+    "path": "artifacts/recovery/2026-10-29-zmk-right-rgb/SHA256SUMS.json",
+    "sha256": "57f747ebd8bcb5cce74533fc507651ace26048cb5da69f76028dad892073ed94",
+    "files": 54
+  }
+}

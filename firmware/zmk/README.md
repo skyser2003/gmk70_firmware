@@ -1,5 +1,11 @@
 # GMK70 ZMK wired development and staging trials
 
+Current checkpoint: [right RGB restoration](../../docs/ZMK-RIGHT-RGB.md) installs native split RGB
+on both halves (LEFT 70,672/1286125312; RIGHT 43,752/2368050678). Both returned
+automatically and passed 70-second zero-feed health, with unchanged residents and
+the user's freshly saved Studio map preserved. Visible LED confirmation is pending.
+The earlier checkpoints below record the preceding installations.
+
 Current checkpoint: [permanent watchdog removal](../../docs/ZMK-PERMANENT-WATCHDOG-REMOVAL.md)
 applies to canonical builds and both installed halves: LEFT 70,196/986599886,
 RIGHT 38,160/1887741245, resident CRCs 1770733249. Both passed 70-second zero-feed

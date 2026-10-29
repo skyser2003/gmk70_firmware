@@ -1,5 +1,9 @@
 # Permanent watchdog removal
 
+The subsequent [right RGB restoration](ZMK-RIGHT-RGB.md) updates both installed
+images while retaining this no-watchdog policy and the same residents. The
+hardware results below record the original watchdog-removal installation.
+
 On 2026-10-29 the user chose USB power cycling as the recovery fallback and
 requested permanently removing the added long watchdog. Source `89784be` removes
 the adapter and every permanent initialization/feed call, rather than retaining
@@ -21,8 +25,8 @@ half. The host still reads legacy watchdog health during migration, but final
 device qualification explicitly requires bit 4 and zero feeds on both halves.
 
 Canonical builds are `make build-zmk-wired-studio-updater` for LEFT and
-`make build-zmk-wired-peripheral` for the existing no-lighting RIGHT. Studio
-preserves current local-only RGB. Other normal wired builds also omit the
+`make build-zmk-wired-peripheral` for RIGHT. The subsequent RGB correction
+enables native split lighting in both canonical profiles. Other normal wired builds also omit the
 watchdog. Old handoff/watchdog-rollback make targets print a retirement notice
 and build their canonical no-watchdog Studio counterpart; they cannot re-enable
 it. All remain experimental/unlocked development packages, not published releases.
