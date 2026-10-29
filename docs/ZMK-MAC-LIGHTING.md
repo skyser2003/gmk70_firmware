@@ -116,7 +116,7 @@ separate 2048-byte update worker. The native RGB work queue retains its 768-byte
 stack. ARM `-fstack-usage` output was inspected: RPC main 168 bytes, largest
 nanopb decoder frame 144, backend load 104, store mount 56, snapshot scan 64 and
 checksum 264. These are individual frames, not measured worst-case call chains.
-Hardware stack watermarks remain required before installation.
+Hardware stack watermarks remain required during supervised installation qualification.
 
 ## Verification and installation boundary
 
