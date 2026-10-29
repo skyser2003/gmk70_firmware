@@ -91,6 +91,38 @@ class VialToZmkTests(unittest.TestCase):
             with self.subTest(keycode=keycode):
                 self.assertEqual(self.converter.translate(keycode, 4), expected)
 
+    def test_radio_profiles_preserve_stock_device_numbering(self) -> None:
+        cases: tuple[tuple[JsonValue, int], ...] = (
+            (0x7E00, 1),
+            (0x7E01, 2),
+            (0x7E02, 3),
+            (0x7E03, 4),
+            (0x7E04, 5),
+            (0x7E05, 6),
+            (0x7E06, 0),
+            ("USER00", 1),
+            ("USER05", 6),
+            ("USER06", 0),
+        )
+        for keycode, parameter in cases:
+            with self.subTest(keycode=keycode):
+                self.assertEqual(
+                    self.converter.translate(keycode, 4),
+                    Binding("gmk_radio", (parameter,)),
+                )
+
+    def test_radio_conversion_is_ready_without_an_unassigned_disposition(self) -> None:
+        document = self._document()
+        for column, code in enumerate(range(0x7E00, 0x7E07)):
+            self._put(document, 0, column, code)
+        converted = self.converter.convert(document)
+        self.assertTrue(converted.ready)
+        self.assertEqual(converted.issues, ())
+        self.assertEqual(
+            converted.layers[0].bindings[:7],
+            tuple(Binding("gmk_radio", (value,)) for value in (1, 2, 3, 4, 5, 6, 0)),
+        )
+
     def test_board_geometry_orders_both_halves_and_source_is_not_mutated(self) -> None:
         document = self._document()
         self._put(document, 5, 1, "KC_A")
@@ -108,7 +140,7 @@ class VialToZmkTests(unittest.TestCase):
         self,
     ) -> None:
         document = self._document()
-        self._put(document, 0, 0, "USER00")
+        self._put(document, 0, 0, "USER26")
         self._put(document, 5, 0, "KC_A")  # An unused matrix cell.
         self._put(document, 0, 1, "MO(4)")  # Missing destination layer.
         self._put(document, 0, 2, "KC_UNKNOWN_PERSONAL_TOKEN")
@@ -118,7 +150,7 @@ class VialToZmkTests(unittest.TestCase):
         self.assertFalse(converted.ready)
         self.assertIsNone(converted.layers[0].bindings[0])
         counts = converted.issue_counts()
-        self.assertEqual(counts["wireless"], 1)
+        self.assertEqual(counts["function-flip"], 1)
         self.assertEqual(counts["unmapped-matrix-cell"], 1)
         self.assertEqual(counts["layer-out-of-range"], 1)
         self.assertEqual(counts["unknown-keycode"], 1)
@@ -139,11 +171,11 @@ class VialToZmkTests(unittest.TestCase):
         self,
     ) -> None:
         document = self._document()
-        self._put(document, 0, 0, "USER00")
+        self._put(document, 0, 0, "USER26")
         converted = self.converter.convert(document, UnsupportedPolicy.UNASSIGNED)
         self.assertTrue(converted.ready)
         self.assertEqual(converted.layers[0].bindings[0], Binding("none", (0, 0)))
-        self.assertEqual(converted.issue_counts(), {"wireless": 1})
+        self.assertEqual(converted.issue_counts(), {"function-flip": 1})
         self.assertEqual(converted.issues[0].disposition, IssueDisposition.UNASSIGNED)
         self.assertIn("287 translated bindings", converted.summary())
         self.assertIn("1 explicitly unassigned", converted.summary())
@@ -153,7 +185,7 @@ class VialToZmkTests(unittest.TestCase):
 
     def test_unassigned_policy_does_not_implicitly_drop_nonbinding_data(self) -> None:
         document = self._document()
-        self._put(document, 0, 0, "USER00")
+        self._put(document, 0, 0, "USER26")
         document["macro"] = [["generic macro"]]
         converted = self.converter.convert(document, UnsupportedPolicy.UNASSIGNED)
         self.assertFalse(converted.ready)

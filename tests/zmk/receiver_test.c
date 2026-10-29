@@ -1,9 +1,23 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "receiver.h"
+#include <assert.h>
 #ifdef CONFIG_GMK70_BATTERY
 #    include "../../firmware/zmk/battery/battery.h"
 void gmk_battery_get(struct gmk_battery_status *out) {
     *out = (struct gmk_battery_status){.percentage = 50, .valid = true, .cable = true, .age_ms = 10, .queries = 2, .replies = 1};
+}
+#endif
+#ifdef CONFIG_GMK70_RADIO
+#    include "../../firmware/zmk/radio/radio.h"
+static unsigned radio_calls, radio_reads;
+int             gmk_radio_select(uint8_t channel, bool pair) {
+    assert(channel <= GMK_HOST_DONGLE && !pair);
+    ++radio_calls;
+    return 0;
+}
+void gmk_radio_get(struct gmk_radio_status *out) {
+    ++radio_reads;
+    *out = (struct gmk_radio_status){.selected = GMK_HOST_BT1, .active = GMK_HOST_BT1, .connection = GMK_RADIO_CONNECTED, .available = true};
 }
 #endif
 #include <assert.h>
@@ -570,6 +584,30 @@ static void storage_exclusion(void) {
 }
 #endif
 int main(void) {
+#ifdef CONFIG_GMK70_RADIO
+    setup();
+    uint8_t radio_request[32] = {0x7f, 0x72, 1, 0, 0x22, 0, 0, 0, 0x51};
+    gmk_zmk_receiver_receive(radio_request, response, true, &env);
+    assert(response[5] == 0 && memcmp(response + 12, "RADI", 4) == 0 && response[18] == GMK_RADIO_CONNECTED);
+    assert(radio_reads == 1 && radio_calls == 0 && writes == 0 && relays == 0);
+    gmk_zmk_receiver_receive(radio_request, response, false, &env);
+    assert(response[5] == 2 && radio_reads == 1 && radio_calls == 0 && relays == 0);
+    radio_request[5] = 1;
+    radio_request[6] = GMK_HOST_BT1;
+    env.writes_ready = false;
+    gmk_zmk_receiver_receive(radio_request, response, true, &env);
+    assert(response[5] == 2 && radio_reads == 1 && radio_calls == 0);
+    env.writes_ready = true;
+    env.wired        = false;
+    gmk_zmk_receiver_receive(radio_request, response, true, &env);
+    assert(response[5] == 2 && radio_calls == 0);
+    env.wired = true;
+    gmk_zmk_receiver_receive(radio_request, response, true, &env);
+    assert(response[5] == 0 && radio_calls == 1 && writes == 0 && relays == 0);
+    radio_request[3] = 1;
+    gmk_zmk_receiver_receive(radio_request, response, true, &env);
+    assert(response[5] != 0 && radio_calls == 1 && relays == 0);
+#endif
 #ifdef CONFIG_GMK70_BATTERY
     setup();
     uint8_t battery_request[32] = {0x7f, 0x72, 1, 0, 0x21, 0, 0, 0, 0x79};

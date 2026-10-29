@@ -22,7 +22,7 @@ static uint8_t                 normal_pixels[3 * GMK_LIGHT_PIXELS];
 static struct gmk_battery_view battery_view;
 static uint16_t                displayed_status;
 static bool                    display_dirty;
-static bool                    last_wired;
+static bool                    last_split;
 
 static uint16_t status_key(const struct gmk_battery_status *status) {
     return status->percentage | (status->valid ? 1U << 8 : 0) | (status->cable ? 1U << 9 : 0) | (status->full ? 1U << 10 : 0);
@@ -33,7 +33,7 @@ static int render_battery_locked(const struct gmk_battery_status *status) {
     memcpy(pixels, normal_pixels, sizeof(pixels));
     gmk_battery_view_overlay(&battery_view, status, pixels);
     int result = gmk_pixels_write(pixels, GMK_LIGHT_LEFT);
-    if (!result && gmk_wired_mode()) {
+    if (!result && gmk_split_available()) {
         k_spinlock_key_t key = k_spin_lock(&frame_lock);
         gmk_light_queue(&frame, pixels + 3 * GMK_LIGHT_LEFT);
         k_spin_unlock(&frame_lock, key);
@@ -66,10 +66,10 @@ static void battery_refresh(void) {
     k_mutex_lock(&render_lock, K_FOREVER);
     struct gmk_battery_status status;
     gmk_battery_get(&status);
-    bool wired = gmk_wired_mode();
-    if (wired && !last_wired) display_dirty = true;
-    last_wired = wired;
-    if (!wired && gmk_battery_view_active(&battery_view)) {
+    bool split = gmk_split_available();
+    if (split && !last_split) display_dirty = true;
+    last_split = split;
+    if (!split && gmk_battery_view_active(&battery_view)) {
         memset(&battery_view, 0, sizeof(battery_view));
         display_dirty = true;
     }
@@ -112,7 +112,7 @@ void gmk_lighting_poll(void) {
     battery_refresh();
 #endif
     k_spinlock_key_t key = k_spin_lock(&frame_lock);
-    if (!gmk_wired_mode()) gmk_light_reset(&frame);
+    if (!gmk_split_available()) gmk_light_reset(&frame);
     bool ready = !gmk_wired_is_left() && gmk_light_claim(&frame);
     k_spin_unlock(&frame_lock, key);
     if (!ready) return;
@@ -130,7 +130,7 @@ static int update_rgb(const struct device *dev, struct led_rgb *pixels, size_t c
     bool left = gmk_wired_is_left();
     /* The peripheral displays complete central frames while joined. Its own
      * upstream animation is used only in standalone switch mode. */
-    if (!left && gmk_wired_mode()) return 0;
+    if (!left && gmk_split_available()) return 0;
 #ifdef CONFIG_GMK70_BATTERY
     if (left) {
         k_mutex_lock(&render_lock, K_FOREVER);
@@ -158,7 +158,7 @@ static int update_rgb(const struct device *dev, struct led_rgb *pixels, size_t c
 #ifdef CONFIG_GMK70_RGB_LOCAL_ONLY
     return result;
 #endif
-    if (result || !left || !gmk_wired_mode()) return result;
+    if (result || !left || !gmk_split_available()) return result;
     for (unsigned i = 0; i < GMK_LIGHT_RIGHT; ++i) {
         packed[3 * i]     = pixels[GMK_LIGHT_LEFT + i].r;
         packed[3 * i + 1] = pixels[GMK_LIGHT_LEFT + i].g;

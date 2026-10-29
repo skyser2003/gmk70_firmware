@@ -64,7 +64,7 @@ static bool pin_read(struct gmk_wired_pin pin) {
     return (port_of(pin)->idr & (1U << pin.pin)) != 0;
 }
 static bool mode_now(void) {
-    return pin_read((struct gmk_wired_pin){2, 14}) && pin_read((struct gmk_wired_pin){2, 15});
+    return gmk_host_switch() == 3;
 }
 static void uart_isr(const void *unused) {
     ARG_UNUSED(unused);
@@ -126,6 +126,16 @@ bool gmk_wired_is_left(void) {
 bool gmk_wired_mode(void) {
     return initialized && mode_now();
 }
+uint8_t gmk_host_switch(void) {
+    if (!initialized) return 0;
+    return (uint8_t)((pin_read((struct gmk_wired_pin){2, 14}) ? 2 : 0) | (pin_read((struct gmk_wired_pin){2, 15}) ? 1 : 0));
+}
+bool gmk_split_available(void) {
+#ifdef CONFIG_GMK70_RADIO
+    if (gmk_wired_is_left()) return gmk_host_switch() != 0;
+#endif
+    return gmk_wired_mode();
+}
 void gmk_wired_set_update_handler(void (*handler)(const uint8_t[32], uint8_t[32])) {
     k_mutex_lock(&wired_lock, K_FOREVER);
     protocol.update = handler;
@@ -159,7 +169,7 @@ void gmk_wired_scan(uint16_t rows[5]) {
     }
     k_mutex_lock(&wired_lock, K_FOREVER);
     gmk_matrix_debounce(&debounce, raw, k_uptime_get_32());
-    if (mode_now())
+    if (gmk_split_available())
         memcpy(rows, debounce.stable, 10);
     else
         memset(rows, 0, 10);
@@ -170,7 +180,7 @@ void gmk_wired_poll(void) {
     if (!gmk_wired_is_left()) return;
     uint16_t rows[5];
     k_mutex_lock(&wired_lock, K_FOREVER);
-    if (mode_now()) {
+    if (gmk_split_available()) {
         ++counters.polls;
         if (gmk_protocol_poll(&master_wire, rows)) {
             gmk_peer_set(&peer, rows, k_uptime_get_32());
@@ -183,7 +193,7 @@ void gmk_wired_poll(void) {
 }
 bool gmk_wired_remote_matrix(uint16_t rows[5]) {
     k_mutex_lock(&wired_lock, K_FOREVER);
-    if (!gmk_wired_mode()) peer.connected = false;
+    if (!gmk_split_available()) peer.connected = false;
     bool ok = gmk_peer_rows(&peer, k_uptime_get_32(), rows);
     k_mutex_unlock(&wired_lock);
     return ok;
@@ -194,7 +204,7 @@ static void stats_locked(struct gmk_wired_stats *stats) {
     stats->uptime_ms = k_uptime_get_32();
     uint16_t rows[5];
     stats->peer = left ? gmk_peer_rows(&peer, stats->uptime_ms, rows) : (have_last_rx && (uint32_t)(stats->uptime_ms - last_rx_seen) < GMK_PEER_TIMEOUT_MS);
-    if (!gmk_wired_mode()) stats->peer = false;
+    if (!gmk_split_available()) stats->peer = false;
 }
 void gmk_wired_get_stats(struct gmk_wired_stats *stats) {
     k_mutex_lock(&wired_lock, K_FOREVER);

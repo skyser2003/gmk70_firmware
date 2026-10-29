@@ -4,6 +4,11 @@
 #include <stdint.h>
 bool gmk_wired_is_left(void);
 bool gmk_wired_mode(void);
+/* Raw C14:C15 selector bits, without debounce; zero also means uninitialized. */
+uint8_t gmk_host_switch(void);
+/* LEFT radio builds retain the physical split cable in every valid host mode.
+ * This predicate never grants permission for updater or settings writes. */
+bool gmk_split_available(void);
 /* Handler executes under the transport mutex in the serial thread. It MUST
  * only queue work / read cached replies, never flash or initiate UART relay.
  * The stats getter is safe under Zephyr's recursive transport mutex. */

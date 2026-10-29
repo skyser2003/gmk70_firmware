@@ -2,8 +2,11 @@
 
 import json
 import stat
+import subprocess
+import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from studio_rpc import (
@@ -59,6 +62,10 @@ class MemoryStudio:
         self.fail_save_once = False
         self.corrupt_reload_once = False
         self.packed_behavior_ids = False
+        self.include_radio = False
+        self.duplicate_radio = False
+        self.radio_name = "GMK70 Bluetooth / Dongle"
+        self.invalid_radio_metadata = False
 
     @staticmethod
     def geometry() -> ExpectedLayout:
@@ -133,9 +140,17 @@ class MemoryStudio:
             33: ("Momentary Layer", Protobuf.blob(6, b"")),
             44: ("GMK70 Battery / Charging", Protobuf.uint(3, 0) + b""),
             55: ("None", b""),
+            66: (self.radio_name, b""),
+            77: (self.radio_name, b""),
         }
         name, rule = descriptions[identifier]
         result = Protobuf.uint(1, identifier) + Protobuf.blob(2, name.encode())
+        if identifier in (66, 77):
+            rules = b"".join(
+                Protobuf.blob(1, Protobuf.uint(3, parameter))
+                for parameter in range(6 if self.invalid_radio_metadata else 7)
+            )
+            return result + Protobuf.blob(3, rules)
         if identifier == 44:
             rules = Protobuf.blob(1, Protobuf.uint(3, 0))
             if not self.invalid_battery_metadata:
@@ -171,9 +186,11 @@ class MemoryStudio:
         if outer.has(4):
             behavior_request = Protobuf.parse(outer.blob(4))
             if behavior_request.has(1):
-                identifiers = (
+                identifiers: tuple[int, ...] = (
                     (11, 22, 33, 44, 55) if self.duplicate_none else (11, 22, 33, 44)
                 )
+                if self.include_radio:
+                    identifiers += (66, 77) if self.duplicate_radio else (66,)
                 # Upstream nanopb emits unpacked IDs; protobuf also permits packed IDs.
                 payload = (
                     Protobuf.blob(
@@ -255,6 +272,58 @@ class MemoryStudio:
 
 
 class StudioRpcTests(unittest.TestCase):
+    @classmethod
+    def eight_radio_plan(cls) -> StudioPlan:
+        plan = cls.radio_plan()
+        last = plan.layers[3]
+        return replace(
+            plan,
+            layers=(
+                *plan.layers[:3],
+                replace(
+                    last,
+                    bindings=(*last.bindings[:71], SymbolicBinding("gmk_radio", 1, 0)),
+                ),
+            ),
+        )
+
+    @staticmethod
+    def freshly_edited_peer() -> MemoryStudio:
+        peer = MemoryStudio()
+        peer.include_radio = True
+        peer.notifications = True
+        peer.ids = (9, 3, 7, 1)
+        reordered = tuple(peer.current.layers[index] for index in (3, 0, 1, 2))
+        peer.current = replace(
+            peer.current,
+            layers=tuple(
+                replace(
+                    layer,
+                    name=f"Fresh Studio edit {index}",
+                    bindings=(
+                        *layer.bindings[:2],
+                        RpcBinding(11, 0x70005 + index, 0),
+                        *layer.bindings[3:],
+                    ),
+                )
+                for index, layer in enumerate(reordered)
+            ),
+        )
+        peer.saved = peer.current
+        return peer
+
+    @staticmethod
+    def radio_plan() -> StudioPlan:
+        plan = MemoryStudio.plan()
+        first = plan.layers[0]
+        bindings = list(first.bindings)
+        for index, parameter in enumerate((0, 1, 2, 3, 4, 5, 6), 4):
+            bindings[index] = SymbolicBinding("gmk_radio", parameter, 0)
+        return replace(
+            plan,
+            layers=(replace(first, bindings=tuple(bindings)), *plan.layers[1:]),
+        )
+
     @staticmethod
     def plan_document() -> dict[str, JsonValue]:
         plan = MemoryStudio.plan()
@@ -357,6 +426,202 @@ class StudioRpcTests(unittest.TestCase):
         self.assertEqual(decoder.feed(bytes.fromhex("abacacacadaead")), (payload,))
         with self.assertRaises(ProtocolError):
             StudioFraming(max_frame=2).feed(bytes.fromhex("ab010203ad"))
+
+    def test_radio_plan_schema_rejects_invalid_parameters(self) -> None:
+        invalid: tuple[tuple[JsonValue, JsonValue], ...] = (
+            (-1, 0),
+            (7, 0),
+            (True, 0),
+            (1, True),
+            (1, 1),
+        )
+        for first, second in invalid:
+            document = self.plan_document()
+            layer = JsonSchema.mapping(JsonSchema.sequence(document["layers"])[0])
+            JsonSchema.sequence(layer["bindings"])[4] = {
+                "behavior": "gmk_radio",
+                "param1": first,
+                "param2": second,
+            }
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "plan.json"
+                path.write_text(json.dumps(document), encoding="utf-8")
+                with (
+                    self.subTest(first=first, second=second),
+                    self.assertRaises((ValueError, TypeError)),
+                ):
+                    StudioPlan.load(path)
+
+    def test_radio_programmatic_bindings_reject_bool_range_and_second_parameter(
+        self,
+    ) -> None:
+        for first, second in ((-1, 0), (7, 0), (True, 0), (1, True), (1, 1)):
+            with (
+                self.subTest(first=first, second=second),
+                self.assertRaises(ValueError),
+            ):
+                SymbolicBinding("gmk_radio", first, second)
+
+    def test_radio_plan_schema_accepts_every_profile(self) -> None:
+        for parameter in range(7):
+            document = self.plan_document()
+            layer = JsonSchema.mapping(JsonSchema.sequence(document["layers"])[0])
+            JsonSchema.sequence(layer["bindings"])[4] = {
+                "behavior": "gmk_radio",
+                "param1": parameter,
+            }
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "plan.json"
+                path.write_text(json.dumps(document), encoding="utf-8")
+                loaded = StudioPlan.load(path)
+            self.assertEqual(
+                loaded.layers[0].bindings[4], SymbolicBinding("gmk_radio", parameter, 0)
+            )
+
+    def test_radio_apply_resolves_all_profiles_and_reloads_saved_bindings(self) -> None:
+        peer = MemoryStudio()
+        peer.include_radio = True
+        peer.notifications = True
+        with tempfile.TemporaryDirectory() as folder:
+            backup = Path(folder) / "before.json"
+            result = StudioClient(peer).apply(
+                self.radio_plan(), peer.geometry(), backup
+            )
+            self.assertEqual(result.bindings_written, 288)
+            self.assertEqual(
+                peer.current.layers[0].bindings[4:11],
+                tuple(RpcBinding(66, value, 0) for value in (0, 1, 2, 3, 4, 5, 6)),
+            )
+            self.assertEqual(peer.current, peer.saved)
+            self.assertEqual((peer.saves, peer.discards), (1, 1))
+            self.assertEqual(stat.S_IMODE(backup.stat().st_mode), 0o600)
+
+    def test_selective_radio_apply_changes_eight_bindings_and_preserves_fresh_edits(
+        self,
+    ) -> None:
+        peer = self.freshly_edited_peer()
+        before = peer.current
+        plan = self.eight_radio_plan()
+        with tempfile.TemporaryDirectory() as folder:
+            backup = Path(folder) / "before.json"
+            result = StudioClient(peer).apply(
+                plan, peer.geometry(), backup, only_behavior="gmk_radio"
+            )
+            self.assertEqual(result.bindings_written, 288)
+            self.assertTrue(result.saved_and_reloaded)
+            changed = 0
+            for old, actual, source in zip(
+                before.layers, peer.current.layers, plan.layers, strict=True
+            ):
+                self.assertEqual(
+                    (actual.layer_id, actual.name), (old.layer_id, old.name)
+                )
+                for previous, current, symbolic in zip(
+                    old.bindings, actual.bindings, source.bindings, strict=True
+                ):
+                    if symbolic.behavior == "gmk_radio":
+                        self.assertEqual(current, RpcBinding(66, symbolic.param1, 0))
+                        changed += int(previous != current)
+                    else:
+                        self.assertEqual(current, previous)
+            self.assertEqual(changed, 8)
+            self.assertEqual(peer.current, peer.saved)
+            self.assertEqual((peer.saves, peer.discards), (1, 1))
+            self.assertEqual(stat.S_IMODE(backup.stat().st_mode), 0o600)
+            saved: JsonValue = json.loads(backup.read_text())
+            self.assertEqual(JsonSchema.mapping(saved)["keymap"], before.document())
+
+    def test_selective_apply_rejects_unknown_empty_and_absent_filters_before_backup(
+        self,
+    ) -> None:
+        cases = (
+            ("", self.eight_radio_plan()),
+            ("unknown", self.eight_radio_plan()),
+            ("GMK70 Bluetooth / Dongle", self.eight_radio_plan()),
+            ("gmk_radio ", self.eight_radio_plan()),
+            ("rgb_ug", self.eight_radio_plan()),
+            ("gmk_radio", MemoryStudio.plan()),
+        )
+        for behavior, plan in cases:
+            peer = self.freshly_edited_peer()
+            before = peer.current
+            with (
+                tempfile.TemporaryDirectory() as folder,
+                self.subTest(behavior=behavior),
+            ):
+                backup = Path(folder) / "before.json"
+                with self.assertRaises(ValueError):
+                    StudioClient(peer).apply(
+                        plan, peer.geometry(), backup, only_behavior=behavior
+                    )
+                self.assertFalse(backup.exists())
+            self.assertEqual((peer.binding_writes, peer.saves), (0, 0))
+            self.assertEqual(peer.current, before)
+
+    def test_selective_apply_partial_failure_restores_all_fresh_bindings(self) -> None:
+        peer = self.freshly_edited_peer()
+        before = peer.current
+        peer.fail_binding_number = 8
+        with tempfile.TemporaryDirectory() as folder:
+            backup = Path(folder) / "before.json"
+            with self.assertRaises(StudioApplyError) as raised:
+                StudioClient(peer).apply(
+                    self.eight_radio_plan(),
+                    peer.geometry(),
+                    backup,
+                    only_behavior="gmk_radio",
+                )
+            self.assertTrue(raised.exception.rollback_succeeded)
+            saved: JsonValue = json.loads(backup.read_text())
+            self.assertEqual(JsonSchema.mapping(saved)["keymap"], before.document())
+        self.assertEqual(peer.current, before)
+        self.assertEqual(peer.saved, before)
+        self.assertNotEqual(before, peer.original)
+        self.assertFalse(peer.dirty)
+
+    def test_cli_apply_offers_exact_symbolic_filter_without_opening_transport(
+        self,
+    ) -> None:
+        script = Path(__file__).resolve().parents[1] / "studio_rpc.py"
+        command = [sys.executable, str(script), "--port", "unused-fixture", "apply"]
+        help_result = subprocess.run(
+            [*command, "--help"], capture_output=True, text=True, check=False
+        )
+        self.assertEqual(help_result.returncode, 0)
+        self.assertIn("--only-behavior", help_result.stdout)
+        self.assertIn("gmk_radio", help_result.stdout)
+        for name in ("plan", "keyboard", "geometry", "backup", "result"):
+            command.extend((f"--{name}", "unused-fixture.json"))
+        rejected = subprocess.run(
+            [*command, "--only-behavior", "GMK70 Bluetooth / Dongle"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("invalid choice", rejected.stderr)
+
+    def test_radio_apply_requires_exact_unique_runtime_name_and_metadata(self) -> None:
+        for case in ("missing", "name", "duplicate", "metadata"):
+            peer = MemoryStudio()
+            peer.include_radio = case != "missing"
+            peer.radio_name = (
+                "GMK70 Bluetooth / Dongle extra"
+                if case == "name"
+                else "GMK70 Bluetooth / Dongle"
+            )
+            peer.duplicate_radio = case == "duplicate"
+            peer.invalid_radio_metadata = case == "metadata"
+            with (
+                tempfile.TemporaryDirectory() as folder,
+                self.subTest(case=case),
+                self.assertRaises(ValueError),
+            ):
+                StudioClient(peer).apply(
+                    self.radio_plan(), peer.geometry(), Path(folder) / "before.json"
+                )
+            self.assertEqual(peer.binding_writes, 0)
+            self.assertEqual(peer.saves, 0)
 
     def test_protobuf_vectors_uint_zigzag_and_malformed_bounds(self) -> None:
         self.assertEqual(Protobuf.uint(1, 300), bytes.fromhex("08ac02"))

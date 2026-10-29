@@ -471,7 +471,7 @@ class VialToZmk:
             shortcuts = (0x011D, 0x011B, 0x0106, 0x0119, 0x082B, 0x0808)
             return self.translate(shortcuts[code - 0x7E1C], layer_count)
         if 0x7E00 <= code <= 0x7E06:
-            raise UnsupportedKeycode(IssueCategory.WIRELESS)
+            return Binding("gmk_radio", ((1, 2, 3, 4, 5, 6, 0)[code - 0x7E00],))
         if code == 0x7E09:
             raise UnsupportedKeycode(IssueCategory.LIGHTING)
         if code in (0x7E11, 0x7E12, 0x7E13):

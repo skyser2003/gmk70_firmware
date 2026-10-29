@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import re
 import struct
 import subprocess
 from pathlib import Path
@@ -11,6 +12,61 @@ FLASH_START = 0x08020000
 FLASH_END = FLASH_START + 120 * 1024
 RAM_START = 0x20000040
 RAM_END = 0x20006FC0
+
+
+def validate_radio_linking(
+    symbols: set[str], disassembly: str, variant: str | None
+) -> None:
+    """Require qualified marker isolation and real linked radio call sites."""
+    marker = "gmk_radio_test_marker"
+    qualified = variant == "wired-studio-radio-qualification"
+    if (marker in symbols) != qualified:
+        raise ValueError(
+            "Radio marker requires exactly the explicit qualification profile"
+        )
+    if "gmk_radio_poll" not in symbols:
+        return
+    for name in (
+        "__wrap_zmk_usb_is_hid_ready",
+        "__wrap_zmk_endpoint_get_selected",
+    ):
+        if name in symbols:
+            raise ValueError(f"Radio image replaces native USB/Studio state via {name}")
+    for name in (
+        "__wrap_zmk_endpoint_send_report",
+        "__wrap_zmk_hid_keyboard_clear",
+        "__wrap_zmk_hid_consumer_clear",
+        "__wrap_zmk_keymap_set_layer_binding_at_idx",
+    ):
+        if name not in symbols:
+            raise ValueError(f"Missing linked radio wrapper {name}")
+    functions = _function_bodies(disassembly)
+    if not any(
+        _calls(body, "__wrap_zmk_endpoint_send_report")
+        for name, body in functions.items()
+        if name.startswith("hid_listener")
+    ):
+        raise ValueError("HID listener bypasses the radio report wrapper")
+    for name in ("__wrap_zmk_hid_keyboard_clear", "__wrap_zmk_hid_consumer_clear"):
+        if not _calls(functions.get("zmk_endpoint_clear_reports", ""), name):
+            raise ValueError(f"Endpoint clear bypasses radio wrapper {name}")
+
+
+def _function_bodies(disassembly: str) -> dict[str, str]:
+    parts = re.split(r"(?m)^[ \t]*[0-9a-fA-F]+ <([^>]+)>:\r?\n", disassembly)
+    return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+
+def _calls(body: str, target: str) -> bool:
+    # Match an addressed instruction with encoded bytes. A symbol reference in
+    # a comment, data load or unrelated function cannot establish a call site.
+    instruction = (
+        r"^[ \t]*[0-9a-f]+:[ \t]+(?:[0-9a-f]{2,8}[ \t]+)+"
+        r"blx?(?:\.w)?[ \t]+[0-9a-f]+[ \t]+<"
+        + re.escape(target)
+        + r">[ \t]*(?:;[^\r\n]*)?$"
+    )
+    return re.search(instruction, body, re.MULTILINE | re.IGNORECASE) is not None
 
 
 def validate_vectors(
@@ -65,6 +121,7 @@ def check(
     symbols = subprocess.check_output(
         ["arm-none-eabi-nm", "--defined-only", str(elf)], text=True
     )
+    symbol_names = {line.split()[-1] for line in symbols.splitlines() if line.split()}
     for name in (
         "zmk_keymap_position_state_changed",
         "zmk_usb_get_conn_state",
@@ -75,13 +132,16 @@ def check(
             line.split()[-1] == name for line in symbols.splitlines() if line.split()
         ):
             raise ValueError(f"Missing actual ZMK/WB32 symbol {name}")
+    disassembly = ""
+    if board == "gmk70_right" or "gmk_radio_poll" in symbol_names:
+        disassembly = subprocess.check_output(
+            ["arm-none-eabi-objdump", "-d", str(elf)], text=True
+        )
+    validate_radio_linking(symbol_names, disassembly, variant)
     if board == "gmk70_right":
         for name in ("main", "__wrap_main"):
             if not any(line.split()[-1] == name for line in symbols.splitlines()):
                 raise ValueError(f"Missing right trial symbol {name}")
-        disassembly = subprocess.check_output(
-            ["arm-none-eabi-objdump", "-d", str(elf)], text=True
-        )
         validate_main_wrapping(disassembly)
         result["main_return"] = "successful real main + ready kscan + 500ms + SW reset"
     result["application"] = "dependencies/zmk/app"
@@ -201,6 +261,7 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
         "wired-qualification",
         "wired-studio-updater",
         "wired-studio-update-test",
+        "wired-studio-radio-qualification",
         "wired-studio-handoff",
         "wired-studio-handoff-test",
         "wired-studio-watchdog-rollback",
@@ -266,6 +327,12 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
         symbols["__gmk_image_end"],
         0x1A000 if variant.startswith("wired-studio-") else 0x1E000,
     )
+    disassembly = ""
+    if variant.startswith("wired-studio-") or "gmk_radio_poll" in symbols:
+        disassembly = subprocess.check_output(
+            ["arm-none-eabi-objdump", "-d", str(elf)], text=True
+        )
+    validate_radio_linking(set(symbols), disassembly, variant)
     if variant.startswith("wired-studio-"):
         for name in (
             "settings_backend_init",
@@ -277,13 +344,7 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
         ):
             if name not in symbols:
                 raise ValueError(f"Missing Studio integration symbol {name}")
-        disassembly = subprocess.check_output(
-            ["arm-none-eabi-objdump", "-d", str(elf)], text=True
-        )
-        import re
-
-        bodies = re.split(r"(?m)^[0-9a-f]+ <([^>]+)>:\n", disassembly)
-        functions = dict(zip(bodies[1::2], bodies[2::2], strict=True))
+        functions = _function_bodies(disassembly)
         if not re.search(
             r"\bblx?\s+[^\n]*<__wrap_usb_hid_register_device>",
             functions.get("zmk_usb_hid_init", ""),
@@ -306,10 +367,7 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
 
 def validate_main_wrapping(disassembly: str) -> None:
     """Require startup to invoke the wrapper and wrapper to invoke actual ZMK main."""
-    import re
-
-    functions = re.split(r"(?m)^[0-9a-f]+ <([^>]+)>:\n", disassembly)
-    bodies = dict(zip(functions[1::2], functions[2::2], strict=True))
+    bodies = _function_bodies(disassembly)
     branch = r"\bblx?\s+[^\n]*"
     if not re.search(branch + r"<main>", bodies.get("__wrap_main", "")):
         raise ValueError("Right trial wrapper does not call actual main")
@@ -335,6 +393,7 @@ def main() -> None:
             "wired-qualification",
             "wired-studio-updater",
             "wired-studio-update-test",
+            "wired-studio-radio-qualification",
             "wired-studio-handoff",
             "wired-studio-handoff-test",
             "wired-studio-watchdog-rollback",

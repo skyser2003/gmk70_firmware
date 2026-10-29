@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+description: GMK70 USB, Bluetooth profile and proprietary dongle selection
+compatible: "zuoya,gmk70-behavior-radio"
+include: one_param.yaml

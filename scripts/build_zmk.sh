@@ -18,7 +18,7 @@ case "$variant" in
     wired-updater) ;;
     wired-peripheral) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/peripheral.conf") ;;
     wired-update-test) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/update-test.conf") ;;
-    wired-studio-updater|wired-studio-update-test) extra+=(-DGMK70_STUDIO=ON
+    wired-studio-updater|wired-studio-update-test|wired-studio-radio-qualification) extra+=(-DGMK70_STUDIO=ON
         -DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.overlay") ;;
     wired-qualification) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.conf"
@@ -27,6 +27,9 @@ case "$variant" in
 esac
 if [[ "$variant" == wired-studio-update-test ]]; then
     extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio-update-test.conf")
+fi
+if [[ "$variant" == wired-studio-radio-qualification ]]; then
+    extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio-radio-qualification.conf")
 fi
 python3 firmware/zmk/tools/workspace.py verify
 zmk_tools="$project_root/firmware/zmk/tools/.venv/bin"
@@ -102,12 +105,16 @@ fi
             if [[ "$variant" == wired-studio-* ]]; then
                 printf 'profile=zmk-studio; LEFT only; CDC Studio, Feature updater, 16KiB settings reservation.\n'
                 printf 'Battery: stock-radio inquiry/ACK cache, native sensor and held RGB status.\n'
+                printf 'Radio: stock vendor UART3 Bluetooth/dongle keyboard and consumer endpoint; USB Studio retained.\n'
+                if [[ "$variant" == wired-studio-radio-qualification ]]; then
+                    printf 'TEMPORARY QUALIFICATION: fixed F24 marker command; excluded from canonical firmware.\n'
+                fi
             else
                 printf 'profile=zmk package; exact pinned resident prerequisite preserved.\n'
             fi
         fi
         printf 'Four Windows/Mac layers; native local RGB and wired peer lighting.\n'
-        printf 'No wireless keyboard endpoint, encoder rotation, external Vial EEPROM or device operations.\n'
+        printf 'No native BLE, wireless Studio, encoder rotation, external Vial EEPROM or device operations.\n'
     else
         printf 'EXPERIMENTAL actual ZMK %s staging trial; not a normal updater image.\n' "$variant"
         printf 'Source: dependencies/zmk/app\nBoard: %s\nFlash: 0x08020000, maximum 120 KiB\n' "$board"

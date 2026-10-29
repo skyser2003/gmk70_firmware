@@ -4,10 +4,13 @@
  * UART register programming derives from Westberry's Apache-2.0 UARTv1
  * hal_serial_lld.c and pinned WB32FQ95xx CMSIS definitions. Protocol and board
  * pin facts derive from maintained GPL-2.0-or-later qmk-common module.c/config.h.
- * No radio firmware, pairing, channel selection or battery control is changed.
+ * Radio frames share this sole UART3 owner; the external module is unchanged.
  */
 #include "battery.h"
 #include "wired.h"
+#ifdef CONFIG_GMK70_RADIO
+#    include "radio.h"
+#endif
 #include <soc.h>
 #include <string.h>
 #include <zephyr/init.h>
@@ -26,14 +29,17 @@ struct battery_parser {
     uint8_t  command, value, sum;
     bool     discard;
 };
-enum battery_transmission { BATTERY_TX_NONE, BATTERY_TX_QUERY, BATTERY_TX_ACK };
+enum battery_transmission { BATTERY_TX_NONE, BATTERY_TX_QUERY, BATTERY_TX_ACK, BATTERY_TX_RADIO };
 struct battery_state {
     struct gmk_battery_status status;
     struct battery_parser     parser;
     uint32_t                  sample_ms, cycle_ms, ack_ms, tx_ms;
     enum battery_transmission transmitting;
-    uint8_t                   tx_offset, acknowledgements;
-    bool                      initialized, have_cycle, waiting_ack, retry_used, query_pending;
+#ifdef CONFIG_GMK70_RADIO
+    struct gmk_radio_frame radio_frame;
+#endif
+    uint8_t tx_offset, acknowledgements;
+    bool    initialized, have_cycle, waiting_ack, retry_used, query_pending;
 };
 static struct battery_state state;
 static struct {
@@ -85,6 +91,12 @@ static void begin_frame(uint8_t byte, uint32_t now) {
 static void accept_frame(uint32_t now) {
     struct battery_parser *parser = &state.parser;
     if (parser->command == 0x61) {
+#ifdef CONFIG_GMK70_RADIO
+        if (!state.waiting_ack) {
+            gmk_radio_ack();
+            return;
+        }
+#endif
         state.waiting_ack = false;
         if (state.retry_used) state.query_pending = false;
         return;
@@ -94,6 +106,9 @@ static void accept_frame(uint32_t now) {
         ++state.acknowledgements;
     else
         ++state.status.errors;
+#ifdef CONFIG_GMK70_RADIO
+    if (parser->command != 0xaf) gmk_radio_notification(parser->command, parser->value);
+#endif
     if (parser->command != 0x5c) return;
     if (parser->value > 100) {
         ++state.status.errors;
@@ -197,6 +212,9 @@ static void schedule_query(uint32_t now) {
 }
 static void transmit(uint32_t now) {
     if (state.transmitting != BATTERY_TX_NONE && (uint32_t)(now - state.tx_ms) >= BATTERY_TIMEOUT_MS) {
+#ifdef CONFIG_GMK70_RADIO
+        if (state.transmitting == BATTERY_TX_RADIO) gmk_radio_sent(now, false);
+#endif
         state.transmitting = BATTERY_TX_NONE;
         state.waiting_ack  = false;
         ++state.status.errors;
@@ -205,7 +223,18 @@ static void transmit(uint32_t now) {
         if (state.acknowledgements) {
             --state.acknowledgements;
             state.transmitting = BATTERY_TX_ACK;
+#ifdef CONFIG_GMK70_RADIO
+        } else if (!state.waiting_ack && gmk_radio_next(now, &state.radio_frame)) {
+            if (!state.radio_frame.length || state.radio_frame.length > sizeof(state.radio_frame.bytes)) {
+                gmk_radio_sent(now, false);
+                ++state.status.errors;
+                return;
+            }
+            state.transmitting = BATTERY_TX_RADIO;
+        } else if (!state.waiting_ack && state.query_pending && !gmk_radio_control_busy()) {
+#else
         } else if (state.query_pending) {
+#endif
             state.query_pending = false;
             state.transmitting  = BATTERY_TX_QUERY;
         } else {
@@ -217,16 +246,29 @@ static void transmit(uint32_t now) {
     static const uint8_t query[3] = {0xa6, 0x53, 0xf9};
     static const uint8_t ack[3]   = {0x61, 0x0d, 0x0a};
     const uint8_t       *message  = state.transmitting == BATTERY_TX_QUERY ? query : ack;
+    uint8_t              length   = 3;
+#ifdef CONFIG_GMK70_RADIO
+    if (state.transmitting == BATTERY_TX_RADIO) {
+        message = state.radio_frame.bytes;
+        length  = state.radio_frame.length;
+    }
+    /* One immutable frame, at most ten FIFO writes per tick. ACK priority
+     * applies only when choosing a new frame, never within a partial frame. */
+#else
     /* At most three FIFO writes per worker tick, with no wait for TX space. */
-    while (state.tx_offset < 3 && (sys_read32(BATTERY_UART_BASE + 0x7c) & 2)) {
+#endif
+    while (state.tx_offset < length && (sys_read32(BATTERY_UART_BASE + 0x7c) & 2)) {
         sys_write32(message[state.tx_offset++], BATTERY_UART_BASE);
     }
-    if (state.tx_offset != 3) return;
+    if (state.tx_offset != length) return;
     if (state.transmitting == BATTERY_TX_QUERY) {
         ++state.status.queries;
         state.waiting_ack = true;
         state.ack_ms      = now;
     }
+#ifdef CONFIG_GMK70_RADIO
+    if (state.transmitting == BATTERY_TX_RADIO) gmk_radio_sent(now, true);
+#endif
     state.transmitting = BATTERY_TX_NONE;
 }
 void gmk_battery_poll(void) {

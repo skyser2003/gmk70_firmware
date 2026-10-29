@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "receiver.h"
+#ifdef CONFIG_GMK70_RADIO
+#    include "../radio/control.h"
+#endif
 #include "wired.h"
 #ifdef CONFIG_GMK70_BATTERY
 #    include "battery_status.h"
@@ -119,6 +122,12 @@ void gmk_zmk_receiver_init(const gmk_zmk_update_env_t *env) {
 }
 
 void gmk_zmk_receiver_receive(const uint8_t request[32], uint8_t response[32], bool usb, const gmk_zmk_update_env_t *env) {
+#ifdef CONFIG_GMK70_RADIO
+    if (gmk_radio_control_packet(request)) {
+        gmk_radio_control_receive(request, response, usb, env);
+        return;
+    }
+#endif
 #ifdef CONFIG_GMK70_BATTERY
     if (gmk_battery_status_packet(request)) {
         if (!usb || !allowed(request, usb, env))

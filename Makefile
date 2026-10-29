@@ -73,6 +73,13 @@ test-zmk:
 	bash ./tests/zmk/run_battery_tests.sh
 	bash ./tests/zmk/run_battery_view_tests.sh
 	bash ./tests/zmk/run_battery_status_tests.sh
+	bash ./tests/zmk/run_radio_core_tests.sh
+	bash ./tests/zmk/run_radio_selection_tests.sh
+	bash ./tests/zmk/run_radio_endpoint_tests.sh
+	bash ./tests/zmk/run_radio_behavior_tests.sh
+	bash ./tests/zmk/run_radio_control_tests.sh
+	bash ./tests/zmk/run_radio_kernel_tests.sh
+	bash ./tests/zmk/run_battery_radio_uart_tests.sh
 	bash -c 'set -euo pipefail; source ./scripts/project.sh; uv run --offline --frozen --project firmware/zmk/tools python -m unittest discover -s tests/zmk -p "test_*.py" -v'
 .PHONY: test-zmk
 
@@ -92,10 +99,13 @@ build-zmk-wired-studio-updater:
 	bash ./scripts/build_zmk.sh wired-studio-updater
 build-zmk-wired-studio-update-test:
 	bash ./scripts/build_zmk.sh wired-studio-update-test
+build-zmk-wired-studio-radio-qualification:
+	bash ./scripts/build_zmk.sh wired-studio-radio-qualification
 build-zmk-wired-peripheral:
 	bash ./scripts/build_zmk.sh wired-peripheral
 .PHONY: build-zmk-wired-studio-update-test build-zmk-wired-peripheral
 .PHONY: build-zmk-wired-studio-updater
+.PHONY: build-zmk-wired-studio-radio-qualification
 
 build-zmk-wired-studio-handoff:
 	bash ./scripts/build_zmk.sh wired-studio-handoff

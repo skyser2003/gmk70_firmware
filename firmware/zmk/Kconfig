@@ -8,6 +8,7 @@ rsource "update/Kconfig"
 rsource "studio/Kconfig"
 rsource "lighting/Kconfig"
 rsource "battery/Kconfig"
+rsource "radio/Kconfig"
 endif
 
 config GMK70_TRIAL_MAIN_RETURN

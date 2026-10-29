@@ -15,6 +15,9 @@ bool            gmk_wired_is_left(void) {
 bool gmk_wired_mode(void) {
     return wired;
 }
+bool gmk_split_available(void) {
+    return wired;
+}
 int gmk_pixels_init(void) {
     ++initialization;
     return 0;

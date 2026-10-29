@@ -583,6 +583,15 @@ class SymbolicBinding:
     param1: int
     param2: int
 
+    def __post_init__(self) -> None:
+        if self.behavior == "gmk_radio" and (
+            isinstance(self.param1, bool)
+            or isinstance(self.param2, bool)
+            or not 0 <= self.param1 <= 6
+            or self.param2 != 0
+        ):
+            raise ValueError("Radio binding requires one device parameter from 0 to 6")
+
 
 @dataclass(frozen=True, slots=True)
 class SymbolicLayer:
@@ -674,6 +683,7 @@ class StudioClient:
         "tog": "Toggle Layer",
         "rgb_ug": "Underglow",
         "gmk_battery": "GMK70 Battery / Charging",
+        "gmk_radio": "GMK70 Bluetooth / Dongle",
     }
 
     def __init__(self, transport: ByteTransport, timeout: float = 5.0) -> None:
@@ -897,8 +907,23 @@ class StudioClient:
         geometry.validate(self.get_physical_layouts())
 
     def apply(
-        self, plan: StudioPlan, geometry: ExpectedLayout, backup: Path
+        self,
+        plan: StudioPlan,
+        geometry: ExpectedLayout,
+        backup: Path,
+        only_behavior: str | None = None,
     ) -> ApplyResult:
+        if only_behavior is not None and (
+            only_behavior not in self._names
+            or not any(
+                binding.behavior == only_behavior
+                for layer in plan.layers
+                for binding in layer.bindings
+            )
+        ):
+            raise ValueError(
+                "Selective apply requires a registered symbolic behavior present in the plan"
+            )
         if backup.exists():
             raise FileExistsError("Fresh backup output already exists")
         if (
@@ -914,6 +939,29 @@ class StudioClient:
         before = self.read_keymap()
         geometry.validate(self.get_physical_layouts())
         target = self._resolve(plan, before)
+        if only_behavior is not None:
+            target = RpcKeymap(
+                tuple(
+                    RpcLayer(
+                        old.layer_id,
+                        old.name,
+                        tuple(
+                            resolved if symbolic.behavior == only_behavior else current
+                            for symbolic, resolved, current in zip(
+                                source.bindings,
+                                proposed.bindings,
+                                old.bindings,
+                                strict=True,
+                            )
+                        ),
+                    )
+                    for source, proposed, old in zip(
+                        plan.layers, target.layers, before.layers, strict=True
+                    )
+                ),
+                before.available_layers,
+                before.max_layer_name_length,
+            )
         if self.check_unsaved_changes() or self.read_keymap() != before:
             raise ValueError("Studio changed during migration preflight")
         PrivateJson.write(
@@ -951,6 +999,7 @@ class StudioClient:
         apply = subcommands.add_parser("apply")
         for name in ("plan", "keyboard", "geometry", "backup", "result"):
             apply.add_argument(f"--{name}", required=True, type=Path)
+        apply.add_argument("--only-behavior", choices=tuple(cls._names))
         arguments = parser.parse_args(namespace=CliArguments())
         plan: StudioPlan | None = None
         geometry: ExpectedLayout | None = None
@@ -965,7 +1014,12 @@ class StudioClient:
         try:
             client = cls(transport)
             if plan is not None and geometry is not None:
-                result = client.apply(plan, geometry, arguments.backup)
+                result = client.apply(
+                    plan,
+                    geometry,
+                    arguments.backup,
+                    only_behavior=arguments.only_behavior,
+                )
                 PrivateJson.write(
                     arguments.result,
                     {
@@ -1001,6 +1055,7 @@ class CliArguments:
     geometry: Path = Path()
     backup: Path = Path()
     result: Path = Path()
+    only_behavior: str | None = None
 
 
 if __name__ == "__main__":

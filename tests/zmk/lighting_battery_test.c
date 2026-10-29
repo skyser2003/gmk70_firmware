@@ -11,13 +11,20 @@ int64_t                          fake_ms;
 static struct gmk_battery_status status = {.valid = true, .percentage = 50, .cable = true};
 static unsigned                  writes;
 static uint8_t                   last_pixels[123];
-static bool                      wired_mode = true;
+static uint8_t                   physical_mode = 3;
 static struct gmk_light_frame    peer_frame;
 bool                             gmk_wired_is_left(void) {
     return true;
 }
 bool gmk_wired_mode(void) {
-    return wired_mode;
+    return physical_mode == 3;
+}
+bool gmk_split_available(void) {
+#ifdef CONFIG_GMK70_RADIO
+    return physical_mode != 0;
+#else
+    return gmk_wired_mode();
+#endif
 }
 void gmk_battery_get(struct gmk_battery_status *out) {
     *out = status;
@@ -72,9 +79,9 @@ int main(void) {
     for (unsigned i = 0; i < GMK_LIGHT_CHUNKS; ++i)
         gmk_lighting_wire_poll(NULL);
     assert(peer_frame.rgb[10] == 80); /* Right number-row starts at global39. */
-    wired_mode = false;
+    physical_mode = 0;
     gmk_lighting_poll();
-    wired_mode = true;
+    physical_mode = 3;
     gmk_lighting_poll();
     for (unsigned i = 0; i < GMK_LIGHT_CHUNKS; ++i)
         gmk_lighting_wire_poll(NULL);
@@ -90,5 +97,30 @@ int main(void) {
     assert(!gmk_lighting_battery_release(4)); /* Ordinary releases do not redraw. */
     gmk_lighting_poll();
     assert(writes == unchanged);
+#ifdef CONFIG_GMK70_RADIO
+    for (uint8_t mode = 1; mode <= 2; ++mode) {
+        physical_mode = mode;
+        assert(!gmk_wired_mode() && gmk_split_available());
+        memset(colors, 7, sizeof(colors));
+        assert(!update_rgb(NULL, colors, 77));
+        assert(!gmk_lighting_battery_set(GMK_BATTERY_LEVEL, 55, true));
+        gmk_lighting_poll();
+        assert(last_pixels[16] == 80); /* Wireless mode retains the held overlay. */
+        for (unsigned i = 0; i < GMK_LIGHT_CHUNKS; ++i)
+            gmk_lighting_wire_poll(NULL);
+        assert(peer_frame.rgb[10] == 80);
+        assert(!gmk_lighting_battery_release(55));
+        gmk_lighting_poll();
+        for (unsigned i = 0; i < GMK_LIGHT_CHUNKS; ++i)
+            gmk_lighting_wire_poll(NULL);
+        assert(last_pixels[16] == 7 && peer_frame.rgb[10] == 7);
+    }
+    assert(!gmk_lighting_battery_set(GMK_BATTERY_LEVEL, 55, true));
+    gmk_lighting_poll();
+    physical_mode = 0;
+    gmk_lighting_poll();
+    assert(!gmk_battery_view_active(&battery_view));
+    assert(!frame.pending && !frame.ready && !frame.receiving);
+#endif
     puts("Held battery lighting: off-state visibility, current-base restore, status refresh and no caller mutation passed");
 }

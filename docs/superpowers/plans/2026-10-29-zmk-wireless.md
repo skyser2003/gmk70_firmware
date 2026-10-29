@@ -59,10 +59,10 @@ dedicated native tests `tests/zmk/radio_*` and runner.
 0..6, time and parsed notifications, produces bounded complete TX frames and
 typed status. Adapter owns locking; battery owner alone performs UART MMIO.
 
-- [ ] Write/run failing exact select/report/ACK/queue/timeout tests.
-- [ ] Implement bounded FIFO, release barriers, selection/pair state and frame
+- [x] Write/run failing exact select/report/ACK/queue/timeout tests.
+- [x] Implement bounded FIFO, release barriers, selection/pair state and frame
       scheduling, with one control/query outstanding and finite retries.
-- [ ] Integrate shared RX and TX without another UART/thread; preserve battery
+- [x] Integrate shared RX and TX without another UART/thread; preserve battery
       tests and add interleaving, raw quarantine, stall and status regressions.
 
 ## Task 3: ZMK routing, controls and physical split availability
@@ -76,11 +76,11 @@ cached status and worker poll; Studio `gmk_radio` label **GMK70 Bluetooth /
 Dongle**, parameter 0..6. Physical switch getter returns raw 0..3; split-available
 is separate from strict `gmk_wired_mode()` write authorization.
 
-- [ ] Write/run failing multi-object report/clear wrapper, hold cancellation,
+- [x] Write/run failing multi-object report/clear wrapper, hold cancellation,
       mode debounce, split and USB control validation tests.
-- [ ] Implement wrapper snapshots and zero reports, 3000 ms hold behavior,
+- [x] Implement wrapper snapshots and zero reports, 3000 ms hold behavior,
       explicit bounded USB controls/status and mode-driven selection.
-- [ ] Keep RIGHT USB-mode split behavior compatible and verify all existing
+- [x] Keep RIGHT USB-mode split behavior compatible and verify all existing
       updater/settings gates; compile affected ARM targets and inspect RAM/calls.
 
 ## Task 4: Migration and Studio metadata
@@ -92,11 +92,11 @@ is separate from strict `gmk_wired_mode()` write authorization.
 0x7E05 to6, 0x7E06 to0; reject invalid/bool/extra parameters. Resolve the exact
 runtime behavior display name without changing existing battery/RGB handling.
 
-- [ ] Write/run failing wireless translation and actual Studio framing tests.
-- [ ] Implement strict mappings/metadata resolution and validate preserved
+- [x] Write/run failing wireless translation and actual Studio framing tests.
+- [x] Implement strict mappings/metadata resolution and validate preserved
       unsupported dispositions. Expect eight formerly unsupported bindings
       supported, five still unassigned in this user's private plan.
-- [ ] Format, lint, strict mypy and run full migration/firmware-update suites.
+- [x] Format, lint, strict mypy and run full migration/firmware-update suites.
 
 ## Task 5: Review, guarded installation and physical verification
 

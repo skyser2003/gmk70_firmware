@@ -15,6 +15,7 @@ from test_update import package as fixture_package
 
 import update
 import zmk_package
+from studio_rpc import JsonValue
 from update import ZMK_BOOT_CRC, ZMK_BOOT_SHA256, Op, Package, Updater
 from zmk_package import build
 
@@ -122,7 +123,7 @@ class ZmkPackageTests(unittest.TestCase):
             resident = root / "synthetic-resident.bin"
             resident.write_bytes(SYNTHETIC_RESIDENT)
             report = root / "image-check.json"
-            checked: dict[str, object] = {
+            checked: dict[str, JsonValue] = {
                 "board": "gmk70_wired",
                 "variant": "wired-updater",
                 "load_address": 0x08002000,
@@ -143,6 +144,7 @@ class ZmkPackageTests(unittest.TestCase):
             for variant in (
                 "wired-studio-updater",
                 "wired-studio-update-test",
+                "wired-studio-radio-qualification",
                 "wired-studio-handoff",
                 "wired-studio-handoff-test",
                 "wired-studio-watchdog-rollback",

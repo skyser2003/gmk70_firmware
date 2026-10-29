@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+config GMK70_RADIO
+    bool "GMK70 stock vendor-radio Bluetooth and dongle endpoint"
+    depends on BOARD_GMK70_WIRED && GMK70_ZMK_STUDIO_SETTINGS
+    select GMK70_BATTERY
+    help
+      Reuse the sole UART3 battery owner for stock keyboard/consumer reports,
+      channel selection and pairing without modifying radio firmware or bonds.
+      Native USB remains available for Studio and the guarded updater.
+
+config GMK70_RADIO_QUALIFICATION
+    bool "Temporary radio qualification with a fixed F24 test marker"
+    depends on GMK70_RADIO
+    default n
+    help
+      Separate, explicitly named development image only. Adds one bounded
+      F24 press/release test command; normal images do not contain this entry.

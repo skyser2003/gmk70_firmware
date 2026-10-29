@@ -23,6 +23,13 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all
     -o artifacts/tests/zmk/wired-wb32
 artifacts/tests/zmk/wired-wb32
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
+    -DCONFIG_GMK70_RADIO=1 -Itests/zmk/wired_stubs -Itests/zmk/clock_stubs \
+    -Ifirmware/zmk/wired -Ifirmware/zmk/soc/westberry/wb32fq95 \
+    -I.work/zmk/wired-native/normal \
+    tests/zmk/wired_wb32_test.c firmware/zmk/wired/wired_protocol.c \
+    -o artifacts/tests/zmk/wired-wb32-radio
+artifacts/tests/zmk/wired-wb32-radio
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
     -Itests/zmk/wired_stubs -Ifirmware/zmk/wired \
     tests/zmk/wired_kscan_test.c -o artifacts/tests/zmk/wired-kscan
 artifacts/tests/zmk/wired-kscan

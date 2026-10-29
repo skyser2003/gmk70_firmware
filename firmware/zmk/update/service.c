@@ -5,6 +5,9 @@
 #endif
 #include "wired.h"
 #include "../battery/battery.h"
+#ifdef CONFIG_GMK70_RADIO
+#    include "radio.h"
+#endif
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/reboot.h>
@@ -43,6 +46,9 @@ static void worker(void *a, void *b, void *c) {
     ARG_UNUSED(c);
     if (!service_ready) return;
     for (;;) {
+#ifdef CONFIG_GMK70_RADIO
+        gmk_radio_poll();
+#endif
         gmk_battery_poll();
         struct gmk_wired_stats stats;
         /* Never enqueue this worker behind the responder/scanner mutex.

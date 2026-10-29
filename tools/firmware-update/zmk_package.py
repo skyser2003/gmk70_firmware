@@ -6,6 +6,7 @@ import json
 import zlib
 from pathlib import Path
 
+from studio_rpc import JsonSchema, JsonValue
 from update import ZMK_BOOT_CRC, ZMK_BOOT_SHA256, Manifest, Package
 
 
@@ -13,17 +14,19 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
     payload = image.read_bytes()
     raw = resident.read_bytes()
     boot = raw.ljust(0x2000, b"\xff")
-    checked = json.loads(report.read_text())
+    document: JsonValue = json.loads(report.read_text())
+    checked = JsonSchema.mapping(document)
+    variant = JsonSchema.text(checked.get("variant"))
     if (
-        not isinstance(checked, dict)
-        or checked.get("board") != "gmk70_wired"
-        or checked.get("variant")
+        checked.get("board") != "gmk70_wired"
+        or variant
         not in (
             "wired-updater",
             "wired-update-test",
             "wired-peripheral",
             "wired-studio-updater",
             "wired-studio-update-test",
+            "wired-studio-radio-qualification",
             "wired-studio-handoff",
             "wired-studio-handoff-test",
             "wired-studio-watchdog-rollback",
@@ -51,9 +54,7 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
         "format": 1,
         "board": "zuoya/gmk70",
         "mcu": "WB32FQ95-256K",
-        "profile": "zmk-studio"
-        if checked["variant"].startswith("wired-studio-")
-        else "zmk",
+        "profile": "zmk-studio" if variant.startswith("wired-studio-") else "zmk",
         "app_address": 0x08002000,
         "app_size": len(payload),
         "app_crc": zlib.crc32(payload),
@@ -94,7 +95,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         build(args.image, args.resident, args.report, args.output)
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"ZMK package rejected: {error}\n")
 
 
