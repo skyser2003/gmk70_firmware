@@ -18,3 +18,10 @@
   updater is an additional Vial release asset; trial builds remain experimental.
   Resident preservation, native settings schema, wired/role gates and separation
   of device operations from build/test commands still apply.
+
+- User-requested policy (2026-10-29): permanent ZMK firmware must not initialize
+  or feed a hardware watchdog. This applies to all canonical builds, not an
+  experimental toggle. Keep the short watchdog only in the separate temporary
+  staging-trial launcher. Permanent updater/settings writes use service readiness
+  and the existing wired, USB, role and storage gates. Physical power cycling is
+  the recovery fallback; it is not a guarantee of rollback from a faulty image.

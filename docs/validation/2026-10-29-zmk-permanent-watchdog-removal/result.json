@@ -1,0 +1,166 @@
+{
+  "source_commit": "89784be",
+  "scope": "Permanent watchdog removal from all canonical ZMK builds and both installed applications",
+  "installed": {
+    "left": {
+      "variant": "wired-studio-updater",
+      "app_size": 70196,
+      "app_crc": 986599886,
+      "app_sha256": "548c87faa1676093fa9a87948203ba28162de36cce4d1132b94ef4794f272334"
+    },
+    "right": {
+      "variant": "wired-peripheral",
+      "app_size": 38160,
+      "app_crc": 1887741245,
+      "app_sha256": "9af105e35536f32c4aa614e14e4d838a639073dc7d42920ee9fe16e733cc157a"
+    }
+  },
+  "resident_crc_both": 1770733249,
+  "permanent_watchdog_code": "removed",
+  "outgoing_resident_handoff": "removed",
+  "short_staging_trial_watchdog": "unchanged",
+  "install_requests": {
+    "left": 1,
+    "right": 1
+  },
+  "health": {
+    "before": {
+      "verified_window_seconds": 70.17200000002049,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 70340,
+          "crc": 1796245169,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    },
+    "left": {
+      "verified_window_seconds": 70.10899999999674,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 70196,
+          "crc": 986599886,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 36576,
+          "crc": 1296309606,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    },
+    "both_after_cold_start": {
+      "verified_window_seconds": 70.125,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "identities": {
+        "0": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 3,
+          "session": 0,
+          "received": 0,
+          "size": 70196,
+          "crc": 986599886,
+          "abi": 1,
+          "boot_crc": 1770733249
+        },
+        "1": {
+          "operation": 7,
+          "result": 0,
+          "state": 0,
+          "role": 0,
+          "session": 0,
+          "received": 0,
+          "size": 38160,
+          "crc": 1887741245,
+          "abi": 1,
+          "boot_crc": 1770733249
+        }
+      }
+    }
+  },
+  "right_transition": {
+    "install_acknowledged": true,
+    "automatic_restart_verified": false,
+    "failed_observation_seconds": 81.93700000003446,
+    "user_confirmed_joined_left_usb_cold_cycle": true,
+    "right_only_or_pad_recovery": false,
+    "install_replayed": false
+  },
+  "final_no_watchdog_health": {
+    "both_bit16": true,
+    "both_ready_bit_clear": true,
+    "both_zero_feeds": true,
+    "continuous_seconds": 70.125
+  },
+  "right_update_write_probe": {
+    "target": 1,
+    "staging_bytes": 256,
+    "aborted": true,
+    "install_requests": 0,
+    "identities_unchanged": true,
+    "residents_unchanged": true
+  },
+  "studio": {
+    "layers": 4,
+    "positions_per_layer": 72,
+    "all_original_bindings_and_names_preserved": true,
+    "save_reload_verified": true,
+    "no_unsaved_changes": true,
+    "normal_app_connected": true,
+    "remote_debugging_disabled": true
+  },
+  "limits": [
+    "A USB/power cycle is a tested recovery fallback, not arbitrary bad-image rollback",
+    "RIGHT old-to-new warm restart failed; future RIGHT no-watchdog-to-no-watchdog INSTALL was not tested",
+    "No fresh human typing or visual RGB qualification",
+    "All firmware remains experimental unlocked development, not a published release"
+  ],
+  "private_inventory": {
+    "path": "artifacts/recovery/2026-10-29-zmk-permanent-watchdog-removal/SHA256SUMS.json",
+    "sha256": "f54ae1ec131cf87b4c2904f681acd871d7df7ed69081ebdd913f989cfe3fb259",
+    "files": 63
+  }
+}

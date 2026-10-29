@@ -1,6 +1,13 @@
 # GMK70 ZMK wired development and staging trials
 
-Current 2026-10-29 checkpoint: [LEFT watchdog rollback](../../docs/ZMK-WATCHDOG-ROLLBACK.md) passed two
+Current checkpoint: [permanent watchdog removal](../../docs/ZMK-PERMANENT-WATCHDOG-REMOVAL.md)
+applies to canonical builds and both installed halves: LEFT 70,196/986599886,
+RIGHT 38,160/1887741245, resident CRCs 1770733249. Both passed 70-second zero-feed
+health; Studio saving and the original four-layer map were verified. RIGHT
+needed one joined-LEFT cold cycle for the old-watchdog transition. Earlier
+experiment/build/state notes below are historical; use the linked build targets.
+
+Earlier 2026-10-29 checkpoint: [LEFT watchdog rollback](../../docs/ZMK-WATCHDOG-ROLLBACK.md) passed two
 automatic original-SYSRESETREQ updates and Studio save/reload. Installed LEFT is
 70,340/1796245169 with no watchdog; RIGHT and residents are unchanged. This
 supersedes the installed-state notes below. The exact reset/retention mechanism
@@ -36,7 +43,7 @@ The universal `gmk70_wired` board runs the pinned ZMK application with a combine
 10-by-9 matrix, the stock physical key order and Fn at left row4/column2. B9
 selects the half; C14/C15 select wired mode. Keyboard HID0 and updater HID1 use
 `342D:E491`, manufacturer `HS`, and the updater's `FF60:61` usage. The native
-live worker services the permanent watchdog and deferred updater. This is an
+live worker owns deferred flash/settings work; permanent firmware never starts or feeds a watchdog. This is an
 explicitly unlocked development build; it is not a normal release asset.
 
 ```sh

@@ -1,6 +1,19 @@
 # Local continuation: updater-preserving ZMK development
 
-## Current LEFT watchdog rollback — 2026-10-29
+## Permanent watchdog removal — 2026-10-29
+
+The user-requested [permanent removal](ZMK-PERMANENT-WATCHDOG-REMOVAL.md) now
+applies to all canonical permanent ZMK builds and both installed halves.
+LEFT is standard Studio 70,196/986599886; RIGHT is no-lighting peripheral
+38,160/1887741245; both resident CRCs remain 1770733249. LEFT returned automatically;
+RIGHT's old-watchdog transition required one confirmed joined-LEFT cold cycle.
+Both then passed 70.125 seconds of zero-feed health; new RIGHT staging writes and
+actual Studio save/reload/full original map restoration passed. No right-only
+USB/pad recovery or repeated INSTALL occurred. The long watchdog adapter and
+outgoing handoff are deleted; temporary staging-trial protection remains separate.
+Use the linked current evidence; earlier checkpoints below are historical.
+
+## Previous LEFT watchdog rollback — 2026-10-29
 
 [Watchdog removal](ZMK-WATCHDOG-ROLLBACK.md) restored the original SYSRESETREQ
 update path on LEFT in two distinct-image tests, without further cycles after

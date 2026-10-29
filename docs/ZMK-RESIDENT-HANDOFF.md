@@ -1,6 +1,13 @@
 # Experimental application-only update activation
 
-Current 2026-10-29 checkpoint: [LEFT watchdog rollback](ZMK-WATCHDOG-ROLLBACK.md) passed two
+Current checkpoint: [permanent watchdog removal](ZMK-PERMANENT-WATCHDOG-REMOVAL.md)
+applies to canonical builds and both installed halves: LEFT 70,196/986599886,
+RIGHT 38,160/1887741245, resident CRCs 1770733249. Both passed 70-second zero-feed
+health; Studio saving and the original four-layer map were verified. RIGHT
+needed one joined-LEFT cold cycle for the old-watchdog transition. Earlier
+experiment/build/state notes below are historical; use the linked build targets.
+
+Earlier 2026-10-29 checkpoint: [LEFT watchdog rollback](ZMK-WATCHDOG-ROLLBACK.md) passed two
 automatic original-SYSRESETREQ updates and Studio save/reload. Installed LEFT is
 70,340/1796245169 with no watchdog; RIGHT and residents are unchanged. This
 supersedes the installed-state notes below. The exact reset/retention mechanism

@@ -27,8 +27,8 @@ armed watchdog. Never replay INSTALL, change resident, or request pad recovery.
 - [x] Run repository/ZMK/updater suites, formatting and strict checks; build affected variants.
 - [x] Independent code/artifact/operator review before device writes.
 - [x] Freeze source, packages, saved map and separate one-shot device operator.
-- [ ] Install/qualify LEFT, then RIGHT through LEFT USB; preserve residents and configuration.
-- [ ] Verify Studio save/reload and original map, archive evidence and commit/push results.
+- [x] Install/qualify LEFT, then RIGHT through LEFT USB; preserve residents and configuration.
+- [x] Verify Studio save/reload and original map, archive evidence and commit/push results.
 
 Recovery limit: USB reconnect is a tested LEFT cold-start fallback, not a general
 firmware rollback guarantee. If the peer remains battery-powered, a LEFT USB
@@ -36,4 +36,8 @@ cycle may not cold-start RIGHT; do not claim otherwise or retry writes blindly.
 
 Offline results: all repository/native ZMK/updater suites pass; canonical Studio, peripheral, normal and qualification builds pass with no watchdog/handoff symbols. Independent code/artifact review passed. Paired prior cold-cycle uptimes prove the tested joined-LEFT USB cycle reset both halves (LEFT~21106ms, RIGHT~21114ms after priorRIGHT6124726ms). Operator review pending; no INSTALL sent.
 
-Independent operator review passed; fresh70.172-second baseline has zero retries/reconnects. No device INSTALL has yet been sent. All canonical candidates and the actual clean four-layer map are frozen privately.
+Independent operator review passed; fresh 70.172-second baseline has zero retries/reconnects. No device INSTALL has yet been sent. All canonical candidates and the actual clean four-layer map are frozen privately.
+
+Hardware: one LEFT INSTALL acknowledged; canonical Studio 70196/986599886 returned automatically and passed 70.109 seconds both-half health with zero retries/reconnects. One RIGHT INSTALL acknowledged 38160/1887741245, but read-only identity did not verify within 81.937 seconds; preserved as failure. No replay/ABORTafterINSTALL. User was asked for the proven joined-LEFT 5 sec coldcycle, with no right-only/pad action. Waiting for physical confirmation; no more firmware write is planned.
+
+Final hardware result: after the user-confirmed joined-LEFT cold cycle both canonical images passed 70.125 seconds with zero feeds/bit 4 on both and zero retries/reconnects. New RIGHT accepted 256-byte staging DATA plus ABORT, preserving exact identities and performing no INSTALL. Actual Studio save/reload/restore verified all original 4×72 bindings/names and dirty=false. Normal Studio/final native checks passed; no further device write is planned.

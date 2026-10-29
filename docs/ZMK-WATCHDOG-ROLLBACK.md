@@ -1,5 +1,12 @@
 # LEFT watchdog rollback and hardware-reset update result
 
+Current checkpoint: [permanent watchdog removal](ZMK-PERMANENT-WATCHDOG-REMOVAL.md)
+applies to canonical builds and both installed halves: LEFT 70,196/986599886,
+RIGHT 38,160/1887741245, resident CRCs 1770733249. Both passed 70-second zero-feed
+health; Studio saving and the original four-layer map were verified. RIGHT
+needed one joined-LEFT cold cycle for the old-watchdog transition. Earlier
+experiment/build/state notes below are historical; use the linked build targets.
+
 On 2026-10-29, with the added watchdog init/feed disabled, LEFT updates returned
 automatically through the **original SYSRESETREQ path** in two distinct-image tests.
 The installed LEFT no longer uses the direct resident handoff for activation.
