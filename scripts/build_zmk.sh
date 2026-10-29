@@ -2,33 +2,31 @@
 set -euo pipefail
 source "$(dirname "$0")/project.sh"
 variant="${1:-left-trial}"
+case "$variant" in
+    wired-studio-handoff|wired-studio-watchdog-rollback)
+        printf 'Retired experiment %s; building canonical no-watchdog Studio.\n' "$variant"
+        variant=wired-studio-updater ;;
+    wired-studio-handoff-test|wired-studio-watchdog-rollback-test)
+        printf 'Retired experiment %s; building canonical no-watchdog Studio test.\n' "$variant"
+        variant=wired-studio-update-test ;;
+esac
 board=gmk70_wired
 mode=updater
 extra=()
 case "$variant" in
     left-trial|right-trial) board="gmk70_${variant%-trial}"; mode=normal ;;
     wired-updater) ;;
+    wired-peripheral) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/peripheral.conf") ;;
     wired-update-test) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/update-test.conf") ;;
-    wired-studio-updater|wired-studio-handoff|wired-studio-handoff-test|wired-studio-watchdog-rollback|wired-studio-watchdog-rollback-test) extra+=(-DGMK70_STUDIO=ON
+    wired-studio-updater|wired-studio-update-test) extra+=(-DGMK70_STUDIO=ON
         -DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.overlay") ;;
     wired-qualification) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.overlay") ;;
     *) printf 'Unsupported experimental ZMK target: %s\n' "$variant" >&2; exit 2 ;;
 esac
-if [[ "$variant" == wired-studio-handoff* ]]; then
-    handoff_conf="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/handoff.conf"
-    if [[ "$variant" == wired-studio-handoff-test ]]; then
-        handoff_conf+=";$project_root/firmware/zmk/boards/zuoya/gmk70_wired/handoff-test.conf"
-    fi
-    extra+=(-DEXTRA_CONF_FILE="$handoff_conf")
-fi
-if [[ "$variant" == wired-studio-watchdog-rollback* ]]; then
-    rollback_conf="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/watchdog-rollback.conf"
-    if [[ "$variant" == wired-studio-watchdog-rollback-test ]]; then
-        rollback_conf+=";$project_root/firmware/zmk/boards/zuoya/gmk70_wired/watchdog-rollback-test.conf"
-    fi
-    extra+=(-DEXTRA_CONF_FILE="$rollback_conf")
+if [[ "$variant" == wired-studio-update-test ]]; then
+    extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio-update-test.conf")
 fi
 python3 firmware/zmk/tools/workspace.py verify
 zmk_tools="$project_root/firmware/zmk/tools/.venv/bin"
@@ -99,19 +97,15 @@ fi
             printf 'Staging qualification at 0x08020000; no watchdog feed, running-code writes or durable install.\n'
             printf 'Only target-specific left/right TrialPackage manifests are emitted.\n'
         else
-            if [[ "$variant" == wired-studio-watchdog-rollback* ]]; then
-                printf 'LEFT diagnostic: no watchdog init/feed; local USB/wired writes only; SYSRESETREQ updates.\n'
-                printf 'Existing watchdog must expire before testing; Studio journal/role/wired gates retained.\n'
-            else
-                printf 'Application at 0x08002000; native updater and permanent live-worker watchdog.\n'
-            fi
+            printf 'Application at 0x08002000; native updater; no permanent watchdog or outgoing handoff.\n'
+            printf 'Hardware reset activates updates; a hung application may require a physical power cycle.\n'
             if [[ "$variant" == wired-studio-* ]]; then
                 printf 'profile=zmk-studio; LEFT only; CDC Studio, Feature updater, 16KiB settings reservation.\n'
             else
                 printf 'profile=zmk package; exact pinned resident prerequisite preserved.\n'
             fi
         fi
-        printf 'Four Windows/Mac layers; native RGB and bounded wired pixel synchronization.\n'
+        printf 'Four Windows/Mac layers; lighting selected by variant (Studio local only, peripheral disabled).\n'
         printf 'No radio, encoder rotation, external Vial EEPROM or device operations.\n'
     else
         printf 'EXPERIMENTAL actual ZMK %s staging trial; not a normal updater image.\n' "$variant"

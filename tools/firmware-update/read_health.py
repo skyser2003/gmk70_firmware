@@ -52,7 +52,7 @@ class Health:
             or not flags & 2
             or bool(flags & 8) != staging
             or bool(flags & 1) == (staging or disabled)
-            or (disabled and (target != 0 or staging))
+            or (disabled and staging)
             or ((staging or disabled) and feeds != 0)
         ):
             raise RuntimeError(
@@ -243,7 +243,7 @@ def validate_progress(
         raise RuntimeError("Watchdog policy changed during observation")
     if current.flags & 16:
         if previous.feed_calls != 0 or current.feed_calls != 0:
-            raise RuntimeError("Watchdog rollback requires zero feed calls")
+            raise RuntimeError("No-watchdog firmware requires zero feed calls")
     elif not 0 < feeds < 2**31:
         raise RuntimeError("Watchdog feed calls stopped or reset")
     if current.nonce == previous.nonce:

@@ -3,35 +3,17 @@
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 #    include "../studio/settings_backend.h"
 #endif
-#include "wb32_watchdog.h"
-#ifdef CONFIG_GMK70_RESIDENT_HANDOFF
-#    include "resident_handoff.h"
-#endif
 #include "wired.h"
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/reboot.h>
 #include <zmk/usb.h>
 
-/* Written before any threads/callbacks run, immutable thereafter. */
-static bool watchdog_ready;
 /* APPLICATION init publishes success before Zephyr starts static threads. */
-static bool     service_ready;
-static uint32_t feed_calls;
-
-static int watchdog_init(void) {
-    watchdog_ready = gmk_zmk_watchdog_init();
-#ifdef CONFIG_GMK70_STAGING_QUALIFICATION
-    watchdog_ready = false;
-#endif
-    /* Keep keyboard/read-only identity alive on failure; mutations are gated. */
-    return 0;
-}
-/* SoC clock hook and C storage setup precede PRE_KERNEL_1. */
-SYS_INIT(watchdog_init, PRE_KERNEL_1, 50);
+static bool service_ready;
 
 static gmk_zmk_update_env_t gates(void) {
-    return (gmk_zmk_update_env_t){.left = gmk_wired_is_left(), .wired = gmk_wired_mode(), .usb_configured = zmk_usb_is_hid_ready(), .watchdog_ready = watchdog_ready};
+    return (gmk_zmk_update_env_t){.left = gmk_wired_is_left(), .wired = gmk_wired_mode(), .usb_configured = zmk_usb_is_hid_ready(), .writes_ready = service_ready};
 }
 
 static void peer_receive(const uint8_t request[32], uint8_t response[32]) {
@@ -40,9 +22,6 @@ static void peer_receive(const uint8_t request[32], uint8_t response[32]) {
 }
 
 void gmk_zmk_update_reset(void) {
-#ifdef CONFIG_GMK70_RESIDENT_HANDOFF
-    if (gmk_zmk_resident_handoff()) return;
-#endif
     sys_reboot(SYS_REBOOT_COLD);
 }
 
@@ -51,7 +30,6 @@ static gmk_zmk_update_env_t worker_environment(bool peer) {
     gmk_zmk_update_env_t env = gates();
     env.peer                 = peer;
     env.uptime_ms            = k_uptime_get_32();
-    env.feed_calls           = feed_calls;
     /* No key-event counter is exposed by the scanner yet. Zero means
      * unavailable, not a transport transaction or polling count. */
     env.matrix_events = 0;
@@ -79,14 +57,6 @@ static void worker(void *a, void *b, void *c) {
         env = worker_environment(peer);
         gmk_zmk_settings_poll(&env);
 #endif
-#ifndef CONFIG_GMK70_STAGING_QUALIFICATION
-        /* Feed only after this live worker completed its current flash/relay
-         * work. A stalled controller or worker cannot refresh the watchdog. */
-        if (watchdog_ready) {
-            gmk_zmk_watchdog_feed();
-            ++feed_calls;
-        }
-#endif
         k_sleep(K_MSEC(1));
     }
 }
@@ -95,7 +65,8 @@ static void worker(void *a, void *b, void *c) {
 K_THREAD_DEFINE(update_worker, 2048, worker, NULL, NULL, NULL, 6, 0, 0);
 
 static int service_init(void) {
-    int result = gmk_zmk_raw_hid_init();
+    service_ready = false;
+    int result    = gmk_zmk_raw_hid_init();
     if (result != 0) return result;
     gmk_zmk_update_env_t env = gates();
     env.uptime_ms            = k_uptime_get_32();

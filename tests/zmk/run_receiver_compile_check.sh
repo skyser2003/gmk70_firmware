@@ -16,7 +16,7 @@ base = shlex.split(entry["command"])
 update = root / "firmware/zmk/update"
 common = root / "firmware/qmk-common/keyboards/zuoya/gmk70/update"
 for profile in ("permanent", "qualification", "relay"):
-    sources = [update / name for name in ("receiver.c", "raw_hid.c", "service.c", "wb32_flash.c", "wb32_watchdog.c")]
+    sources = [update / name for name in ("receiver.c", "raw_hid.c", "service.c", "wb32_flash.c")]
     sources += [common / "image.c", common / "protocol.c"]
     if profile == "relay":
         sources.append(common / "trial.c")
@@ -30,5 +30,5 @@ for profile in ("permanent", "qualification", "relay"):
         if profile == "relay":
             command.append("-DCONFIG_GMK70_ZMK_PEER_TRIAL_RELAY=1")
         subprocess.run(command, cwd=entry["directory"], check=True)
-print("Real pinned Zephyr headers: permanent/qualification/relay receiver, HID, service, flash/watchdog and direct common ARM objects passed")
+print("Real pinned Zephyr headers: permanent/qualification/relay receiver, HID, service, flash and direct common ARM objects passed")
 PY

@@ -72,9 +72,9 @@ static void setup(void) {
     writes = relays = resets = 0;
     fail_flash = interleave = relay_fail = relay_override = false;
     flash_delay = clock_offset = 0;
-    env                        = (gmk_zmk_update_env_t){.left = true, .wired = true, .usb_configured = true, .watchdog_ready = true, .peer = true, .uptime_ms = 100, .feed_calls = 7, .matrix_events = 42};
+    env                        = (gmk_zmk_update_env_t){.left = true, .wired = true, .usb_configured = true, .writes_ready = true, .peer = true, .uptime_ms = 100, .matrix_events = 42};
 #ifdef CONFIG_GMK70_STAGING_QUALIFICATION
-    env.watchdog_ready = false;
+    env.writes_ready = false;
 #endif
     gmk_zmk_receiver_init(&env);
 }
@@ -114,7 +114,7 @@ static void gates(void) {
         if (gate == 0) env.left = false;
         if (gate == 1) env.wired = false;
         if (gate == 2) env.usb_configured = false;
-        if (gate == 3) env.watchdog_ready = false;
+        if (gate == 3) env.writes_ready = false;
         receive();
 #ifdef CONFIG_GMK70_STAGING_QUALIFICATION
         if (gate == 3) {
@@ -157,11 +157,11 @@ static void health(void) {
     request[8] = 0x65;
     receive();
     assert(response[5] == GMK_OK && response[8] == 0x65 && gmk_read_u32(response + 12) == 0x4b4d5a47);
-    assert(gmk_read_u32(response + 16) == 100 && gmk_read_u32(response + 20) == 7 && gmk_read_u32(response + 28) == 42);
+    assert(gmk_read_u32(response + 16) == 100 && gmk_read_u32(response + 20) == 0 && gmk_read_u32(response + 28) == 42);
 #ifdef CONFIG_GMK70_STAGING_QUALIFICATION
     assert(gmk_read_u32(response + 24) == 14);
 #else
-    assert(gmk_read_u32(response + 24) == 7);
+    assert(gmk_read_u32(response + 24) == 22);
 #endif
     packet(GMK_STATUS);
     receive();
@@ -187,7 +187,7 @@ static void right_health(void) {
     setup();
     env.left           = false;
     env.usb_configured = false;
-    env.watchdog_ready = false;
+    env.writes_ready   = false;
     gmk_zmk_receiver_step(&env);
     uint8_t health_request[32] = {0x7f, 0x72, 1, 1, 0x20, 0, 0, 0, 0x43};
     gmk_zmk_receiver_receive(health_request, response, false, &env);
@@ -245,7 +245,7 @@ static void remote(void) {
     setup();
     env.left           = false;
     env.usb_configured = false;
-    env.watchdog_ready = false;
+    env.writes_ready   = false;
     packet(GMK_BEGIN);
     request[3] = 1;
     gmk_zmk_receiver_receive(request, response, false, &env);
@@ -476,12 +476,12 @@ static void trial_relay(void) {
         if (gate == 0) env.left = false;
         if (gate == 1) env.usb_configured = false;
         if (gate == 2) env.wired = false;
-        if (gate == 3) env.watchdog_ready = false;
+        if (gate == 3) env.writes_ready = false;
         receive();
         assert(response[5] == GMK_UNAVAILABLE && !relays && !writes);
     }
     setup();
-    env.watchdog_ready = false;
+    env.writes_ready = false;
     packet(GMK_INFO);
     request[1] = 0x71;
     request[2] = 2;
@@ -509,10 +509,10 @@ static void trial_relay(void) {
     setup();
     memcpy(request, original, 32);
     receive();
-    env.watchdog_ready = false;
+    env.writes_ready = false;
     gmk_zmk_receiver_step(&env);
     assert(!relays && !writes);
-    env.watchdog_ready = true;
+    env.writes_ready = true;
     packet(GMK_STATUS);
     request[1] = 0x71;
     request[2] = 2;

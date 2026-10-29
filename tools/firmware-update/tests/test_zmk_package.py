@@ -141,6 +141,8 @@ class ZmkPackageTests(unittest.TestCase):
             )
             self.assertFalse((output / "install.bin").exists())
             for variant in (
+                "wired-studio-updater",
+                "wired-studio-update-test",
                 "wired-studio-handoff",
                 "wired-studio-handoff-test",
                 "wired-studio-watchdog-rollback",

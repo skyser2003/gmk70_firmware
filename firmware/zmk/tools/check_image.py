@@ -182,12 +182,25 @@ def validate_handoff_payload(payload: bytes, enabled: bool) -> None:
         raise ValueError("Wrong or misplaced resident handoff capability footer")
 
 
+def validate_permanent_symbols(symbols: set[str]) -> None:
+    if any(
+        name.startswith("gmk_zmk_watchdog_")
+        or name in ("gmk_zmk_resident_handoff", "gmk_zmk_resident_branch")
+        for name in symbols
+    ):
+        raise ValueError(
+            "Permanent watchdog or outgoing resident handoff survived linking"
+        )
+
+
 def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | int]:
     if variant not in (
         "wired-updater",
         "wired-update-test",
+        "wired-peripheral",
         "wired-qualification",
         "wired-studio-updater",
+        "wired-studio-update-test",
         "wired-studio-handoff",
         "wired-studio-handoff-test",
         "wired-studio-watchdog-rollback",
@@ -198,9 +211,7 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
     base = FLASH_START if qualification else 0x08002000
     payload = image.read_bytes()
     result = validate_vectors(payload, base)
-    handoff = variant in ("wired-studio-handoff", "wired-studio-handoff-test")
-    rollback = variant.startswith("wired-studio-watchdog-rollback")
-    validate_handoff_payload(payload, handoff or rollback)
+    validate_handoff_payload(payload, not qualification)
     lines = subprocess.check_output(
         ["arm-none-eabi-nm", "--defined-only", str(elf)], text=True
     )
@@ -221,7 +232,6 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
         "soc_early_init_hook",
         "gmk_flash_page",
         "gmk_running_size",
-        "gmk_zmk_watchdog_init",
         "gmk_zmk_receiver_step",
         "gmk_zmk_raw_hid_init",
         "gmk_wired_scan",
@@ -232,21 +242,13 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
     ):
         if name not in symbols:
             raise ValueError(f"Missing native ZMK wired symbol {name}")
-    if handoff != (
-        "gmk_zmk_resident_branch" in symbols and "gmk_zmk_resident_handoff" in symbols
-    ):
-        raise ValueError("Wrong resident handoff integration")
+    validate_permanent_symbols(set(symbols))
     if "__wrap_main" in symbols:
         raise ValueError("Permanent/qualification wired target must not wrap main")
-    if not qualification and (
-        "gmk_trial_packet_valid" not in symbols
-        or "gmk_zmk_watchdog_feed" not in symbols
-    ):
-        raise ValueError("Missing permanent watchdog/peer validator")
-    if qualification and (
-        "gmk_zmk_watchdog_feed" in symbols or "gmk_trial_packet_valid" in symbols
-    ):
-        raise ValueError("Qualification retained permanent feed/peer trial code")
+    if not qualification and "gmk_trial_packet_valid" not in symbols:
+        raise ValueError("Missing peer trial validator")
+    if qualification and "gmk_trial_packet_valid" in symbols:
+        raise ValueError("Qualification retained peer trial code")
     if any(
         name.startswith("gmk_trial_") and name != "gmk_trial_packet_valid"
         for name in symbols
@@ -329,8 +331,10 @@ def main() -> None:
         choices=(
             "wired-updater",
             "wired-update-test",
+            "wired-peripheral",
             "wired-qualification",
             "wired-studio-updater",
+            "wired-studio-update-test",
             "wired-studio-handoff",
             "wired-studio-handoff-test",
             "wired-studio-watchdog-rollback",

@@ -6,20 +6,18 @@
 #include <stdio.h>
 #include <string.h>
 static jmp_buf  leave_worker;
-static bool     watchdog_ok = true;
 static unsigned feeds, steps, reset_calls, early_calls, raw_polls;
 static unsigned handoff_calls;
-static bool     handoff_accepted;
 bool            gmk_zmk_resident_handoff(void) {
     ++handoff_calls;
-    return handoff_accepted;
+    return false;
 }
 static gmk_zmk_update_env_t observed;
 static void (*wire_handler)(const uint8_t[32], uint8_t[32]);
 static int raw_init_result;
 bool       gmk_zmk_watchdog_init(void) {
     ++early_calls;
-    return watchdog_ok;
+    return true;
 }
 void gmk_zmk_watchdog_feed(void) {
     ++feeds;
@@ -76,34 +74,20 @@ void sys_reboot(int type) {
 }
 #include "service.c"
 int main(void) {
-    assert(watchdog_init() == 0 && early_calls == 1);
+    assert(!gates().writes_ready);
     assert(service_init() == 0 && wire_handler);
     if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
     assert(steps == 1 && raw_polls == 1 && observed.uptime_ms == 1234 && observed.matrix_events == 0);
-#ifdef CONFIG_GMK70_STAGING_QUALIFICATION
-    assert(feeds == 0 && observed.feed_calls == 0 && !observed.watchdog_ready);
-#else
-    assert(feeds == 1 && observed.watchdog_ready);
-#endif
+    assert(feeds == 0 && early_calls == 0 && observed.writes_ready);
     uint8_t packet[32] = {0};
     wire_handler(packet, packet);
     assert(observed.left && observed.wired);
-    watchdog_ok = false;
-    watchdog_init();
-    unsigned previous = feeds;
-    if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
-    assert(feeds == previous && !observed.watchdog_ready);
     raw_init_result = -1;
-    assert(service_init() == -1);
+    assert(service_init() == -1 && !gates().writes_ready);
+    unsigned previous = raw_polls;
+    worker(NULL, NULL, NULL);
+    assert(raw_polls == previous && feeds == 0 && early_calls == 0);
     gmk_zmk_update_reset();
-    assert(reset_calls == 1);
-#ifdef CONFIG_GMK70_RESIDENT_HANDOFF
-    assert(handoff_calls == 1);
-    handoff_accepted = true;
-    gmk_zmk_update_reset();
-    assert(handoff_calls == 2 && reset_calls == 1);
-#else
-    assert(handoff_calls == 0);
-#endif
-    puts("ZMK worker/watchdog service tests passed");
+    assert(reset_calls == 1 && handoff_calls == 0);
+    puts("ZMK service readiness and permanent no-watchdog tests passed");
 }

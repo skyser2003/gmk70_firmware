@@ -54,10 +54,7 @@ int settings_call_set_handler(const char *name, size_t size, settings_read_cb re
 static void *worker(void *arg) {
     (void)arg;
     worker_id                = pthread_self();
-    gmk_zmk_update_env_t env = {.left = !invalid_role, .wired = !invalid_mode, .watchdog_ready = true};
-#ifdef CONFIG_GMK70_WATCHDOG_ROLLBACK
-    env.watchdog_ready = false;
-#endif
+    gmk_zmk_update_env_t env = {.left = !invalid_role, .wired = !invalid_mode, .writes_ready = true};
     while (!atomic_load(&stop)) {
         gmk_zmk_settings_poll(&env);
         usleep(100);

@@ -10,6 +10,19 @@ import check_image
 
 
 class WiredImageTests(unittest.TestCase):
+    def test_permanent_builds_reject_watchdog_and_outgoing_handoff_symbols(
+        self,
+    ) -> None:
+        check_image.validate_permanent_symbols({"main", "gmk_zmk_receiver_step"})
+        for name in (
+            "gmk_zmk_watchdog_init",
+            "gmk_zmk_watchdog_feed",
+            "gmk_zmk_resident_handoff",
+            "gmk_zmk_resident_branch",
+        ):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                check_image.validate_permanent_symbols({"main", name})
+
     def test_handoff_capability_must_be_at_actual_image_end(self) -> None:
         marker = b"GMK70ZMKBOOT\x01\0\0\0"
         for enabled in (True, False):

@@ -145,7 +145,7 @@ static void setup(void) {
     memset(payload, 0xa5, sizeof(payload));
     gmk_write_u32(payload, 0x20006000);
     gmk_write_u32(payload + 4, GMK_APP_BASE + 9);
-    assert(watchdog_init() == 0 && service_init() == 0 && wire_handler);
+    assert(service_init() == 0 && wire_handler);
 }
 static void packet(uint8_t request[32], unsigned op, unsigned target) {
     memset(request, 0, 32);
@@ -174,7 +174,7 @@ static void scheduling(void) {
     uint8_t request[32];
     packet(request, GMK_BEGIN, 1);
     deliver(request);
-    assert(writes == 1 && feeds == 1 && frame_completions == 1 && scanner_completions == 1 && !updater_waiting);
+    assert(writes == 1 && feeds == 0 && frame_completions == 1 && scanner_completions == 1 && !updater_waiting);
     /* Real common receiver commits while this service repeatedly bypasses the
      * contended telemetry lock; all UART/scan frame handoffs keep progressing. */
     for (unsigned offset = 0; offset < sizeof(payload); offset += 16) {
@@ -189,14 +189,13 @@ static void scheduling(void) {
     packet(request, GMK_INSTALL, 1);
     deliver(request);
     assert(!resets);
-    uint32_t published       = now - 20;
-    unsigned feeds_at_commit = feeds;
+    uint32_t published = now - 20;
     while (now - published < 300) {
         run_iteration();
         assert(!resets);
     }
     run_iteration();
-    assert(resets == 1 && feeds > feeds_at_commit && partial_waits == frame_completions && scanner_completions == frame_completions);
+    assert(resets == 1 && feeds == 0 && partial_waits == frame_completions && scanner_completions == frame_completions);
     uint8_t health_request[32] = {0x7f, 0x72, 1, 1, 0x20, 0, 0, 0, 0x22}, response[32];
     wire_handler(health_request, response);
     assert(response[5] == GMK_OK && !(gmk_read_u32(response + 24) & 4)); /* busy stats means unknown, not falsely fresh */
@@ -213,7 +212,7 @@ static void gates_changed(void) {
             else
                 change_after_admission = gate;
             run_iteration();
-            assert(writes == 0 && feeds == 1);
+            assert(writes == 0 && feeds == 0);
             if (boundary == 0)
                 assert(usb_response[5] == GMK_UNAVAILABLE);
             else

@@ -21,7 +21,9 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
         not in (
             "wired-updater",
             "wired-update-test",
+            "wired-peripheral",
             "wired-studio-updater",
+            "wired-studio-update-test",
             "wired-studio-handoff",
             "wired-studio-handoff-test",
             "wired-studio-watchdog-rollback",

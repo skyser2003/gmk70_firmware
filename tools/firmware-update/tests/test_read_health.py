@@ -17,7 +17,9 @@ def response(
 
 
 class HealthTests(unittest.TestCase):
-    def test_explicit_left_watchdog_rollback_is_zero_feed_and_never_ready(self) -> None:
+    def test_permanent_no_watchdog_is_zero_feed_and_never_ready_on_either_half(
+        self,
+    ) -> None:
         packet = bytearray(response(target=0, feeds=0))
         struct.pack_into("<I", packet, 24, 22)
         health = Health.decode(bytes(packet), 0, 7)
@@ -32,10 +34,11 @@ class HealthTests(unittest.TestCase):
             ):
                 Health.decode(bytes(bad), 0, 7)
         packet[3], packet[7] = 1, 0
-        with self.assertRaises(RuntimeError):
-            Health.decode(bytes(packet), 1, 7)
+        self.assertEqual(Health.decode(bytes(packet), 1, 7).role, 0)
 
-    def test_rollback_continuity_requires_zero_feeds_and_unchanged_policy(self) -> None:
+    def test_no_watchdog_continuity_requires_zero_feeds_and_unchanged_policy(
+        self,
+    ) -> None:
         old = Health(1, 10000, 0, None, 22, 3)
         current = Health(2, 11000, 0, None, 22, 3)
         validate_progress(old, current, 1.0, 2.0)

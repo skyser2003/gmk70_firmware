@@ -3,8 +3,8 @@
 #include "protocol.h"
 
 typedef struct {
-    bool     left, wired, usb_configured, watchdog_ready, peer;
-    uint32_t uptime_ms, feed_calls, matrix_events;
+    bool     left, wired, usb_configured, writes_ready, peer;
+    uint32_t uptime_ms, matrix_events;
 } gmk_zmk_update_env_t;
 
 /* Initialization precedes registration of either transport callback. */

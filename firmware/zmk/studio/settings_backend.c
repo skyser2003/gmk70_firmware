@@ -100,13 +100,8 @@ void gmk_zmk_settings_poll(const gmk_zmk_update_env_t *env) {
     bool             pending = job.pending;
     k_spin_unlock(&job_lock, key);
     if (!pending) return;
-    int  result       = -ENOTSUP;
-    bool writes_ready = env->watchdog_ready;
-#ifdef CONFIG_GMK70_WATCHDOG_ROLLBACK
-    /* Explicit watchdog removal preserves the worker/journal/role gates. */
-    writes_ready = true;
-#endif
-    if (env->left && env->wired && writes_ready) result = gmk_settings_store_save(&store, job.name, job.deleting ? NULL : job.value, job.size);
+    int result = -ENOTSUP;
+    if (env->left && env->wired && env->writes_ready) result = gmk_settings_store_save(&store, job.name, job.deleting ? NULL : job.value, job.size);
     if (store.fault) atomic_clear(&ready);
     key         = k_spin_lock(&job_lock);
     job.result  = result;

@@ -161,7 +161,6 @@ int main(int argc, char **argv) {
     missing_device  = fail && strcmp(argv[1], "missing") == 0;
     hid_init_result = fail && !missing_device ? -EIO : 0;
     memset(flash, 0xa5, sizeof(flash));
-    assert(watchdog_init() == 0);
     /* Production APPLICATION service registration occurs before static setup. */
     int result = service_init();
     if (fail) {
@@ -188,11 +187,7 @@ int main(int argc, char **argv) {
         run_ready_quantum(update_worker);
         assert(usb_writes == 2 && sent[4] == GMK_INFO && sent[5] == GMK_OK && sent[7] == 3);
         assert(gmk_read_u32(sent + 16) == 1024 && gmk_read_u32(sent + 24) == 1 && !flash_writes && stats_reads == 2);
-#ifdef CONFIG_GMK70_STAGING_QUALIFICATION
         assert(feeds == 0);
-#else
-        assert(feeds == 2);
-#endif
     }
     puts("ZMK APPLICATION/static-thread lifecycle and raw HID integration passed");
 }

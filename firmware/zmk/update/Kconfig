@@ -6,8 +6,9 @@ config GMK70_ZMK_UPDATER
     help
       Development updater using the installed GMK70 resident ABI and wired
       relay. Requires two USB HID interfaces, interrupt OUT, and 32-byte HID
-      endpoint buffers. Host writes require left USB, wired mode, and a ready
-      permanent watchdog. This build is explicitly unlocked.
+      endpoint buffers. Host writes require left USB, wired mode, a ready
+      update service and the matching local/peer role. Permanent firmware never
+      starts or feeds a hardware watchdog. This build is explicitly unlocked.
 
 config GMK70_STAGING_QUALIFICATION
     bool "GMK70 restricted staging qualification receiver"
@@ -18,30 +19,9 @@ config GMK70_STAGING_QUALIFICATION
       erase the isolated commit page. Never stage DATA, SEAL, INSTALL or relay
       peer mutations. This image is experimental, not a permanent artifact.
 
-config GMK70_RESIDENT_HANDOFF
-    bool "Experimental application-only resident update handoff"
-    depends on GMK70_ZMK_UPDATER && !GMK70_STAGING_QUALIFICATION
-    help
-      For marked native receivers only, enter the unchanged installed resident
-      without SYSRESETREQ. Keep the native long watchdog/PLL configuration and
-      stop USB, IRQs and DMA. Other receivers retain the ordinary reset path.
-      This is an unqualified update activation experiment, not a reboot fix.
-
-config GMK70_WATCHDOG_ROLLBACK
-    bool "Experimental LEFT watchdog rollback for hardware-reset comparison"
-    depends on GMK70_ZMK_UPDATER && GMK70_ZMK_STUDIO_SETTINGS
-    depends on !GMK70_STAGING_QUALIFICATION && !GMK70_RESIDENT_HANDOFF
-    help
-      Separately labeled diagnostic only: do not initialize or feed IWDG.
-      Permit only local LEFT USB/wired update writes without watchdog readiness;
-      peer mutations remain denied. Studio retains its worker-owned journal and
-      left/wired settings gates. Health bit 4 identifies
-      the exception, with no ready bit or feed count. Updates use SYSRESETREQ.
-      An inherited running watchdog must expire before no-watchdog testing.
-
 config GMK70_RESIDENT_RECEIVER
     bool
-    default y if GMK70_RESIDENT_HANDOFF || GMK70_WATCHDOG_ROLLBACK
+    default y if GMK70_ZMK_UPDATER && !GMK70_STAGING_QUALIFICATION
     help
       Mark native startup as compatible with the unchanged resident handoff.
       Receiving through handoff does not require using it for outgoing updates.
@@ -53,5 +33,5 @@ config GMK70_ZMK_PEER_TRIAL_RELAY
       Forward validated trial ABI2 packets from left USB to target1 only.
       This enables staging qualification of a still-Vial right peer before
       replacing its application. No local trial execution or watchdog handoff
-      is provided. Peer mutations require the permanent watchdog and the same
+      is provided. Peer mutations require the ready update service and the same
       left/configured-USB/wired gates as the normal updater.

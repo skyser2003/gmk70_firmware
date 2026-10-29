@@ -60,7 +60,6 @@ setup-zmk:
 .PHONY: setup-zmk
 
 test-zmk:
-	bash ./tests/zmk/run_resident_handoff_tests.sh
 	bash ./tests/zmk/run_main_return_tests.sh
 	bash ./tests/zmk/run_usb_dc_tests.sh
 	bash ./tests/zmk/run_soc_clock_tests.sh
@@ -88,6 +87,11 @@ build-zmk-wired-qualification:
 
 build-zmk-wired-studio-updater:
 	bash ./scripts/build_zmk.sh wired-studio-updater
+build-zmk-wired-studio-update-test:
+	bash ./scripts/build_zmk.sh wired-studio-update-test
+build-zmk-wired-peripheral:
+	bash ./scripts/build_zmk.sh wired-peripheral
+.PHONY: build-zmk-wired-studio-update-test build-zmk-wired-peripheral
 .PHONY: build-zmk-wired-studio-updater
 
 build-zmk-wired-studio-handoff:
