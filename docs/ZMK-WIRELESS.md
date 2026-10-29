@@ -72,5 +72,38 @@ unchanged RIGHT/residents and another 70 seconds of health.
 
 `radio.py` provides explicit selection/pairing actions and cached status. Each
 action is sent once. Personal exports, host identities, bonds, tickets and full
-Studio readbacks stay outside version control. Installation and hardware results
-are recorded separately after verification.
+Studio readbacks stay outside version control. See the
+[hardware validation](validation/2026-10-29-zmk-wireless/README.md).
+
+## Installed result — 2026-10-29
+
+LEFT now runs the normal 78,032-byte image, CRC32 `3592996973`, SHA256
+`6eda0cddece0f035739bbf4ebe94ad9c91ea1d8f3170a92e1c24c14b070fd320`.
+RIGHT remains 43,752 bytes/CRC32 `2368050678`; both residents remain `1770733249`.
+The qualification and normal installations each sent INSTALL once and returned
+automatically. No physical reconnect, RIGHT write or recovery pad was needed.
+An overly strict host acknowledgment check rejected the first valid INSTALL
+response; independent exact-image/resident observation verified that update
+without replay. The helper and protocol-faithful regression are corrected.
+
+Bluetooth slot 2 reused the existing Windows bond. Two separate, narrowly filtered
+Windows Raw Input captures observed a complete F24 press/release pair from the
+approved Bluetooth keyboard interface, including after switching away and back.
+The final normal image also reconnects to that bond, reports no radio errors and
+rejects the test command. USB output is restored; normal Studio remains connected.
+The temporary test command is absent from the final linked image.
+
+Bluetooth slots 1/2/3, dongle and USB selection were exercised on hardware.
+The radio acknowledged dongle selection and reported connection status; no
+receiver is enumerated on this host, so dongle typing is unverified. New pairing,
+physical switch changes, consumer-key reception and battery-powered operation
+were not tested on hardware. Native fixtures cover their implemented protocol
+and selection behavior; no battery-life or untethered-split claim is made.
+
+The eight wireless bindings were saved and independently re-read with correct
+runtime metadata and geometry. Every other binding and all four layer names/order
+are preserved. Final both-half health passed 70.140 seconds with zero retries,
+reconnects or watchdog feeds. Battery telemetry remains fresh at 100%, cable/full
+asserted. Static RAM is 27,488 of 27,648 bytes with unchanged thread stacks;
+hardware stack watermarks remain unmeasured. The full native/Python suites,
+Ruff, strict mypy, edited C formatting and affected ARM/image checks pass.

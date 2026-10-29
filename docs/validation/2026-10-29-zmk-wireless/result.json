@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-29",
+  "firmware_source": "f9f12ddadd59e0481f750206c03a4ae5741d6fab",
+  "installer_source": "b994409",
+  "left": {
+    "variant": "wired-studio-updater",
+    "bytes": 78032,
+    "crc32": 3592996973,
+    "sha256": "6eda0cddece0f035739bbf4ebe94ad9c91ea1d8f3170a92e1c24c14b070fd320",
+    "static_ram_bytes": 27488,
+    "available_ram_bytes": 27648,
+    "qualification_marker_present": false
+  },
+  "right": {
+    "bytes": 43752,
+    "crc32": 2368050678,
+    "written": false
+  },
+  "resident_crc32_both": 1770733249,
+  "install_requests": 2,
+  "install_replays": 0,
+  "physical_reconnects": 0,
+  "right_only_recovery": false,
+  "first_acknowledgment": "Rejected by the original host check; independently verified without replay. Reserved-zero field check corrected before normal installation.",
+  "health_windows_seconds": [
+    70.171,
+    70.125,
+    70.265,
+    70.234,
+    70.14
+  ],
+  "transport_retries": 0,
+  "relay_retries": 0,
+  "observer_reconnects": 0,
+  "watchdog_feed_calls": 0,
+  "bluetooth": {
+    "existing_bond_preserved": true,
+    "verified_profile": 2,
+    "qualification_host_input_sessions": 2,
+    "verified_f24_press_release_pairs": 2,
+    "other_keys_recorded": false,
+    "reconnection_input_verified": true,
+    "normal_image_reconnection_verified": true,
+    "new_pairing_tested": false
+  },
+  "dongle": {
+    "implemented": true,
+    "selection_acknowledged": true,
+    "receiver_detected_on_host": false,
+    "receiver_typing_verified": false
+  },
+  "layout": {
+    "saved_layers": 4,
+    "verified_bindings": 288,
+    "wireless_bindings_restored": 8,
+    "other_bindings_preserved": 280,
+    "supported_bindings": 283,
+    "remaining_unassigned": 5,
+    "remaining_function_types": 4,
+    "source_unchanged": true,
+    "factory_defaults_unchanged": true,
+    "layer_names_and_order_preserved": true,
+    "independent_serial_readback": true,
+    "metadata_and_geometry_verified": true,
+    "unsaved_changes": false,
+    "normal_studio_connected": true
+  },
+  "final_output": "USB",
+  "final_radio_errors": 0,
+  "battery": {
+    "percentage": 100,
+    "valid": true,
+    "cable": true,
+    "full": true,
+    "age_ms": 542
+  },
+  "hardware_limits": [
+    "No dongle receiver is detected on this host.",
+    "New pairing and physical host-switch movement were not tested.",
+    "Consumer input reception and mechanical key actuation were not tested during the unattended run.",
+    "Battery-powered operation, battery life and stack watermarks were not measured."
+  ]
+}

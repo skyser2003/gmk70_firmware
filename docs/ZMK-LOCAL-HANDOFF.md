@@ -1,5 +1,24 @@
 # Local continuation: updater-preserving ZMK development
 
+## Bluetooth and dongle support — 2026-10-29
+
+[Wireless support](ZMK-WIRELESS.md) is installed on LEFT: 78,032 bytes/CRC32
+3592996973. RIGHT remains 43,752/2368050678; both resident CRCs remain 1770733249.
+Two LEFT-only updates returned automatically with no physical reconnect or
+right-only operation. Bluetooth slot 2 reused the existing Windows bond and
+delivered two independently observed F24 press/release pairs on the temporary
+qualification image; the final normal image excludes that command and also
+reconnects to the existing bond. Dongle selection is implemented, but receiver-side
+typing is unverified because no receiver is detected on this host.
+
+Eight wireless bindings are restored in saved Studio settings; all other 280
+bindings and four layer names/order are preserved. Normal Studio is connected
+and USB output is restored. Final both-half health passed 70.140 seconds with
+zero retries/reconnects/feeds. Five of the original 13 unsupported bindings remain:
+function/media flip, logo effect, a reserved action and two QMK settings resets.
+See [sanitized validation](validation/2026-10-29-zmk-wireless/README.md).
+Earlier checkpoints below are historical.
+
 ## Battery indicators and saved layout import — 2026-10-29
 
 [Battery actions and saved Vial layout migration](ZMK-BATTERY-LAYOUT.md) are now

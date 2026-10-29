@@ -103,15 +103,15 @@ runtime behavior display name without changing existing battery/RGB handling.
 **Files:** separate private operators/evidence in `.work/zmk-wireless/` and
 private recovery archive; public aggregate validation docs only.
 
-- [ ] Run `make test test-zmk check-tools`, affected ARM builds and linked-image
+- [x] Run `make test test-zmk check-tools`, affected ARM builds and linked-image
       checks; fresh independent review; fix functional findings with regressions.
-- [ ] Capture fresh clean Studio map and both-half health; freeze reviewed
+- [x] Capture fresh clean Studio map and both-half health; freeze reviewed
       package/operator inputs; one guarded LEFT INSTALL and independent identity,
       resident, saved-map and health verification. No right-only operation.
-- [ ] Restore only the eight source-export wireless positions in the fresh saved
+- [x] Restore only the eight source-export wireless positions in the fresh saved
       map; preserve every other binding/name/order; save/reload/compare.
-- [ ] Reuse the existing Bluetooth bond for connection and narrowly filtered
+- [x] Reuse the existing Bluetooth bond for connection and narrowly filtered
       F24 input verification where possible; test dongle selection/frames and
       clearly record the absent receiver's validation limit; restore USB output.
-- [ ] Reopen normal Studio, record exact five remaining unsupported bindings,
+- [x] Reopen normal Studio, record exact five remaining unsupported bindings,
       archive private evidence, sign/push and update the goal honestly.
