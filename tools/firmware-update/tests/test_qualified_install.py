@@ -189,9 +189,7 @@ class FixtureLink:
             raise AssertionError("Unexpected device operation")
         answer = bytearray(
             bytes((0x7F, 0x70, 1, 0, operation, result, self.state, 3))
-            + struct.pack(
-                "<6I", session, len(self.data), self.size, self.crc, 1, boot_crc
-            )
+            + struct.pack("<6I", session, len(self.data), self.size, self.crc, 1, 0)
         )
         if operation == Op.INSTALL:
             offsets = {
@@ -202,7 +200,7 @@ class FixtureLink:
                 "crc": 20,
                 "role": 7,
                 "abi": 24,
-                "resident": 28,
+                "reserved": 28,
             }
             if self.bad_ack:
                 answer[offsets[self.bad_ack]] ^= 1
@@ -516,7 +514,7 @@ class QualifiedInstallTests(unittest.TestCase):
             "crc",
             "role",
             "abi",
-            "resident",
+            "reserved",
         ):
             with self.fixture() as (case, link, operator, _):
                 operator.baseline()
@@ -529,6 +527,19 @@ class QualifiedInstallTests(unittest.TestCase):
                 with self.assertRaises(FileExistsError):
                     operator.install()
                 self.assertEqual(link.writes().count(Op.INSTALL), 1)
+
+    def test_install_ack_zero_reserved_word_is_not_the_info_resident_crc(self) -> None:
+        with self.fixture() as (_, link, operator, _):
+            operator.baseline()
+            rejected: str | None = None
+            try:
+                operator.install()
+            except RuntimeError as error:
+                rejected = str(error)
+            self.assertEqual(link.pending[28:32], b"\0\0\0\0")
+            self.assertIsNone(
+                rejected, "A valid INSTALL ACK has a zero reserved final word"
+            )
 
     def test_lost_install_ack_polls_only_status_and_never_replays(self) -> None:
         with self.fixture() as (_, link, operator, _):

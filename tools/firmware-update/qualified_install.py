@@ -429,7 +429,7 @@ class QualifiedInstall:
                 or reply.state != 3
                 or reply.role != 3
                 or reply.abi != 1
-                or reply.boot_crc != ZMK_BOOT_CRC
+                or reply.boot_crc != 0
                 or (reply.size, reply.crc)
                 != (len(package.image), package.manifest["app_crc"])
             ):
