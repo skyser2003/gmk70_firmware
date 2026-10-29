@@ -594,4 +594,5 @@ int main(void) {
     trial_relay();
 #endif
     puts("ZMK receiver tests passed");
+    return 0;
 }

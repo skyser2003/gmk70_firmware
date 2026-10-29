@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Includes the initialized RAM load image, not merely the .text extent. */
-#ifdef CONFIG_GMK70_RESIDENT_HANDOFF
+#ifdef CONFIG_GMK70_RESIDENT_RECEIVER
 /* After all initialized RAM load sections. The experimental configuration
  * disables Zephyr's optional last-section word; image checks require this
  * entire versioned capability footer to end at __gmk_image_end. */

@@ -4,7 +4,7 @@
 #include <zephyr/arch/cpu.h>
 #include <zephyr/sys/sys_io.h>
 
-#ifndef CONFIG_GMK70_STAGING_QUALIFICATION
+#if !defined(CONFIG_GMK70_STAGING_QUALIFICATION) && !defined(CONFIG_GMK70_WATCHDOG_ROLLBACK)
 /* Westberry EN_RM2905025_WB32FQ95xx_V01: sections 5.4.9/10, 7.2.12,
  * 7.3.11/16, 11.4.6/7, 18 and 27.4.2. Same register contract as the maintained
  * trial_watchdog.c; no QMK runtime or trial reset-cause state is needed here. */
@@ -30,8 +30,9 @@ static bool update_bits(uintptr_t address, uint32_t clear, uint32_t set) {
 #endif
 
 bool gmk_zmk_watchdog_init(void) {
-#ifdef CONFIG_GMK70_STAGING_QUALIFICATION
-    /* Keep the short trial watchdog as the independent rollback deadline. */
+#if defined(CONFIG_GMK70_STAGING_QUALIFICATION) || defined(CONFIG_GMK70_WATCHDOG_ROLLBACK)
+    /* Qualification preserves the trial deadline. The separately labeled
+     * rollback experiment must not touch IWDG, its clocks or analog controls. */
     return false;
 #else
     ready = false;
@@ -60,7 +61,7 @@ bool gmk_zmk_watchdog_init(void) {
 }
 
 void gmk_zmk_watchdog_feed(void) {
-#ifndef CONFIG_GMK70_STAGING_QUALIFICATION
+#if !defined(CONFIG_GMK70_STAGING_QUALIFICATION) && !defined(CONFIG_GMK70_WATCHDOG_ROLLBACK)
     if (ready) sys_write32(0xaaaa, KR);
 #endif
 }

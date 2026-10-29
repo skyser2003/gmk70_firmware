@@ -224,7 +224,7 @@ static void watchdog_tests(void) {
     reset();
     gmk_zmk_watchdog_feed();
     assert(writes == 0);
-#ifdef CONFIG_GMK70_STAGING_QUALIFICATION
+#if defined(CONFIG_GMK70_STAGING_QUALIFICATION) || defined(CONFIG_GMK70_WATCHDOG_ROLLBACK)
     assert(!gmk_zmk_watchdog_init());
     gmk_zmk_watchdog_feed();
     assert(reads == 0 && writes == 0);

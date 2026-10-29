@@ -190,6 +190,8 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
         "wired-studio-updater",
         "wired-studio-handoff",
         "wired-studio-handoff-test",
+        "wired-studio-watchdog-rollback",
+        "wired-studio-watchdog-rollback-test",
     ):
         raise ValueError("Universal wired board requires explicit supported variant")
     qualification = variant == "wired-qualification"
@@ -197,7 +199,8 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
     payload = image.read_bytes()
     result = validate_vectors(payload, base)
     handoff = variant in ("wired-studio-handoff", "wired-studio-handoff-test")
-    validate_handoff_payload(payload, handoff)
+    rollback = variant.startswith("wired-studio-watchdog-rollback")
+    validate_handoff_payload(payload, handoff or rollback)
     lines = subprocess.check_output(
         ["arm-none-eabi-nm", "--defined-only", str(elf)], text=True
     )
@@ -330,6 +333,8 @@ def main() -> None:
             "wired-studio-updater",
             "wired-studio-handoff",
             "wired-studio-handoff-test",
+            "wired-studio-watchdog-rollback",
+            "wired-studio-watchdog-rollback-test",
         ),
     )
     args = parser.parse_args()

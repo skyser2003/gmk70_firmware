@@ -95,3 +95,9 @@ build-zmk-wired-studio-handoff:
 build-zmk-wired-studio-handoff-test:
 	bash ./scripts/build_zmk.sh wired-studio-handoff-test
 .PHONY: build-zmk-wired-studio-handoff build-zmk-wired-studio-handoff-test
+
+build-zmk-wired-studio-watchdog-rollback:
+	bash ./scripts/build_zmk.sh wired-studio-watchdog-rollback
+build-zmk-wired-studio-watchdog-rollback-test:
+	bash ./scripts/build_zmk.sh wired-studio-watchdog-rollback-test
+.PHONY: build-zmk-wired-studio-watchdog-rollback build-zmk-wired-studio-watchdog-rollback-test

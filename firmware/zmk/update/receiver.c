@@ -72,6 +72,10 @@ static bool allowed(const uint8_t *request, bool usb, const gmk_zmk_update_env_t
     /* The qualification image executes in staging: never permit peer writes or
      * writes into its own running image, even if the peer is an older Vial. */
     return usb && request[3] == 0 && (request[4] == GMK_BEGIN || request[4] == GMK_ABORT);
+#elif defined(CONFIG_GMK70_WATCHDOG_ROLLBACK)
+    /* Explicit LEFT-only reset experiment: never grant this exception to a
+     * peer mutation, even when the USB master has a healthy right peer. */
+    return usb && env->left && request[3] == 0;
 #else
     return env->watchdog_ready;
 #endif
@@ -94,6 +98,9 @@ static void health_reply(const uint8_t *request, uint8_t *response, const gmk_zm
     uint32_t flags = (health.watchdog_ready ? 1U : 0U) | (env->wired ? 2U : 0U) | (health.peer ? 4U : 0U);
 #ifdef CONFIG_GMK70_STAGING_QUALIFICATION
     flags |= 8U;
+#endif
+#ifdef CONFIG_GMK70_WATCHDOG_ROLLBACK
+    flags |= 16U;
 #endif
     gmk_write_u32(response + 24, flags);
     gmk_write_u32(response + 28, health.matrix_events);

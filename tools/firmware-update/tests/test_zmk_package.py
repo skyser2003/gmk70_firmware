@@ -140,7 +140,12 @@ class ZmkPackageTests(unittest.TestCase):
                 (output / "resident.bin").read_bytes(), resident.read_bytes()
             )
             self.assertFalse((output / "install.bin").exists())
-            for variant in ("wired-studio-handoff", "wired-studio-handoff-test"):
+            for variant in (
+                "wired-studio-handoff",
+                "wired-studio-handoff-test",
+                "wired-studio-watchdog-rollback",
+                "wired-studio-watchdog-rollback-test",
+            ):
                 report.write_text(json.dumps(checked | {"variant": variant}))
                 build(image, resident, report, root / variant)
                 self.assertEqual(

@@ -24,6 +24,8 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
             "wired-studio-updater",
             "wired-studio-handoff",
             "wired-studio-handoff-test",
+            "wired-studio-watchdog-rollback",
+            "wired-studio-watchdog-rollback-test",
         )
         or checked.get("load_address") != 0x08002000
         or checked.get("bytes") != len(payload)
