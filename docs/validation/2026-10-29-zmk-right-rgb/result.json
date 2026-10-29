@@ -23,7 +23,12 @@
     "selected_gmk_port": true,
     "four_layers_visible": true
   },
-  "visible_rgb_confirmation": "pending",
+  "visible_rgb_confirmation": {
+    "source": "user report",
+    "date": "2026-10-29",
+    "right_rgb_works": true,
+    "fn_x_controls_both_halves": true
+  },
   "health": {
     "baseline": {
       "verified_window_seconds": 70.17199999996228,

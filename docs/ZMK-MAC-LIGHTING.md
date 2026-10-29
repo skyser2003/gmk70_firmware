@@ -3,7 +3,8 @@
 Current checkpoint: [right RGB restoration](ZMK-RIGHT-RGB.md) installs native split RGB
 on both halves (LEFT 70,672/1286125312; RIGHT 43,752/2368050678). Both returned
 automatically and passed 70-second zero-feed health, with unchanged residents and
-the user's freshly saved Studio map preserved. Visible LED confirmation is pending.
+the user's freshly saved Studio map preserved. The user confirmed right LEDs work
+and Fn+X controls both halves together.
 The earlier checkpoints below record the preceding installations.
 
 Current checkpoint: [permanent watchdog removal](ZMK-PERMANENT-WATCHDOG-REMOVAL.md)

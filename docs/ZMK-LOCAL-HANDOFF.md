@@ -7,7 +7,8 @@ halves: LEFT 70,672/1286125312; RIGHT 43,752/2368050678. Both returned automatic
 through joined LEFT USB, with no reconnect or pad procedure. Final both-half
 health passed 70.234 seconds with zero retries/reconnects/feeds; resident CRCs
 remain 1770733249. Studio connects and the user's freshly saved four-layer map
-is preserved exactly. Visible right LEDs and synchronized Fn+X await confirmation.
+is preserved exactly. The user confirmed that right RGB works and Fn+X controls
+both halves together.
 The watchdog-removal checkpoint below is the preceding installation.
 
 

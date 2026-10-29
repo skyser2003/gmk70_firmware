@@ -43,8 +43,9 @@ and reconnects; both watchdog feed counts remained zero. Both resident CRCs are
 still `1770733249`. Studio reconnected, and all 288 bindings and layer names match
 the fresh pre-install snapshot exactly, including the user's newer edits. No
 keymap write was made. The normal Studio app was reopened without debugging and
-displays all four layers. Visible LEDs and Fn+X synchronization still await the
-user's confirmation. See [sanitized validation](validation/2026-10-29-zmk-right-rgb/README.md).
+displays all four layers. The user confirmed that right RGB works and Fn+X
+controls both halves together. This confirms the visible lighting fix as well as
+the independent firmware/Studio checks. See [sanitized validation](validation/2026-10-29-zmk-right-rgb/README.md).
 
 A fresh saved four-layer Studio snapshot was captured after the user finished
 their edits. The separate device operator freezes both packages, this snapshot,

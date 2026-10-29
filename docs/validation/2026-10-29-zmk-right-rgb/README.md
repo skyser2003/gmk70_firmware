@@ -9,6 +9,6 @@ with zero retries/reconnects and zero watchdog feeds. The user's fresh saved
 four-layer map, including their newer edits, matches exactly after installation;
 normal Studio reconnects. Both resident CRCs remain `1770733249`.
 
-Visible right LEDs and Fn+X synchronization still await the user's confirmation.
+The user confirmed right RGB works and Fn+X turns both halves off/on together.
 The private inventory includes full map snapshots and local operator files; do
 not publish it. Archived operator copies are provenance, not resume commands.

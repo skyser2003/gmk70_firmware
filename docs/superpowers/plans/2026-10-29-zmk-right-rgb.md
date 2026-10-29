@@ -13,7 +13,7 @@ keymap, brightness limit, settings layout and no-watchdog policy unchanged.
       validated packages and separate one-shot device operator.
 - [x] Install RIGHT through LEFT first, verify its return, then install LEFT to
       enable frame transmission. Never replay INSTALL after an uncertain ACK.
-- [ ] Verify both installed identities, residents, no-watchdog health and Studio
+- [x] Verify both installed identities, residents, no-watchdog health and Studio
       map. Obtain visual LED confirmation; record any remaining limits honestly.
 
 This is a correction to the previously implemented lighting feature. Autonomous
@@ -28,5 +28,5 @@ health passed 70.172 seconds with no retries/reconnects. RIGHT INSTALL acknowled
 and exact new RIGHT/old LEFT identities returned automatically; its continuous
 health passed 70.109 seconds. LEFT then installed and returned automatically;
 final both-half health passed 70.234 seconds. No reconnect was required. Studio
-compared equal to the fresh saved map; normal Studio reopened. Visible LEDs and
-Fn+X synchronization remain pending user confirmation.
+compared equal to the fresh saved map; normal Studio reopened. The user confirmed right
+RGB works and Fn+X controls both halves together. All acceptance checks are complete.
