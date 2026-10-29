@@ -1,5 +1,15 @@
 # Local continuation: updater-preserving ZMK development
 
+## Offline candidate — 2026-10-29
+
+[Mac layers and native lighting](ZMK-MAC-LIGHTING.md) are implemented and built
+offline. They are **not installed**: the verified hardware checkpoint below is
+unchanged. Four-layer compatible settings migration, RGB DMA and wired frame
+tests accompany the candidate. [Warm-restart analysis](ZMK-WARM-RESTART-ANALYSIS.md)
+narrows hypotheses without claiming a root cause or fix. No device operation
+was made while the user slept. Read the candidate's hardware-validation and
+stack-watermark limits before considering installation.
+
 ## Current status — 2026-10-28
 
 [Wired ZMK Studio](ZMK-STUDIO.md) is now implemented and hardware-verified.

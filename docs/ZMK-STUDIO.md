@@ -6,6 +6,11 @@ RIGHT wired ZMK scanner supplies all right-hand keys; it needs no Studio flash.
 This is an explicitly unlocked development image, separate from normal ZMK and
 Vial distributions. It is not a normal release asset.
 
+Current sources also contain an **uninstalled** four-layer/RGB candidate. See
+[Mac layers and lighting](ZMK-MAC-LIGHTING.md) for behavior, storage migration,
+memory changes and the remaining hardware validation. The installed checkpoint
+and evidence in the next section remain the earlier two-layer image.
+
 ## Verified on 2026-10-28
 
 The installed local Windows Studio app connects over COM3, displays the GMK70
@@ -37,7 +42,8 @@ With the halves joined and USB on the left, open local ZMK Studio and select its
 USB serial port. On the tested Windows installation this is **USB Serial Device
 (COM3)**; the port number can differ. Once connected, the app identifies the
 keyboard as **GMK70 ZMK Studio**. The physical layout contains all 72
-positions and the Base/Fn layers. Changes take effect while editing; use Studio's
+positions. Current candidate builds add Windows/Fn and Mac/Fn; the verified
+installed image still has Base/Fn. Changes take effect while editing; use Studio's
 Save action to persist them. Close another Studio connection before opening the
 same serial port in a different application.
 

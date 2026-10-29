@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-29",
+  "source": "4d462197976bce1eac33a783758029a24e13aae3",
+  "status": "offline candidate; not installed or hardware qualified",
+  "device_operations": [],
+  "resident_changed": false,
+  "builds": {
+    "wired-studio-updater": {
+      "size": 71048,
+      "crc32": 2988418314,
+      "sha256": "946c553276a4c98d47d4ec851d35ebc21cd40b7773dff6d3607b2b0e53988455",
+      "ram_bytes": 27128,
+      "ram_linker_limit": 27648,
+      "image_end": 134296968,
+      "ram_end": 536898104
+    },
+    "wired-updater": {
+      "size": 44100,
+      "crc32": 3571778710,
+      "sha256": "c6908c9bb3648cdc4dd620523d6bad18283e559ac9af372a7772db6067de86a7",
+      "ram_bytes": 17544,
+      "ram_linker_limit": 27648,
+      "image_end": 134270020,
+      "ram_end": 536888520
+    },
+    "wired-update-test": {
+      "size": 44124,
+      "crc32": 2836673943,
+      "sha256": "895f6da31525db7b9b186f13ce80df254015afa7f1f43a877b19f3f9e5301c6d",
+      "ram_bytes": 17568,
+      "ram_linker_limit": 27648,
+      "image_end": 134270044,
+      "ram_end": 536888544
+    },
+    "wired-qualification": {
+      "size": 43676,
+      "crc32": 791095623,
+      "sha256": "2f6be21c89349e5288ba575e8f63e4d824551c75e7a7e01bd01c6deea9486d69",
+      "ram_bytes": 17568,
+      "ram_linker_limit": 27648,
+      "image_end": 134392476,
+      "ram_end": 536888544
+    }
+  },
+  "checks": {
+    "repository": "7 migration + 88 repository tests and native suites passed",
+    "zmk": "12 Python tests and native suites passed",
+    "updater": "113 tests passed; one optional built-resident test skipped",
+    "python": "Ruff passed; strict mypy 4 ZMK tools and 8 updater files passed",
+    "dependencies": "exact locked workspace verified"
+  },
+  "hardware_validation_outstanding": [
+    "LED waveform and power rails",
+    "USB/UART behavior under lighting/flash load",
+    "four-layer Studio and existing-keymap migration on keyboard",
+    "thread stack high-water marks",
+    "warm restart root cause and automatic recovery"
+  ],
+  "resident_padded_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a"
+}
