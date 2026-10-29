@@ -1,5 +1,20 @@
 # Local continuation: updater-preserving ZMK development
 
+## Battery indicators and saved layout import — 2026-10-29
+
+[Battery actions and saved Vial layout migration](ZMK-BATTERY-LAYOUT.md) are now
+installed and verified. LEFT is 74,020/3805544436; RIGHT remains
+43,752/2368050678 and both resident CRCs remain 1770733249. LEFT returned
+automatically after one INSTALL, without physical reconnect. Final both-half
+health passed 70.203 seconds with zero retries/reconnects/feeds. Fresh telemetry
+reports 100%, cable/full asserted and 111 replies to 111 queries. The user
+confirmed both held indicators and lighting restoration. All 275 supported
+bindings were imported into saved Studio settings, with the selected 13
+unsupported bindings unassigned; all 288 bindings were saved, reloaded and
+independently compared. Factory defaults and the private source export are
+unchanged. Normal Studio is connected with all four layers. The checkpoints below
+are historical.
+
 ## Right-half RGB restoration — 2026-10-29
 
 [RGB-enabled canonical builds](ZMK-RIGHT-RGB.md) are now installed on both

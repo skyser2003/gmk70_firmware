@@ -10,8 +10,8 @@ Spec: [design](../specs/2026-10-29-zmk-battery-layout-design.md).
       existing uv migration project. Keep all personal layout data private.
 - [x] Format/lint/type-check, run repository/native/tool tests, build affected
       ARM variants and independently review the final firmware/device operator.
-- [ ] Back up the current saved layout, install only LEFT once, verify exact
+- [x] Back up the current saved layout, install only LEFT once, verify exact
       image/resident/health/telemetry and visible battery/charging actions.
-- [ ] Resolve unsupported migration bindings, apply the private custom map through
+- [x] Resolve unsupported migration bindings, apply the private custom map through
       Studio settings, save/reload/compare; preserve compiled initial defaults.
-- [ ] Record evidence and limits without personal data; sign commits and push.
+- [x] Record evidence and limits without personal data; sign commits and push.

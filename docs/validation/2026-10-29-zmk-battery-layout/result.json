@@ -1,0 +1,57 @@
+{
+  "source_commit": "74f1012c493f2bae6b2efaeffb3b235e8cfe964b",
+  "date": "2026-10-29",
+  "left": {
+    "bytes": 74020,
+    "crc32": 3805544436,
+    "sha256": "d6226bdcef65c3539972c4b49575ca1034ffa6b67d3610e691347ce7eabdf695",
+    "install_requests": 1,
+    "automatic_return": true
+  },
+  "right": {
+    "bytes": 43752,
+    "crc32": 2368050678,
+    "unchanged": true
+  },
+  "resident_crc32_both": 1770733249,
+  "health_windows_seconds": {
+    "baseline-health": 70.17200000002049,
+    "after-health": 70.11000000004424,
+    "final-health": 70.20299999997951
+  },
+  "transport_retries": 0,
+  "relay_retries": 0,
+  "reconnects": 0,
+  "watchdog_feed_calls": 0,
+  "battery": {
+    "percentage": 100,
+    "valid": true,
+    "cable": true,
+    "full": true,
+    "age_ms": 1056,
+    "queries": 111,
+    "replies": 111
+  },
+  "layout": {
+    "layers": 4,
+    "translated_bindings": 275,
+    "unsupported_unassigned": 13,
+    "verified_saved_bindings": 288,
+    "source_unchanged": true,
+    "factory_defaults_unchanged": true,
+    "layer_names_and_order_preserved": true,
+    "normal_studio_connected": true,
+    "unsaved_changes": false
+  },
+  "user_confirmation": {
+    "battery_indicator": true,
+    "charging_indicator": true,
+    "normal_lighting_restored_on_release": true,
+    "rgb_off_test": "not separately confirmed"
+  },
+  "limits": [
+    "Only a full-charge percentage point was checked on hardware.",
+    "Charging-current measurement and a complete charge/discharge cycle were not tested.",
+    "Actual hardware stack watermarks remain unmeasured."
+  ]
+}

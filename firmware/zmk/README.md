@@ -1,5 +1,14 @@
 # GMK70 ZMK wired development and staging trials
 
+Current checkpoint: [battery indicators and saved layout import](../../docs/ZMK-BATTERY-LAYOUT.md)
+installs LEFT 74,020/3805544436 with RIGHT unchanged at 43,752/2368050678.
+Battery telemetry and both visible held actions work. The user's 275 supported
+Vial bindings and 13 explicitly unassigned unsupported bindings are saved in
+Studio; all 288 were reloaded and independently compared. Factory defaults are
+unchanged. Both halves passed final 70-second zero-feed health, with unchanged
+residents and no reconnect. Normal Studio connects with four layers.
+The earlier checkpoints below record preceding installations.
+
 Current checkpoint: [right RGB restoration](../../docs/ZMK-RIGHT-RGB.md) installs native split RGB
 on both halves (LEFT 70,672/1286125312; RIGHT 43,752/2368050678). Both returned
 automatically and passed 70-second zero-feed health, with unchanged residents and
