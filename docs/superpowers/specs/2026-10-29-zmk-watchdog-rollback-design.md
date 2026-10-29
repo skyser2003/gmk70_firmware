@@ -23,8 +23,10 @@ Use two separately labeled LEFT Studio diagnostic variants with watchdog init
 and feed producing no MMIO at all. They report an explicit health flag (bit 4),
 zero feeds and no watchdog-ready flag. Only local LEFT USB/wired update writes
 are allowed by the diagnostic exception; peer writes remain unavailable. The
-ordinary readiness gate and all ordinary builds remain unchanged. Studio loads
-existing settings; settings writes retain the watchdog requirement.
+ordinary readiness gate and all ordinary builds remain unchanged. The initial
+diagnostic loads existing settings and denies settings writes. After the successful
+hardware-reset comparison, the final opt-in build restores settings saves under
+the same LEFT/wired/worker/journal gates, without requiring a disabled watchdog.
 
 The diagnostic retains the native receiver capability footer so the installed
 handoff firmware can bootstrap it without SYSRESETREQ. It does not include the
@@ -34,8 +36,11 @@ watchdog cannot be stopped by undoing software; allow its expiry, then require
 If automatic recovery fails, stop writes and request at most a joined-LEFT cycle.
 
 After stable bootstrap, update diagnostic A to distinct B with one INSTALL and
-bounded read-only return observation. If successful, update back to the frozen
-working handoff image, again through the diagnostic's original hardware reset.
+bounded read-only return observation. Initial recovery plan: if successful, update back to the frozen working handoff
+image through the diagnostic's hardware reset. Execution ruling after A-to-B
+success: leave the requested watchdog removal installed, restore Studio saving
+in a final no-watchdog image, and test B-to-final through hardware reset. The
+frozen old handoff remains recovery material only.
 Record ACK separately from installed identity, health and automatic return.
 If a reset fails, retain the failed result and investigate before more writes.
 

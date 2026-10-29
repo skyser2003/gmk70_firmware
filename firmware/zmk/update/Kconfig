@@ -34,7 +34,8 @@ config GMK70_WATCHDOG_ROLLBACK
     help
       Separately labeled diagnostic only: do not initialize or feed IWDG.
       Permit only local LEFT USB/wired update writes without watchdog readiness;
-      peer mutations and settings writes remain denied. Health bit 4 identifies
+      peer mutations remain denied. Studio retains its worker-owned journal and
+      left/wired settings gates. Health bit 4 identifies
       the exception, with no ready bit or feed count. Updates use SYSRESETREQ.
       An inherited running watchdog must expire before no-watchdog testing.
 

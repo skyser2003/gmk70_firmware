@@ -43,11 +43,11 @@ existing Python build/package tooling and separate one-shot device operators.
 ## Task 2: Separate hardware experiment
 
 - [x] Snapshot actual saved Studio configuration and current identities.
-- [ ] Freeze diagnostic A/B, working recovery image, operator and hashes.
-- [ ] One LEFT bootstrap INSTALL; observe inherited watchdog expiry/recovery.
-- [ ] Require 70 seconds of stable zero-feed diagnostic health.
-- [ ] One A-to-B INSTALL using SYSRESETREQ; bounded return observation.
-- [ ] If healthy, one recovery-image INSTALL; verify both identities/health/Studio.
+- [x] Freeze diagnostic A/B, working recovery image, operator and hashes.
+- [x] One LEFT bootstrap INSTALL; observe inherited watchdog expiry/recovery.
+- [x] Require 70 seconds of stable zero-feed diagnostic health.
+- [x] One A-to-B INSTALL using SYSRESETREQ; bounded return observation.
+- [ ] Install final no-watchdog image with Studio saving restored; verify both identities/health/Studio.
 - [ ] Record exact results, limitations and current hardware state; commit work.
 
 ## Progress
@@ -56,4 +56,6 @@ Historical sources reviewed; current hardware still matches the frozen handoff
 checkpoint. Ruling: continue autonomously under the user's explicit rollback/test
 request; no repeated design approval or new checkout is needed.
 
-Offline results: repository88 + migration7 tests, ZMK native fixtures/13 Python tests, updater113 tests (one optional integration skipped) passed. Changed Python Ruff/format/strict mypy pass. Linked diagnostic init/feed are no-op and reset calls sys_reboot; ordinary handoff rebuild is byte-identical to installed A. Independent firmware review found no blocker. Device operator review is pending; no INSTALL has been sent.
+Offline results: repository88 + migration7 tests, ZMK native fixtures/13 Python tests, updater113 tests (one optional integration skipped) passed. Changed Python Ruff/format/strict mypy pass. Linked diagnostic init/feed are no-op and reset calls sys_reboot; ordinary handoff rebuild is byte-identical to installed A. Independent firmware review found no blocker. Independent device-operator review found and corrected stale-report/boot-continuity guards before writes; final review passed. One LEFT bootstrap INSTALL was acknowledged. Initial zero-feed runtime lasted about30seconds, then startup-uptime guard failed and USB became unavailable. No second INSTALL was sent; user confirmed a single joined-LEFT cold cycle and fresh70-second qualification is in progress.
+
+Ruling after hardware comparison: A→B SYSRESETREQ returned automatically and passed70.484seconds of zero-feed health. Keep the user-requested watchdog removal installed instead of reintroducing it via the old recovery image. Extend the labeled opt-in with Studio journal saving; ordinary builds and RIGHT remain unchanged. New settings/health tests observed RED then GREEN; independent code/artifact review passed. One final B→functional no-watchdog image update remains.

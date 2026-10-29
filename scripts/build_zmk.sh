@@ -101,7 +101,7 @@ fi
         else
             if [[ "$variant" == wired-studio-watchdog-rollback* ]]; then
                 printf 'LEFT diagnostic: no watchdog init/feed; local USB/wired writes only; SYSRESETREQ updates.\n'
-                printf 'Existing watchdog must expire before testing; Studio settings writes remain gated.\n'
+                printf 'Existing watchdog must expire before testing; Studio journal/role/wired gates retained.\n'
             else
                 printf 'Application at 0x08002000; native updater and permanent live-worker watchdog.\n'
             fi

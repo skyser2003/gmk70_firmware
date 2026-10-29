@@ -43,15 +43,17 @@ class Health:
     ) -> "Health":
         header(packet, target, nonce)
         magic, uptime, feeds, flags, matrix = struct.unpack_from("<5I", packet, 12)
+        disabled = bool(flags & 16)
         if (
             packet[5] != 0
             or packet[7] != (0 if target else 3)
             or magic != 0x4B4D5A47
-            or flags & ~15
+            or flags & ~31
             or not flags & 2
             or bool(flags & 8) != staging
-            or bool(flags & 1) == staging
-            or (staging and feeds != 0)
+            or bool(flags & 1) == (staging or disabled)
+            or (disabled and (target != 0 or staging))
+            or ((staging or disabled) and feeds != 0)
         ):
             raise RuntimeError(
                 "Wrong ZMK health magic, role or permanent/staging flags"
@@ -237,7 +239,12 @@ def validate_progress(
         raise RuntimeError("Health sample gap exceeds the evidence bound")
     if not 0 < uptime < 2**31 or abs(uptime - elapsed * 1000) > max(250, elapsed * 200):
         raise RuntimeError("Uptime stopped or reboot/discontinuity detected")
-    if not 0 < feeds < 2**31:
+    if bool(previous.flags & 16) != bool(current.flags & 16):
+        raise RuntimeError("Watchdog policy changed during observation")
+    if current.flags & 16:
+        if previous.feed_calls != 0 or current.feed_calls != 0:
+            raise RuntimeError("Watchdog rollback requires zero feed calls")
+    elif not 0 < feeds < 2**31:
         raise RuntimeError("Watchdog feed calls stopped or reset")
     if current.nonce == previous.nonce:
         raise RuntimeError("Continuity requires a fresh health nonce")
