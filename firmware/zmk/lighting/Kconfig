@@ -7,3 +7,10 @@ config GMK70_WB32_RGB
       B15/SPIM2 and DMAC2 channel 0 drive the 36/41 RGB-order WS2812 LEDs.
       The left renders a virtual 77-pixel strip and synchronizes complete
       peripheral frames over the existing 16-byte wired RGB transaction.
+
+config GMK70_RGB_LOCAL_ONLY
+    bool "Do not send lighting frames to an unchanged older peer"
+    depends on GMK70_WB32_RGB
+    help
+      Development isolation for a LEFT-only update experiment. Render local
+      pixels but leave the older RIGHT application and its UART traffic alone.

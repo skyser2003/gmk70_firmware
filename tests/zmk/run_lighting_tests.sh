@@ -13,6 +13,13 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
   tests/zmk/lighting_test.c firmware/zmk/lighting/lighting_frame.c \
   firmware/zmk/wired/wired_protocol.c -Wl,--wrap=gmk_protocol_lighting -o artifacts/tests/zmk/lighting
 artifacts/tests/zmk/lighting
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -DCONFIG_GMK70_RGB_LOCAL_ONLY=1 -fno-omit-frame-pointer \
+  -Itests/zmk/lighting_stubs -Itests/zmk/wired_stubs \
+  -Ifirmware/zmk/lighting -Ifirmware/zmk/wired \
+  tests/zmk/lighting_test.c firmware/zmk/lighting/lighting_frame.c \
+  firmware/zmk/wired/wired_protocol.c -Wl,--wrap=gmk_protocol_lighting -o artifacts/tests/zmk/lighting-local
+artifacts/tests/zmk/lighting-local
 cc -std=c11 -Wall -Wextra -Werror -Idependencies/zmk/app/include \
   tests/zmk/rgb_settings_test.c firmware/zmk/lighting/rgb_settings.c \
   -o artifacts/tests/zmk/rgb-settings

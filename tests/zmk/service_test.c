@@ -5,9 +5,15 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
-static jmp_buf              leave_worker;
-static bool                 watchdog_ok = true;
-static unsigned             feeds, steps, reset_calls, early_calls, raw_polls;
+static jmp_buf  leave_worker;
+static bool     watchdog_ok = true;
+static unsigned feeds, steps, reset_calls, early_calls, raw_polls;
+static unsigned handoff_calls;
+static bool     handoff_accepted;
+bool            gmk_zmk_resident_handoff(void) {
+    ++handoff_calls;
+    return handoff_accepted;
+}
 static gmk_zmk_update_env_t observed;
 static void (*wire_handler)(const uint8_t[32], uint8_t[32]);
 static int raw_init_result;
@@ -91,5 +97,13 @@ int main(void) {
     assert(service_init() == -1);
     gmk_zmk_update_reset();
     assert(reset_calls == 1);
+#ifdef CONFIG_GMK70_RESIDENT_HANDOFF
+    assert(handoff_calls == 1);
+    handoff_accepted = true;
+    gmk_zmk_update_reset();
+    assert(handoff_calls == 2 && reset_calls == 1);
+#else
+    assert(handoff_calls == 0);
+#endif
     puts("ZMK worker/watchdog service tests passed");
 }

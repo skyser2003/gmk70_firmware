@@ -18,6 +18,15 @@ config GMK70_STAGING_QUALIFICATION
       erase the isolated commit page. Never stage DATA, SEAL, INSTALL or relay
       peer mutations. This image is experimental, not a permanent artifact.
 
+config GMK70_RESIDENT_HANDOFF
+    bool "Experimental application-only resident update handoff"
+    depends on GMK70_ZMK_UPDATER && !GMK70_STAGING_QUALIFICATION
+    help
+      For marked native receivers only, enter the unchanged installed resident
+      without SYSRESETREQ. Keep the native long watchdog/PLL configuration and
+      stop USB, IRQs and DMA. Other receivers retain the ordinary reset path.
+      This is an unqualified update activation experiment, not a reboot fix.
+
 config GMK70_ZMK_PEER_TRIAL_RELAY
     bool "GMK70 relay for qualification of an installed Vial right peer"
     depends on GMK70_ZMK_UPDATER && !GMK70_STAGING_QUALIFICATION

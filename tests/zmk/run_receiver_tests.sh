@@ -17,9 +17,10 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-rec
     -Itests/zmk/receiver_stubs -Ifirmware/zmk/update -Ifirmware/qmk-common/keyboards/zuoya/gmk70/update \
     tests/zmk/raw_hid_test.c firmware/zmk/update/raw_hid.c -o artifacts/tests/zmk/raw-hid
 artifacts/tests/zmk/raw-hid
-for profile in permanent qualification; do
+for profile in permanent qualification handoff; do
     flags=()
     if [[ "$profile" == qualification ]]; then flags+=(-DCONFIG_GMK70_STAGING_QUALIFICATION=1); fi
+    if [[ "$profile" == handoff ]]; then flags+=(-DCONFIG_GMK70_RESIDENT_HANDOFF=1); fi
     cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-recover=all -fno-pie -no-pie \
         -Itests/zmk/receiver_stubs -Ifirmware/zmk/update -Ifirmware/zmk/wired -Ifirmware/qmk-common/keyboards/zuoya/gmk70/update "${flags[@]}" \
         tests/zmk/service_test.c -o "artifacts/tests/zmk/update-service-$profile"

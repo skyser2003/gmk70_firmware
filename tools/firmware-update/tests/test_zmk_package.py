@@ -140,6 +140,12 @@ class ZmkPackageTests(unittest.TestCase):
                 (output / "resident.bin").read_bytes(), resident.read_bytes()
             )
             self.assertFalse((output / "install.bin").exists())
+            for variant in ("wired-studio-handoff", "wired-studio-handoff-test"):
+                report.write_text(json.dumps(checked | {"variant": variant}))
+                build(image, resident, report, root / variant)
+                self.assertEqual(
+                    Package.load(root / variant).manifest["profile"], "zmk-studio"
+                )
             for key, value in (
                 ("variant", "wired-qualification"),
                 ("load_address", 0x08020000),

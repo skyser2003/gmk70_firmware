@@ -176,18 +176,28 @@ def validate_wired_elf(
         raise ValueError("Initialized ELF section is missing from the load segments")
 
 
+def validate_handoff_payload(payload: bytes, enabled: bool) -> None:
+    present = payload.endswith(b"GMK70ZMKBOOT\x01\0\0\0")
+    if present != enabled:
+        raise ValueError("Wrong or misplaced resident handoff capability footer")
+
+
 def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | int]:
     if variant not in (
         "wired-updater",
         "wired-update-test",
         "wired-qualification",
         "wired-studio-updater",
+        "wired-studio-handoff",
+        "wired-studio-handoff-test",
     ):
         raise ValueError("Universal wired board requires explicit supported variant")
     qualification = variant == "wired-qualification"
     base = FLASH_START if qualification else 0x08002000
     payload = image.read_bytes()
     result = validate_vectors(payload, base)
+    handoff = variant in ("wired-studio-handoff", "wired-studio-handoff-test")
+    validate_handoff_payload(payload, handoff)
     lines = subprocess.check_output(
         ["arm-none-eabi-nm", "--defined-only", str(elf)], text=True
     )
@@ -219,6 +229,10 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
     ):
         if name not in symbols:
             raise ValueError(f"Missing native ZMK wired symbol {name}")
+    if handoff != (
+        "gmk_zmk_resident_branch" in symbols and "gmk_zmk_resident_handoff" in symbols
+    ):
+        raise ValueError("Wrong resident handoff integration")
     if "__wrap_main" in symbols:
         raise ValueError("Permanent/qualification wired target must not wrap main")
     if not qualification and (
@@ -245,9 +259,9 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
         payload,
         base,
         symbols["__gmk_image_end"],
-        0x1A000 if variant == "wired-studio-updater" else 0x1E000,
+        0x1A000 if variant.startswith("wired-studio-") else 0x1E000,
     )
-    if variant == "wired-studio-updater":
+    if variant.startswith("wired-studio-"):
         for name in (
             "settings_backend_init",
             "gmk_zmk_settings_poll",
@@ -314,6 +328,8 @@ def main() -> None:
             "wired-update-test",
             "wired-qualification",
             "wired-studio-updater",
+            "wired-studio-handoff",
+            "wired-studio-handoff-test",
         ),
     )
     args = parser.parse_args()

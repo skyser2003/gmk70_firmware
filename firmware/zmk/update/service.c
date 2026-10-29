@@ -4,6 +4,9 @@
 #    include "../studio/settings_backend.h"
 #endif
 #include "wb32_watchdog.h"
+#ifdef CONFIG_GMK70_RESIDENT_HANDOFF
+#    include "resident_handoff.h"
+#endif
 #include "wired.h"
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
@@ -37,6 +40,9 @@ static void peer_receive(const uint8_t request[32], uint8_t response[32]) {
 }
 
 void gmk_zmk_update_reset(void) {
+#ifdef CONFIG_GMK70_RESIDENT_HANDOFF
+    if (gmk_zmk_resident_handoff()) return;
+#endif
     sys_reboot(SYS_REBOOT_COLD);
 }
 

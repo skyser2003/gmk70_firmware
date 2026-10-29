@@ -10,6 +10,21 @@ import check_image
 
 
 class WiredImageTests(unittest.TestCase):
+    def test_handoff_capability_must_be_at_actual_image_end(self) -> None:
+        marker = b"GMK70ZMKBOOT\x01\0\0\0"
+        for enabled in (True, False):
+            for payload in (
+                bytes(1024),
+                bytes(1008) + marker,
+                bytes(1008) + marker + bytes(4),
+            ):
+                expected = enabled and payload.endswith(marker)
+                if expected or (not enabled and not payload.endswith(marker)):
+                    check_image.validate_handoff_payload(payload, enabled)
+                else:
+                    with self.assertRaises(ValueError):
+                        check_image.validate_handoff_payload(payload, enabled)
+
     def test_permanent_vectors_belong_to_application_slot(self) -> None:
         image = struct.pack("<II", 0x20006FC0, 0x08002201) + bytes(1016)
         self.assertEqual(

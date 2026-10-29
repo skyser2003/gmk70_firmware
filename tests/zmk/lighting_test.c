@@ -49,6 +49,15 @@ int main(void) {
     assert(writes == 1 && pixel_count == 36);
     for (unsigned i = 0; i < 36; ++i)
         assert(received[3 * i] == i);
+#ifdef CONFIG_GMK70_RGB_LOCAL_ONLY
+    for (unsigned i = 0; i < 40; ++i) {
+        fake_ms += 250;
+        gmk_lighting_wire_poll(NULL);
+        assert(transmitted == 0 && !frame.pending);
+    }
+    puts("Local-only RGB never sends frames to an unchanged older peer");
+    return 0;
+#endif
     struct gmk_light_frame rx = {0};
     for (unsigned i = 0; i < 11; ++i) {
         gmk_lighting_wire_poll(NULL);

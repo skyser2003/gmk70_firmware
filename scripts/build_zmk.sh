@@ -9,17 +9,24 @@ case "$variant" in
     left-trial|right-trial) board="gmk70_${variant%-trial}"; mode=normal ;;
     wired-updater) ;;
     wired-update-test) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/update-test.conf") ;;
-    wired-studio-updater) extra+=(-DGMK70_STUDIO=ON
+    wired-studio-updater|wired-studio-handoff|wired-studio-handoff-test) extra+=(-DGMK70_STUDIO=ON
         -DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.overlay") ;;
     wired-qualification) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.overlay") ;;
     *) printf 'Unsupported experimental ZMK target: %s\n' "$variant" >&2; exit 2 ;;
 esac
+if [[ "$variant" == wired-studio-handoff* ]]; then
+    handoff_conf="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/handoff.conf"
+    if [[ "$variant" == wired-studio-handoff-test ]]; then
+        handoff_conf+=";$project_root/firmware/zmk/boards/zuoya/gmk70_wired/handoff-test.conf"
+    fi
+    extra+=(-DEXTRA_CONF_FILE="$handoff_conf")
+fi
 python3 firmware/zmk/tools/workspace.py verify
 zmk_tools="$project_root/firmware/zmk/tools/.venv/bin"
 modules="$project_root/dependencies/modules/hal/cmsis;$project_root/dependencies/modules/lib/gui/lvgl"
-if [[ "$variant" == wired-studio-updater ]]; then
+if [[ "$variant" == wired-studio-* ]]; then
     modules+=";$project_root/dependencies/modules/lib/nanopb;$project_root/dependencies/modules/msgs/zmk-studio-messages"
     extra+=(-DNANOPB_PROTOC_EXECUTABLE="$zmk_tools/python-grpc-tools-protoc")
 fi
@@ -86,7 +93,7 @@ fi
             printf 'Only target-specific left/right TrialPackage manifests are emitted.\n'
         else
             printf 'Application at 0x08002000; native updater and permanent live-worker watchdog.\n'
-            if [[ "$variant" == wired-studio-updater ]]; then
+            if [[ "$variant" == wired-studio-* ]]; then
                 printf 'profile=zmk-studio; LEFT only; CDC Studio, Feature updater, 16KiB settings reservation.\n'
             else
                 printf 'profile=zmk package; exact pinned resident prerequisite preserved.\n'

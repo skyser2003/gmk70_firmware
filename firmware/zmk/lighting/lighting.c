@@ -21,6 +21,10 @@ void gmk_lighting_receive(const uint8_t packet[16]) {
 }
 
 void gmk_lighting_wire_poll(const struct gmk_wire_io *io) {
+#ifdef CONFIG_GMK70_RGB_LOCAL_ONLY
+    (void)io;
+    return;
+#endif
     uint8_t          packet[16];
     k_spinlock_key_t key = k_spin_lock(&frame_lock);
     /* Off submits exactly one upstream frame. Periodic replay also repairs
@@ -68,6 +72,9 @@ static int update_rgb(const struct device *dev, struct led_rgb *pixels, size_t c
         packed[3 * i + 2] = pixels[start + i].b;
     }
     int result = gmk_pixels_write(packed, local);
+#ifdef CONFIG_GMK70_RGB_LOCAL_ONLY
+    return result;
+#endif
     if (result || !left || !gmk_wired_mode()) return result;
     for (unsigned i = 0; i < GMK_LIGHT_RIGHT; ++i) {
         packed[3 * i]     = pixels[GMK_LIGHT_LEFT + i].r;
