@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <zephyr/drivers/usb/usb_dc.h>
+#include "../../firmware/zmk/drivers/usb/device/usb_dc_wb32.c"
 
 void (*fake_usb_isr)(const void *);
 static uint8_t  common[16], indexed[4][8], rx_fifo[4][128], tx_fifo[4][128];
@@ -64,7 +65,7 @@ void sys_write8(uint8_t value, uintptr_t address) {
 static void ep_callback(uint8_t ep, enum usb_dc_ep_cb_status_code event) {
     ++ep_events[ep][event];
 }
-static void status_callback(enum usb_dc_status_code event, const uint8_t *param) {
+static void host_status_callback(enum usb_dc_status_code event, const uint8_t *param) {
     (void)param;
     ++status_events[event];
 }
@@ -86,7 +87,7 @@ static void start(void) {
     memset(status_events, 0, sizeof(status_events));
     memset(flushes, 0, sizeof(flushes));
     dataends = clocks = disconnects = 0;
-    usb_dc_set_status_callback(status_callback);
+    usb_dc_set_status_callback(host_status_callback);
     assert(usb_dc_attach() == 0);
     assert(clocks == 1);
     assert(fake_usb_isr != NULL);
@@ -275,6 +276,42 @@ static void test_coalesced_final_in_and_status_out(void) {
     assert(ep_events[0][USB_DC_EP_DATA_OUT] == 1);
 }
 
+/* Adding a per-direction packet buffer would exceed the radio RAM budget. */
+static void test_endpoint_metadata_does_not_reserve_packet_storage(void) {
+    assert(sizeof(endpoints) <= 192U);
+    assert(sizeof(rx_buffers) == 256U);
+    assert(sizeof(endpoints) + sizeof(rx_buffers) <= 448U);
+}
+
+/* Sharing RX storage across endpoints corrupts packets awaiting partial reads. */
+static void test_control_and_bulk_out_packets_remain_independent(void) {
+    start();
+    for (unsigned ep = 1; ep < 4; ++ep) {
+        configure(ep, 64, USB_DC_EP_BULK);
+        configure(0x80U | ep, 64, USB_DC_EP_BULK);
+    }
+    setup(false, 64);
+    const uint8_t first[4] = {0x11, 0x22, 0x33, 0x44};
+    uint8_t       packets[4][64], result[64];
+    for (unsigned ep = 0; ep < 4; ++ep) {
+        memset(packets[ep], first[ep], sizeof(packets[ep]));
+        receive(ep, packets[ep], sizeof(packets[ep]));
+        uint32_t count = 0;
+        assert(usb_dc_ep_read_wait(ep, result, 7, &count) == 0 && count == 7);
+        assert(memcmp(result, packets[ep], 7) == 0);
+    }
+    for (unsigned ep = 0; ep < 4; ++ep) {
+        const uint8_t tx[3] = {0xa1, 0xb2, 0xc3};
+        if (ep) assert(usb_dc_ep_write(0x80U | ep, tx, sizeof(tx), NULL) == 0);
+        uint32_t count = 0;
+        assert(usb_dc_ep_read_wait(0x80U | ep, result, sizeof(result), &count) == -EINVAL);
+        assert(usb_dc_ep_read_wait(ep, NULL, 0, &count) == 0 && count == 57);
+        assert(usb_dc_ep_read(ep, result, sizeof(result), &count) == 0 && count == 57);
+        assert(memcmp(result, packets[ep] + 7, 57) == 0);
+        if (!ep) assert(usb_dc_ep_write(0x80, NULL, 0, NULL) == 0);
+    }
+}
+
 int main(void) {
     test_capabilities_and_lifecycle();
     test_control_in_packets_and_status();
@@ -285,6 +322,8 @@ int main(void) {
     test_setupend_recovers_and_reset_cancels_transfers();
     test_zero_length_query_keeps_out_backpressure();
     test_coalesced_final_in_and_status_out();
+    test_control_and_bulk_out_packets_remain_independent();
+    test_endpoint_metadata_does_not_reserve_packet_storage();
     puts("WB32 USB controller tests passed");
     return 0;
 }

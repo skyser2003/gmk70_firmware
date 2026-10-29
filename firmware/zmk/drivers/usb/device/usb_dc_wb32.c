@@ -79,10 +79,11 @@ struct wb32_endpoint {
     bool               rx_final;
     uint8_t            rx_length;
     uint8_t            rx_offset;
-    uint8_t            rx_buffer[WB32_PACKET_SIZE];
 };
 
-static struct wb32_endpoint   endpoints[2][WB32_EP_COUNT];
+static struct wb32_endpoint endpoints[2][WB32_EP_COUNT];
+/* IN endpoints write the hardware FIFO directly; only OUT packets need RAM. */
+static uint8_t                rx_buffers[WB32_EP_COUNT][WB32_PACKET_SIZE];
 static usb_dc_status_callback status_callback;
 static bool                   attached;
 static enum { EP0_SETUP, EP0_DATA_IN, EP0_DATA_OUT, EP0_STATUS_IN, EP0_STATUS_OUT } control_phase;
@@ -166,7 +167,7 @@ static bool receive_packet(unsigned int number, bool setup) {
     struct wb32_endpoint *state  = &endpoints[0][number];
     unsigned int          length = reg_read(COUNTL);
     if (number) length |= (unsigned int)reg_read(COUNTH) << 8;
-    if (length > state->mps || length > sizeof(state->rx_buffer) || (setup && length != 8U) || (!number && !setup && control_phase == EP0_DATA_OUT && length > control_remaining)) {
+    if (length > state->mps || length > sizeof(rx_buffers[number]) || (setup && length != 8U) || (!number && !setup && control_phase == EP0_DATA_OUT && length > control_remaining)) {
         /* Drain malformed data without ever indexing outside the software FIFO. */
         for (unsigned int i = 0; i < length; ++i)
             (void)reg_read(FIFO(number));
@@ -175,15 +176,15 @@ static bool receive_packet(unsigned int number, bool setup) {
         return false;
     }
     for (unsigned int i = 0; i < length; ++i)
-        state->rx_buffer[i] = reg_read(FIFO(number));
+        rx_buffers[number][i] = reg_read(FIFO(number));
     state->rx_length = length;
     state->rx_offset = 0;
     state->rx_ready  = true;
     state->rx_setup  = setup;
     state->rx_final  = false;
     if (setup) {
-        control_remaining = (uint16_t)state->rx_buffer[6] | ((uint16_t)state->rx_buffer[7] << 8);
-        control_phase     = !control_remaining ? EP0_STATUS_IN : (state->rx_buffer[0] & EP_IN) ? EP0_DATA_IN : EP0_DATA_OUT;
+        control_remaining = (uint16_t)rx_buffers[number][6] | ((uint16_t)rx_buffers[number][7] << 8);
+        control_phase     = !control_remaining ? EP0_STATUS_IN : (rx_buffers[number][0] & EP_IN) ? EP0_DATA_IN : EP0_DATA_OUT;
     } else if (!number && control_phase == EP0_DATA_OUT) {
         control_remaining -= length;
         state->rx_final = !control_remaining || length < state->mps;
@@ -547,7 +548,7 @@ int usb_dc_ep_read_wait(uint8_t ep, uint8_t *data, uint32_t max_data_len, uint32
         if (read_bytes) *read_bytes = length;
     } else {
         if (length > max_data_len) length = max_data_len;
-        if (length) memcpy(data, state->rx_buffer + state->rx_offset, length);
+        if (length) memcpy(data, rx_buffers[EP_NUM(ep)] + state->rx_offset, length);
         state->rx_offset += length;
         if (read_bytes) *read_bytes = length;
     }
