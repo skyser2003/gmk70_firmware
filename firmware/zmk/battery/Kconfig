@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+config GMK70_BATTERY
+    bool "GMK70 stock radio percentage and charger-status inputs"
+    depends on BOARD_GMK70_WIRED && GMK70_ZMK_STUDIO_SETTINGS
+    select ZMK_BATTERY_REPORTING
+    help
+      Opt-in Studio integration. Only the physical LEFT initializes UART3.
+      Poll the unchanged stock radio with its battery inquiry and ACK messages;
+      expose fresh percentages through the native state-of-charge sensor.
+      A7 and A15 provide cable and hardware full-status indications.
+      This does not implement a wireless keyboard endpoint or voltage reading.

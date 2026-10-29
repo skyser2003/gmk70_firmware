@@ -8,10 +8,75 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/kernel.h>
+#ifdef CONFIG_GMK70_BATTERY
+#    include "../battery/battery.h"
+#    include <string.h>
+#endif
 
 static struct gmk_light_frame frame;
 static struct k_spinlock      frame_lock;
 static uint32_t               last_frame;
+#ifdef CONFIG_GMK70_BATTERY
+K_MUTEX_DEFINE(render_lock);
+static uint8_t                 normal_pixels[3 * GMK_LIGHT_PIXELS];
+static struct gmk_battery_view battery_view;
+static uint16_t                displayed_status;
+static bool                    display_dirty;
+static bool                    last_wired;
+
+static uint16_t status_key(const struct gmk_battery_status *status) {
+    return status->percentage | (status->valid ? 1U << 8 : 0) | (status->cable ? 1U << 9 : 0) | (status->full ? 1U << 10 : 0);
+}
+
+static int render_battery_locked(const struct gmk_battery_status *status) {
+    uint8_t pixels[sizeof(normal_pixels)];
+    memcpy(pixels, normal_pixels, sizeof(pixels));
+    gmk_battery_view_overlay(&battery_view, status, pixels);
+    int result = gmk_pixels_write(pixels, GMK_LIGHT_LEFT);
+    if (!result && gmk_wired_mode()) {
+        k_spinlock_key_t key = k_spin_lock(&frame_lock);
+        gmk_light_queue(&frame, pixels + 3 * GMK_LIGHT_LEFT);
+        k_spin_unlock(&frame_lock, key);
+    }
+    display_dirty    = result != 0;
+    displayed_status = status_key(status);
+    return result;
+}
+
+int gmk_lighting_battery_set(enum gmk_battery_indicator kind, uint32_t position, bool pressed) {
+    if (k_is_in_isr()) return -EWOULDBLOCK;
+    k_mutex_lock(&render_lock, K_FOREVER);
+    int result = gmk_battery_view_set(&battery_view, kind, position, pressed);
+    if (!result) display_dirty = true;
+    k_mutex_unlock(&render_lock);
+    return result;
+}
+
+int gmk_lighting_battery_release(uint32_t position) {
+    if (position >= 72) return -EINVAL;
+    if (k_is_in_isr()) return -EWOULDBLOCK;
+    k_mutex_lock(&render_lock, K_FOREVER);
+    if (gmk_battery_view_release(&battery_view, position)) display_dirty = true;
+    k_mutex_unlock(&render_lock);
+    return 0;
+}
+
+static void battery_refresh(void) {
+    if (!gmk_wired_is_left()) return;
+    k_mutex_lock(&render_lock, K_FOREVER);
+    struct gmk_battery_status status;
+    gmk_battery_get(&status);
+    bool wired = gmk_wired_mode();
+    if (wired && !last_wired) display_dirty = true;
+    last_wired = wired;
+    if (!wired && gmk_battery_view_active(&battery_view)) {
+        memset(&battery_view, 0, sizeof(battery_view));
+        display_dirty = true;
+    }
+    if (display_dirty || (gmk_battery_view_active(&battery_view) && displayed_status != status_key(&status))) render_battery_locked(&status);
+    k_mutex_unlock(&render_lock);
+}
+#endif
 
 void gmk_lighting_receive(const uint8_t packet[16]) {
     if (gmk_wired_is_left()) return;
@@ -43,6 +108,9 @@ void gmk_lighting_wire_poll(const struct gmk_wire_io *io) {
 }
 
 void gmk_lighting_poll(void) {
+#ifdef CONFIG_GMK70_BATTERY
+    battery_refresh();
+#endif
     k_spinlock_key_t key = k_spin_lock(&frame_lock);
     if (!gmk_wired_mode()) gmk_light_reset(&frame);
     bool ready = !gmk_wired_is_left() && gmk_light_claim(&frame);
@@ -63,6 +131,21 @@ static int update_rgb(const struct device *dev, struct led_rgb *pixels, size_t c
     /* The peripheral displays complete central frames while joined. Its own
      * upstream animation is used only in standalone switch mode. */
     if (!left && gmk_wired_mode()) return 0;
+#ifdef CONFIG_GMK70_BATTERY
+    if (left) {
+        k_mutex_lock(&render_lock, K_FOREVER);
+        for (unsigned i = 0; i < GMK_LIGHT_PIXELS; ++i) {
+            normal_pixels[3 * i]     = pixels[i].r;
+            normal_pixels[3 * i + 1] = pixels[i].g;
+            normal_pixels[3 * i + 2] = pixels[i].b;
+        }
+        struct gmk_battery_status status;
+        gmk_battery_get(&status);
+        int result = render_battery_locked(&status);
+        k_mutex_unlock(&render_lock);
+        return result;
+    }
+#endif
     uint8_t  packed[3 * GMK_LIGHT_RIGHT];
     unsigned start = left ? 0 : GMK_LIGHT_LEFT;
     unsigned local = left ? GMK_LIGHT_LEFT : GMK_LIGHT_RIGHT;

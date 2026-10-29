@@ -70,3 +70,14 @@ The source reference is also Westberry EN_RM2905025_WB32FQ95xx_V01, DMA chapter 
 Maintained board sources supply B15/AF5, RGB byte order, A5/A8 active-high power
 and 36/41 half counts. Neither upstream source tree is modified or linked into
 the native ZMK runtime. DMAC2 channel 0 is exclusively owned by this driver.
+
+## Battery and charger status
+
+The native battery adapter uses the same pinned Westberry UART register/CMSIS
+references as the wired transport, on UART3 PC10/PC11. Its inquiry, acknowledgment,
+percentage framing, charger-input polarity and indicator LED positions come from
+maintained `qmk-common/drivers/wireless/module.c` and the GMK70 board definitions.
+It transmits only battery inquiries and acknowledgments, with no radio firmware
+or pairing changes. The cache-backed sensor uses Zephyr's sensor API and ZMK's
+native battery reporting; the held RGB behavior uses the pinned ZMK behavior and
+event APIs. These local adapters use GPL-2.0-or-later and preserve vendor attribution.

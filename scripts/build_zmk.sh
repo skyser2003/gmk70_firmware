@@ -101,12 +101,13 @@ fi
             printf 'Hardware reset activates updates; a hung application may require a physical power cycle.\n'
             if [[ "$variant" == wired-studio-* ]]; then
                 printf 'profile=zmk-studio; LEFT only; CDC Studio, Feature updater, 16KiB settings reservation.\n'
+                printf 'Battery: stock-radio inquiry/ACK cache, native sensor and held RGB status.\n'
             else
                 printf 'profile=zmk package; exact pinned resident prerequisite preserved.\n'
             fi
         fi
         printf 'Four Windows/Mac layers; native local RGB and wired peer lighting.\n'
-        printf 'No radio, encoder rotation, external Vial EEPROM or device operations.\n'
+        printf 'No wireless keyboard endpoint, encoder rotation, external Vial EEPROM or device operations.\n'
     else
         printf 'EXPERIMENTAL actual ZMK %s staging trial; not a normal updater image.\n' "$variant"
         printf 'Source: dependencies/zmk/app\nBoard: %s\nFlash: 0x08020000, maximum 120 KiB\n' "$board"

@@ -4,6 +4,7 @@
 #    include "../studio/settings_backend.h"
 #endif
 #include "wired.h"
+#include "../battery/battery.h"
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/reboot.h>
@@ -42,6 +43,7 @@ static void worker(void *a, void *b, void *c) {
     ARG_UNUSED(c);
     if (!service_ready) return;
     for (;;) {
+        gmk_battery_poll();
         struct gmk_wired_stats stats;
         /* Never enqueue this worker behind the responder/scanner mutex.
          * Contention means unknown peer state, represented by a cleared flag;

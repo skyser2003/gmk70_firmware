@@ -2,10 +2,17 @@
 name = "gmk70-firmware-update"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["hidapi==0.15.0"]
+dependencies = [
+    "hidapi==0.15.0",
+    "pyserial==3.5",
+]
 
 [dependency-groups]
-dev = ["mypy", "ruff"]
+dev = [
+    "mypy",
+    "ruff",
+    "types-pyserial>=3.5.0.20260712",
+]
 
 [tool.mypy]
 strict = true

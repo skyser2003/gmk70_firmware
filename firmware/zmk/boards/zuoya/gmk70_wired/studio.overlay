@@ -2,7 +2,20 @@
 /* The app-tail settings reservation is outside the admitted load region. */
 &flash0 { reg = <0x08002000 0x1a000>; };
 / {
-    chosen { zmk,studio-rpc-uart = &studio_uart; };
+    chosen {
+        zmk,studio-rpc-uart = &studio_uart;
+        zmk,battery = &battery_sensor;
+    };
+    battery_sensor: battery_sensor {
+        compatible = "zuoya,gmk70-battery";
+    };
+    behaviors {
+        gmk_battery: gmk_battery {
+            compatible = "zuoya,gmk70-behavior-battery";
+            display-name = "GMK70 Battery / Charging";
+            #binding-cells = <1>;
+        };
+    };
 };
 &usb0 {
     studio_uart: studio_uart {

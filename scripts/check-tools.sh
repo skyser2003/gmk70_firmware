@@ -27,6 +27,6 @@ uv run --offline --frozen --project tools/battery-diagnostics mypy --strict tool
 if [[ -x firmware/zmk/tools/.venv/bin/python ]]; then
     uv run --offline --frozen --project firmware/zmk/tools ruff check firmware/zmk/tools tests/zmk/test_*.py
     uv run --offline --frozen --project firmware/zmk/tools ruff format --check firmware/zmk/tools tests/zmk/test_*.py
-    uv run --offline --frozen --project firmware/zmk/tools mypy --strict firmware/zmk/tools/*.py tests/zmk/test_*.py
+    uv run --offline --frozen --project firmware/zmk/tools mypy --config-file firmware/zmk/tools/pyproject.toml --strict firmware/zmk/tools/*.py tests/zmk/test_*.py
     uv run --offline --frozen --project firmware/zmk/tools python -m unittest discover -s tests/zmk -p 'test_*.py' -v
 fi

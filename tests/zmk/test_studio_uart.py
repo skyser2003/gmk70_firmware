@@ -94,7 +94,8 @@ class StudioUartTests(unittest.TestCase):
                 capture_output=True,
             )
             cdc = re.search(r"^CONFIG_USB_CDC_ACM_RINGBUF_SIZE=(\d+)$", conf, re.M)
-            self.assertIsNotNone(cdc)
+            if cdc is None:
+                self.fail("Studio CDC ring buffer capacity must be configured")
             self.assertEqual(size, int(cdc[1]))
             self.assertTrue(all(len(f) <= size for f in frames))
             burst = frames[0] * (size // len(frames[0]))

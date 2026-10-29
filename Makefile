@@ -70,6 +70,9 @@ test-zmk:
 	bash ./tests/zmk/run_studio_feature_tests.sh
 	bash ./tests/zmk/run_lighting_tests.sh
 	bash ./tests/zmk/run_pixels_tests.sh
+	bash ./tests/zmk/run_battery_tests.sh
+	bash ./tests/zmk/run_battery_view_tests.sh
+	bash ./tests/zmk/run_battery_status_tests.sh
 	bash -c 'set -euo pipefail; source ./scripts/project.sh; uv run --offline --frozen --project firmware/zmk/tools python -m unittest discover -s tests/zmk -p "test_*.py" -v'
 .PHONY: test-zmk
 

@@ -1,5 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "receiver.h"
+#ifdef CONFIG_GMK70_BATTERY
+#    include "../../firmware/zmk/battery/battery.h"
+void gmk_battery_get(struct gmk_battery_status *out) {
+    *out = (struct gmk_battery_status){.percentage = 50, .valid = true, .cable = true, .age_ms = 10, .queries = 2, .replies = 1};
+}
+#endif
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -564,6 +570,26 @@ static void storage_exclusion(void) {
 }
 #endif
 int main(void) {
+#ifdef CONFIG_GMK70_BATTERY
+    setup();
+    uint8_t battery_request[32] = {0x7f, 0x72, 1, 0, 0x21, 0, 0, 0, 0x79};
+    env.writes_ready            = false; /* Read-only even when mutation admission is closed. */
+    gmk_zmk_receiver_receive(battery_request, response, true, &env);
+    assert(response[5] == GMK_OK && gmk_read_u32(response + 12) == 0x54544142 && response[16] == 50);
+    env.usb_configured = false;
+    gmk_zmk_receiver_receive(battery_request, response, true, &env);
+    assert(response[5] == GMK_UNAVAILABLE);
+    env.usb_configured = true;
+    env.wired          = false;
+    gmk_zmk_receiver_receive(battery_request, response, true, &env);
+    assert(response[5] == GMK_UNAVAILABLE);
+    env.wired = true;
+    gmk_zmk_receiver_receive(battery_request, response, false, &env);
+    assert(response[5] == GMK_UNAVAILABLE && writes == 0 && relays == 0);
+    battery_request[3] = 1;
+    gmk_zmk_receiver_receive(battery_request, response, true, &env);
+    assert(response[5] == GMK_BAD_REQUEST && relays == 0);
+#endif
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
     storage_exclusion();
     studio_size_bounds();

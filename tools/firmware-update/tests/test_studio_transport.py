@@ -66,13 +66,11 @@ class StudioTransportTests(unittest.TestCase):
         for size in (0x1A000, 0x1A004):
             pkg = package("zmk-studio")
             image = pkg.image.ljust(size, b"\0")
-            pkg.manifest.update(
-                app_size=size,
-                app_crc=zlib.crc32(image),
-                app_sha256=hashlib.sha256(image).hexdigest(),
-                boot_crc=ZMK_BOOT_CRC,
-                boot_sha256=ZMK_BOOT_SHA256,
-            )
+            pkg.manifest["app_size"] = size
+            pkg.manifest["app_crc"] = zlib.crc32(image)
+            pkg.manifest["app_sha256"] = hashlib.sha256(image).hexdigest()
+            pkg.manifest["boot_crc"] = ZMK_BOOT_CRC
+            pkg.manifest["boot_sha256"] = ZMK_BOOT_SHA256
             value = Package(image, pkg.manifest)
             if size == 0x1A000:
                 value.validate_application()

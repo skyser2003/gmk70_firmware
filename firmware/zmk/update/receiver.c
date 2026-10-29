@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "receiver.h"
 #include "wired.h"
+#ifdef CONFIG_GMK70_BATTERY
+#    include "battery_status.h"
+#endif
 #if defined(CONFIG_GMK70_ZMK_PEER_TRIAL_RELAY) && !defined(CONFIG_GMK70_STAGING_QUALIFICATION)
 #    include "trial.h"
 #    define PEER_TRIAL_RELAY
@@ -116,6 +119,18 @@ void gmk_zmk_receiver_init(const gmk_zmk_update_env_t *env) {
 }
 
 void gmk_zmk_receiver_receive(const uint8_t request[32], uint8_t response[32], bool usb, const gmk_zmk_update_env_t *env) {
+#ifdef CONFIG_GMK70_BATTERY
+    if (gmk_battery_status_packet(request)) {
+        if (!usb || !allowed(request, usb, env))
+            reply(request, response, GMK_UNAVAILABLE, env);
+        else {
+            struct gmk_battery_status status;
+            gmk_battery_get(&status);
+            gmk_battery_status_reply(request, &status, response);
+        }
+        return;
+    }
+#endif
     bool is_health = health_packet(request);
     bool is_trial  = trial_packet(request);
     if (!is_health && !is_trial && !gmk_packet_valid(request)) {

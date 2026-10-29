@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+description: Held GMK70 battery level or charging-status RGB indicator
+compatible: "zuoya,gmk70-behavior-battery"
+include: one_param.yaml
