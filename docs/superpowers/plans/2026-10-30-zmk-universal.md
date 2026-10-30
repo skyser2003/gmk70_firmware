@@ -16,7 +16,8 @@ frozen case with shared non-replaying INSTALL dispatch.
 ## Global Constraints
 
 - Existing branch/in-place inline execution follows prior autonomous preference.
-- No resident, watchdog policy, stacks, dependencies or personal keymap changes.
+- No resident, watchdog policy, Studio stack configuration, dependency or
+  personal keymap changes.
 - Load `scripts/project.sh`; strict typing, formatting, lint and dedicated tests.
 - Build/test never operate hardware; separate qualified joined-LEFT operations.
 - Keep private snapshots/evidence outside Git; sign commits and push.
@@ -69,9 +70,9 @@ Legacy cases default to LEFT. Both-half health/identity proof stays mandatory.
 **Interfaces:** New universal package installed separately on LEFT then RIGHT;
 each case admits exact current size/CRC pairs and unchanged resident identities.
 
-- [ ] Fresh clean Studio backup and both-half baseline; freeze/install LEFT once,
+- [x] Fresh clean Studio backup and both-half baseline; freeze/install LEFT once,
       observe automatic return/health and exact full-map preservation.
-- [ ] Freeze the same application for RIGHT, baseline/install once through LEFT,
+- [x] Freeze the same application for RIGHT, baseline/install once through LEFT,
       independently verify both equal images/residents and saved map.
-- [ ] Normal Studio and final health; private archive/checksums; sanitized docs,
+- [x] Normal Studio and final health; private archive/checksums; sanitized docs,
       sign/push and report actual hardware coverage/limits.

@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-30",
+  "source_commit": "bf0ccad85030f886e39aa13c0663e8c022aab654",
+  "variant": "wired-studio-updater",
+  "profile": "zmk-studio-universal",
+  "application_bytes_both": 79624,
+  "application_crc32_both": 893851802,
+  "application_sha256_both": "1e3cfa64060fbbeb7832dd8f5545d45bdba1cd4c6c212cfb2d38bf633739a1d9",
+  "static_ram_bytes": 27576,
+  "available_ram_bytes": 27648,
+  "resident_crc32_both": 1770733249,
+  "installation_order": [
+    "left",
+    "right"
+  ],
+  "install_requests_per_target": [
+    1,
+    1
+  ],
+  "install_replays": 0,
+  "automatic_return_verified_both": true,
+  "physical_reconnects": 0,
+  "right_only_connection_or_pad_recovery": false,
+  "health_windows_seconds": [
+    70.438,
+    70.407,
+    70.39,
+    70.437,
+    70.437
+  ],
+  "transport_retries": 0,
+  "relay_retries": 0,
+  "observer_reconnects": 0,
+  "watchdog_feed_calls": 0,
+  "layout": {
+    "bindings_preserved": 288,
+    "saved_layers": 4,
+    "layer_names_order_ids_preserved": true,
+    "geometry_and_metadata_verified": true,
+    "unsaved_changes": false,
+    "normal_studio_connected": true,
+    "factory_defaults_unchanged": true
+  },
+  "right_settings": {
+    "mount_read_write_disabled": true,
+    "secured_studio_locked": true,
+    "native_inaccessible_bank_test_passed": true
+  },
+  "physical_confirmation": {
+    "typing_both": true,
+    "rgb_both": true,
+    "saved_lighting_action_confirmed": true,
+    "confirmation_source": "user",
+    "default_fn_x_is_saved_lighting_binding": false
+  },
+  "desktop_connection": {
+    "initial_failed_attempts": 2,
+    "native_rpc_and_app_rpc_verified": true,
+    "final_normal_launch_connected": true,
+    "additional_firmware_writes_for_connection": 0,
+    "startup_failure_cause_isolated": false
+  },
+  "hardware_limits": [
+    "No RIGHT-only USB or replacement-central behavior was tested.",
+    "No deliberate cold power cycle or hardware stack watermark measurement was made.",
+    "Wireless pairing, dongle input and battery life were not requalified in this update."
+  ]
+}

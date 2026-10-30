@@ -1,13 +1,19 @@
 # GMK70 wired ZMK Studio
 
-Current checkpoint: [right RGB restoration](ZMK-RIGHT-RGB.md) installs native split RGB
+Current checkpoint: [the universal Studio image](ZMK-UNIVERSAL.md) is installed
+on both halves at 79,624 bytes/CRC32 893851802, with both residents unchanged at
+1770733249. PB9 selects runtime roles; LEFT owns saved settings and RIGHT bypasses
+central storage. The four-layer saved map is preserved exactly and normal Studio
+is connected. The checkpoints below record previous installations.
+
+Earlier checkpoint: [right RGB restoration](ZMK-RIGHT-RGB.md) installs native split RGB
 on both halves (LEFT 70,672/1286125312; RIGHT 43,752/2368050678). Both returned
 automatically and passed 70-second zero-feed health, with unchanged residents and
 the user's freshly saved Studio map preserved. The user confirmed right LEDs work
 and Fn+X controls both halves together.
 The earlier checkpoints below record the preceding installations.
 
-Current checkpoint: [permanent watchdog removal](ZMK-PERMANENT-WATCHDOG-REMOVAL.md)
+Earlier checkpoint: [permanent watchdog removal](ZMK-PERMANENT-WATCHDOG-REMOVAL.md)
 applies to canonical builds and both installed halves: LEFT 70,196/986599886,
 RIGHT 38,160/1887741245, resident CRCs 1770733249. Both passed 70-second zero-feed
 health; Studio saving and the original four-layer map were verified. RIGHT

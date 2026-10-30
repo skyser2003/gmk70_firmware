@@ -1,12 +1,13 @@
 # GMK70 firmware
 
 Firmware for the ZUOYA GMK70 split keyboard (WB32FQ95). QMK/Vial support USB,
-Bluetooth and 2.4 GHz. Native ZMK development currently targets wired USB.
+Bluetooth and 2.4 GHz. Native ZMK supports joined split operation over USB and
+the existing stock radio; see the [wireless scope](docs/ZMK-WIRELESS.md).
 
 ## Base versions
 
 - **QMK/VIA:** official [QMK 0.34.4](https://github.com/qmk/qmk_firmware/tree/0.34.4).
-- **ZMK:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), native wired firmware, an experimental Studio central, updater and separate bounded staging targets.
+- **ZMK:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), one universal Studio image, native updater and separate bounded staging targets.
 - **Vial:** [vial-qmk at `dd43959ae5c0`](https://github.com/vial-kb/vial-qmk/commit/dd43959ae5c08d8a28d38a1acf7b04e86b14a344).
 
 Upstream dependencies remain unmodified. Exact framework, library and
@@ -31,18 +32,20 @@ integration are selected separately from `firmware/qmk-via/` and
   a separate [radio diagnostic build](docs/RADIO-DIAGNOSTICS.md) provides RAM counters.
 
 Complete stock equivalence and hardware validation of the latest Vial/updater
-changes remain unverified. Native wired ZMK is permanent on both halves. The
-[Studio central](docs/ZMK-STUDIO.md) is installed on LEFT, with the original
-normal RIGHT unchanged. The local Studio app displays 72 keys and Base/Fn, saves
-edits and retained them across a distinct-image LEFT update. The original map
-was restored. Final both-half health passed 61 seconds, with unchanged resident
-CRCs and no transport/relay retries.
+changes remain unverified. Both halves now run the same
+[universal ZMK Studio application](docs/ZMK-UNIVERSAL.md), selected by the PB9
+role pin. LEFT owns the saved keymap and host services; RIGHT supplies its keys
+and RGB. Four Windows/Mac layers, lighting, battery actions, stock-radio
+selection and function/media flip are implemented. All 288 saved bindings are
+preserved, and normal Studio is connected with four layers.
 
-ZMK remains an explicitly unlocked development build. Automatic warm restart is
-unresolved; use the documented joined-left cycle only after a restart timeout,
-then verify the actual image. Wireless and other deferred features remain outside
-this milestone. The [earlier permanent qualification](docs/ZMK-PERMANENT-WIRED.md)
-records distinct-image left/right updates and the original A/A checkpoint.
+ZMK remains an explicitly unlocked development build with no permanent hardware
+watchdog. Both universal updates returned automatically through joined LEFT USB,
+without physical reconnect or pad recovery. Five 70-second both-half health
+windows passed with unchanged residents and zero retries/reconnects/feeds.
+See the [validation and coverage limits](docs/validation/2026-10-30-zmk-universal/README.md).
+The [earlier permanent qualification](docs/ZMK-PERMANENT-WIRED.md) records the
+initial wired milestone and its historical restart failures.
 
 ## Build
 
@@ -106,8 +109,8 @@ restart-verification timeout. The user reports typing seems functional and
 Fn+number sends function keys. A follow-up Windows observation confirmed Fn+Left/Right as
 Home/End without Ctrl held; the input field's word-like navigation is not localized.
 
-For normal QMK/Vial releases, back up your configuration before updating and
-install the same build on both halves. The experimental ZMK trials have separate
+For QMK/Vial and the universal ZMK Studio package, back up your configuration
+before updating and use the same application build on both halves. The experimental ZMK trials have separate
 [left](docs/ZMK-LEFT-FIRST-TRIAL.md) and [right](docs/ZMK-RIGHT-FIRST-TRIAL.md)
 staging workflows. Stock/VIA and Vial use different EEPROM layouts; independently rebuilt
 Vial images reset dynamic mappings and macros.

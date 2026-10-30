@@ -1,5 +1,22 @@
 # Local continuation: updater-preserving ZMK development
 
+## Universal full-featured ZMK — 2026-10-30
+
+[One common application](ZMK-UNIVERSAL.md) is installed on both halves:
+79,624 bytes/CRC32 893851802, source `bf0ccad85030f886e39aa13c0663e8c022aab654`.
+PB9 selects runtime roles; only LEFT owns saved Studio storage. Legacy Studio
+packages stay LEFT-only; the new `zmk-studio-universal` profile explicitly
+supports either half. Both residents remain 1770733249.
+
+LEFT then RIGHT each received one INSTALL and returned automatically through
+joined LEFT USB. Five 70-second both-half health windows passed, with no physical
+reconnect/pad procedure and zero retries/reconnects/feeds. All 288 saved bindings,
+four layer names/order and factory defaults are preserved. Normal Studio is
+connected after desktop startup reconnect recovery, without another firmware
+write. The user confirmed keys, both RGBs and the saved lighting action work.
+See [validation and hardware limits](validation/2026-10-30-zmk-universal/README.md).
+The following checkpoints are historical.
+
 ## Function/media flip — 2026-10-30
 
 [Persistent function/media flip](ZMK-FUNCTION-FLIP.md) is installed on LEFT:
