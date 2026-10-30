@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+config GMK70_FUNCTION_FLIP
+    bool "GMK70 persistent stock function/media flip"
+    depends on BOARD_GMK70_WIRED && GMK70_ZMK_STUDIO_SETTINGS && ZMK_RGB_UNDERGLOW
+    help
+      Studio-assignable stock Windows/Mac number/F-row flip, with matching
+      held-key releases and guarded deferred settings persistence.

@@ -57,6 +57,23 @@ def _function_bodies(disassembly: str) -> dict[str, str]:
     return dict(zip(parts[1::2], parts[2::2], strict=True))
 
 
+def validate_flip_linking(symbols: set[str], disassembly: str) -> None:
+    if "gmk_flip_poll" not in symbols:
+        return
+    wrapper = "__wrap_raise_zmk_keycode_state_changed"
+    if wrapper not in symbols:
+        raise ValueError("Missing linked function flip event wrapper")
+    functions = _function_bodies(disassembly)
+    if not any(
+        _calls(body, wrapper)
+        for name, body in functions.items()
+        if name.startswith("raise_zmk_keycode_state_changed_from_encoded")
+    ):
+        raise ValueError("Native keycode behavior bypasses function flip")
+    if not _calls(functions.get("worker", ""), "gmk_flip_poll"):
+        raise ValueError("Function flip persistence bypasses the existing worker")
+
+
 def _calls(body: str, target: str) -> bool:
     # Match an addressed instruction with encoded bytes. A symbol reference in
     # a comment, data load or unrelated function cannot establish a call site.
@@ -333,6 +350,7 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
             ["arm-none-eabi-objdump", "-d", str(elf)], text=True
         )
     validate_radio_linking(set(symbols), disassembly, variant)
+    validate_flip_linking(set(symbols), disassembly)
     if variant.startswith("wired-studio-"):
         for name in (
             "settings_backend_init",

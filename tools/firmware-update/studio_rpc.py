@@ -584,6 +584,13 @@ class SymbolicBinding:
     param2: int
 
     def __post_init__(self) -> None:
+        if self.behavior == "gmk_flip" and (
+            isinstance(self.param1, bool)
+            or isinstance(self.param2, bool)
+            or self.param1 != 0
+            or self.param2 != 0
+        ):
+            raise ValueError("Function/media flip binding takes no parameters")
         if self.behavior == "gmk_radio" and (
             isinstance(self.param1, bool)
             or isinstance(self.param2, bool)
@@ -684,6 +691,7 @@ class StudioClient:
         "rgb_ug": "Underglow",
         "gmk_battery": "GMK70 Battery / Charging",
         "gmk_radio": "GMK70 Bluetooth / Dongle",
+        "gmk_flip": "GMK70 Function / Media Flip",
     }
 
     def __init__(self, transport: ByteTransport, timeout: float = 5.0) -> None:

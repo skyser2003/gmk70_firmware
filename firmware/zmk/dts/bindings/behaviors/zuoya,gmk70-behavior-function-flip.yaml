@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+description: GMK70 persistent function/media flip
+compatible: "zuoya,gmk70-behavior-function-flip"
+include: zero_param.yaml

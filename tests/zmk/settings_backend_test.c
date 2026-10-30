@@ -13,6 +13,7 @@
 #include <zmk/studio/core.h>
 static struct settings_store   *backend;
 static atomic_bool              busy, stop, fail_write;
+static atomic_bool              usb_ready, pause_worker, worker_paused;
 static atomic_uint              writes;
 static pthread_t                worker_id;
 static unsigned                 loaded;
@@ -56,9 +57,26 @@ static void *worker(void *arg) {
     worker_id                = pthread_self();
     gmk_zmk_update_env_t env = {.left = !invalid_role, .wired = !invalid_mode, .writes_ready = true};
     while (!atomic_load(&stop)) {
+        if (atomic_load(&pause_worker)) {
+            atomic_store(&worker_paused, true);
+            usleep(100);
+            continue;
+        }
+        atomic_store(&worker_paused, false);
+        env.usb_configured = atomic_load(&usb_ready);
         gmk_zmk_settings_poll(&env);
         usleep(100);
     }
+    return NULL;
+}
+static void wait_for(atomic_bool *value) {
+    for (unsigned n = 0; n < 10000 && !atomic_load(value); ++n)
+        usleep(100);
+    assert(atomic_load(value));
+}
+static void *runtime_save(void *arg) {
+    int *result = arg;
+    *result     = gmk_zmk_settings_save_runtime("keymap/test", "other", 5);
     return NULL;
 }
 int main(void) {
@@ -86,6 +104,24 @@ int main(void) {
     assert(backend->cs_itf->csi_save(backend, "keymap/test", "value", 5) == 0);
     assert(atomic_load(&writes) == 2 && !atomic_load(&busy));
     assert(!backend->cs_itf->csi_load(backend, NULL) && loaded == 1);
+    /* USB can disappear after the feature schedules its save. The real
+     * storage dispatch must reject it, preserving pre-enumeration startup. */
+    unsigned before_runtime = atomic_load(&writes);
+    atomic_store(&pause_worker, true);
+    wait_for(&worker_paused);
+    atomic_store(&usb_ready, true);
+    pthread_t runtime_thread;
+    int       runtime_result = 0;
+    assert(!pthread_create(&runtime_thread, NULL, runtime_save, &runtime_result));
+    wait_for(&busy);
+    atomic_store(&usb_ready, false);
+    atomic_store(&pause_worker, false);
+    pthread_join(runtime_thread, NULL);
+    assert(runtime_result == -ENOTSUP && atomic_load(&writes) == before_runtime);
+    atomic_store(&usb_ready, true);
+    assert(gmk_zmk_settings_save_runtime("keymap/test", "other", 5) == 0);
+    assert(atomic_load(&writes) > before_runtime);
+    assert(backend->cs_itf->csi_save(backend, "keymap/test", "value", 5) == 0);
     atomic_store(&busy, true);
     unsigned before = atomic_load(&writes);
     assert(backend->cs_itf->csi_save(backend, "keymap/test", "other", 5) == -EBUSY);

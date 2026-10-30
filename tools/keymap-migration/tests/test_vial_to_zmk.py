@@ -22,6 +22,15 @@ from vial_to_zmk import (
 class VialToZmkTests(unittest.TestCase):
     _root = Path(__file__).resolve().parents[3]
 
+    def test_function_flip_aliases_translate_without_reset_or_lighting_support(
+        self,
+    ) -> None:
+        for code in ("USER26", "KC_FILP", 0x7E1A, "0x7E1A"):
+            with self.subTest(code=code):
+                self.assertEqual(
+                    self.converter.translate(code, 4), Binding("gmk_flip", ())
+                )
+
     def setUp(self) -> None:
         self.converter = VialToZmk(self._root)
 
@@ -140,7 +149,7 @@ class VialToZmkTests(unittest.TestCase):
         self,
     ) -> None:
         document = self._document()
-        self._put(document, 0, 0, "USER26")
+        self._put(document, 0, 0, "USER25")
         self._put(document, 5, 0, "KC_A")  # An unused matrix cell.
         self._put(document, 0, 1, "MO(4)")  # Missing destination layer.
         self._put(document, 0, 2, "KC_UNKNOWN_PERSONAL_TOKEN")
@@ -150,7 +159,7 @@ class VialToZmkTests(unittest.TestCase):
         self.assertFalse(converted.ready)
         self.assertIsNone(converted.layers[0].bindings[0])
         counts = converted.issue_counts()
-        self.assertEqual(counts["function-flip"], 1)
+        self.assertEqual(counts["reserved-board-action"], 1)
         self.assertEqual(counts["unmapped-matrix-cell"], 1)
         self.assertEqual(counts["layer-out-of-range"], 1)
         self.assertEqual(counts["unknown-keycode"], 1)
@@ -171,11 +180,11 @@ class VialToZmkTests(unittest.TestCase):
         self,
     ) -> None:
         document = self._document()
-        self._put(document, 0, 0, "USER26")
+        self._put(document, 0, 0, "USER25")
         converted = self.converter.convert(document, UnsupportedPolicy.UNASSIGNED)
         self.assertTrue(converted.ready)
         self.assertEqual(converted.layers[0].bindings[0], Binding("none", (0, 0)))
-        self.assertEqual(converted.issue_counts(), {"function-flip": 1})
+        self.assertEqual(converted.issue_counts(), {"reserved-board-action": 1})
         self.assertEqual(converted.issues[0].disposition, IssueDisposition.UNASSIGNED)
         self.assertIn("287 translated bindings", converted.summary())
         self.assertIn("1 explicitly unassigned", converted.summary())
@@ -185,7 +194,7 @@ class VialToZmkTests(unittest.TestCase):
 
     def test_unassigned_policy_does_not_implicitly_drop_nonbinding_data(self) -> None:
         document = self._document()
-        self._put(document, 0, 0, "USER26")
+        self._put(document, 0, 0, "USER25")
         document["macro"] = [["generic macro"]]
         converted = self.converter.convert(document, UnsupportedPolicy.UNASSIGNED)
         self.assertFalse(converted.ready)
@@ -199,7 +208,7 @@ class VialToZmkTests(unittest.TestCase):
             ("GU_TOGG", IssueCategory.GUI_LOCK),
             ("NK_TOGG", IssueCategory.NKRO),
             ("STOCK_USB_SLEEP_TOGGLE", IssueCategory.SLEEP),
-            ("KC_FILP", IssueCategory.FUNCTION_FLIP),
+            ("RL_MOD", IssueCategory.LIGHTING),
             ("STOCK_RESERVED_19", IssueCategory.RESERVED),
             ("DF(2)", IssueCategory.LAYER_SEMANTICS),
         )

@@ -10,6 +10,11 @@
         compatible = "zuoya,gmk70-battery";
     };
     behaviors {
+        gmk_flip: gmk_flip {
+            compatible = "zuoya,gmk70-behavior-function-flip";
+            display-name = "GMK70 Function / Media Flip";
+            #binding-cells = <0>;
+        };
         gmk_radio: gmk_radio {
             compatible = "zuoya,gmk70-behavior-radio";
             display-name = "GMK70 Bluetooth / Dongle";

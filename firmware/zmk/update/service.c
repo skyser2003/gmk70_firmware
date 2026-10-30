@@ -4,6 +4,9 @@
 #    include "../studio/settings_backend.h"
 #endif
 #include "wired.h"
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+#    include "../function_flip/flip.h"
+#endif
 #include "../battery/battery.h"
 #ifdef CONFIG_GMK70_RADIO
 #    include "radio.h"
@@ -56,6 +59,11 @@ static void worker(void *a, void *b, void *c) {
          * do not reuse an earlier connected indication indefinitely. */
         bool                 peer = gmk_wired_try_get_stats(&stats) && stats.peer;
         gmk_zmk_update_env_t env  = worker_environment(peer);
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+        /* The settings caller runs on system work, never on its own storage
+         * worker. Radio changes remain runtime-only until wired USB returns. */
+        gmk_flip_poll(env.left && env.wired && env.usb_configured && env.writes_ready);
+#endif
         gmk_zmk_raw_hid_poll(&env);
         /* Admission and execution are distinct boundaries: resample physical
          * mode/USB/role after USB work, immediately before protocol dispatch. */

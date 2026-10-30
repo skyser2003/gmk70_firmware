@@ -477,7 +477,7 @@ class VialToZmk:
         if code in (0x7E11, 0x7E12, 0x7E13):
             raise UnsupportedKeycode(IssueCategory.SLEEP)
         if code == 0x7E1A:
-            raise UnsupportedKeycode(IssueCategory.FUNCTION_FLIP)
+            return Binding("gmk_flip", ())
         if code in (0x7009, 0x700A, 0x700B, 0x7E24):
             raise UnsupportedKeycode(IssueCategory.GUI_LOCK)
         if code in (0x7011, 0x7012, 0x7013):

@@ -63,6 +63,7 @@ class MemoryStudio:
         self.corrupt_reload_once = False
         self.packed_behavior_ids = False
         self.include_radio = False
+        self.include_flip = False
         self.duplicate_radio = False
         self.radio_name = "GMK70 Bluetooth / Dongle"
         self.invalid_radio_metadata = False
@@ -142,6 +143,7 @@ class MemoryStudio:
             55: ("None", b""),
             66: (self.radio_name, b""),
             77: (self.radio_name, b""),
+            88: ("GMK70 Function / Media Flip", b""),
         }
         name, rule = descriptions[identifier]
         result = Protobuf.uint(1, identifier) + Protobuf.blob(2, name.encode())
@@ -191,6 +193,8 @@ class MemoryStudio:
                 )
                 if self.include_radio:
                     identifiers += (66, 77) if self.duplicate_radio else (66,)
+                if self.include_flip:
+                    identifiers += (88,)
                 # Upstream nanopb emits unpacked IDs; protobuf also permits packed IDs.
                 payload = (
                     Protobuf.blob(
@@ -272,6 +276,48 @@ class MemoryStudio:
 
 
 class StudioRpcTests(unittest.TestCase):
+    def test_flip_sparse_import_changes_one_binding_and_preserves_287(self) -> None:
+        peer = self.freshly_edited_peer()
+        peer.include_flip = True
+        before = peer.current
+        plan = MemoryStudio.plan()
+        first = plan.layers[0]
+        plan = replace(
+            plan,
+            layers=(
+                replace(
+                    first,
+                    bindings=(SymbolicBinding("gmk_flip", 0, 0), *first.bindings[1:]),
+                ),
+                *plan.layers[1:],
+            ),
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            result = StudioClient(peer).apply(
+                plan,
+                peer.geometry(),
+                Path(folder) / "before.json",
+                only_behavior="gmk_flip",
+            )
+        self.assertTrue(result.saved_and_reloaded)
+        self.assertEqual(peer.saved.layers[0].bindings[0], RpcBinding(88, 0, 0))
+        self.assertEqual(
+            peer.saved.layers[0].bindings[1:], before.layers[0].bindings[1:]
+        )
+        self.assertEqual(peer.saved.layers[1:], before.layers[1:])
+        self.assertEqual(
+            tuple((x.layer_id, x.name) for x in peer.saved.layers),
+            tuple((x.layer_id, x.name) for x in before.layers),
+        )
+
+    def test_flip_schema_rejects_nonzero_or_boolean_parameters(self) -> None:
+        for first, second in ((1, 0), (0, 1), (True, 0), (0, True), (-1, 0)):
+            with (
+                self.subTest(first=first, second=second),
+                self.assertRaises(ValueError),
+            ):
+                SymbolicBinding("gmk_flip", first, second)
+
     @classmethod
     def eight_radio_plan(cls) -> StudioPlan:
         plan = cls.radio_plan()
