@@ -60,8 +60,8 @@ checks and public validation docs, private hardware evidence outside Git.
 - [x] Implement translation/metadata and verify sparse application preserves287.
 - [x] Run `make test test-zmk check-tools`, edited C formatting and affected ARM
       builds; request fresh review and fix important findings with RED→GREEN.
-- [ ] Sign source, fresh clean map/health, freeze one LEFT-only case, install once
+- [x] Sign source, fresh clean map/health, freeze one LEFT-only case, install once
       and independently verify the new image, unchanged RIGHT/residents/map.
-- [ ] Restore only the flip binding; save/reload/new-connection full comparison,
+- [x] Restore only the flip binding; save/reload/new-connection full comparison,
       normal Studio, health and private archive. Record hardware test limits.
-- [ ] Sign/push validation and report the four remaining unassigned positions.
+- [x] Sign/push validation and report the four remaining unassigned positions.

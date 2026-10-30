@@ -1,0 +1,61 @@
+{
+  "date": "2026-10-30",
+  "source_commit": "e4e9c7bef4af8c1fa28bbe9adf582a88376935a3",
+  "left": {
+    "variant": "wired-studio-updater",
+    "bytes": 79612,
+    "crc32": 799253422,
+    "sha256": "e20a01fd51ff53dbf1b7280e050d7b2c571c933308a618a7e14e7865ed5b8fa1",
+    "static_ram_bytes": 27576,
+    "available_ram_bytes": 27648
+  },
+  "right": {
+    "bytes": 43752,
+    "crc32": 2368050678,
+    "written": false
+  },
+  "resident_crc32_both": 1770733249,
+  "install_requests": 1,
+  "install_replays": 0,
+  "automatic_return_verified": true,
+  "physical_reconnects": 0,
+  "right_only_recovery": false,
+  "health_windows_seconds": [
+    70.375,
+    70.375,
+    70.375
+  ],
+  "transport_retries": 0,
+  "relay_retries": 0,
+  "observer_reconnects": 0,
+  "watchdog_feed_calls": 0,
+  "layout": {
+    "restored_flip_bindings": 1,
+    "other_bindings_preserved": 287,
+    "verified_bindings": 288,
+    "layers_preserved": 4,
+    "source_unchanged": true,
+    "geometry_and_metadata_verified": true,
+    "unsaved_changes": false,
+    "independent_serial_connection": true,
+    "supported_bindings": 284,
+    "remaining_unassigned": 4,
+    "remaining_function_types": 3,
+    "factory_defaults_unchanged": true,
+    "layer_names_and_order_preserved": true,
+    "normal_studio_connected": true
+  },
+  "flip": {
+    "initial_state": "off",
+    "studio_assignable": true,
+    "physical_toggle_tested": false,
+    "enabled_state_reboot_persistence_tested": false,
+    "native_mapping_and_persistence_tests": "passed",
+    "stock_white_indicator_implemented": false
+  },
+  "hardware_limits": [
+    "Mechanical flip actuation and resulting host/media actions were not observed.",
+    "Enabled flip persistence across an actual hardware restart was not exercised.",
+    "Actual stack watermarks were not measured."
+  ]
+}

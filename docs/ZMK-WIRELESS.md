@@ -1,5 +1,9 @@
 # GMK70 Bluetooth and dongle support
 
+The subsequent [function/media flip update](ZMK-FUNCTION-FLIP.md) restores one
+more saved binding and supersedes the installed LEFT identity below. Wireless
+behavior and RIGHT firmware are unchanged by that update.
+
 The ZMK Studio central uses the existing GMK70 radio over UART3 for Bluetooth
 and the proprietary 2.4 GHz receiver. It does not replace the radio firmware or
 use Zephyr's Bluetooth stack. The existing RIGHT peripheral remains compatible
@@ -49,17 +53,17 @@ four-layer Vial export. Studio's `apply --only-behavior gmk_radio` restores thos
 positions from a fresh clean backup, preserving all other 280 bindings and all
 layer names/order, then saves, reloads and compares the complete map.
 
-Five of the original 13 unsupported bindings remain unassigned:
+After the subsequent function/media flip update, four of the original 13
+unsupported bindings remain unassigned:
 
 | Function | Bindings |
 | --- | ---: |
-| `custom(26)` / function–media flip | 1 |
 | `custom(9)` / logo lighting effect | 1 |
 | `custom(25)` / reserved board action | 1 |
 | QMK EEPROM/settings reset (`0x7C03`) | 2 |
 
-This is four function types occupying five positions. The conversion now supports
-283 of 288 bindings. The factory keymap and private Vial export are unchanged.
+This is three function types occupying four positions. The conversion now supports
+284 of 288 bindings. The factory keymap and private Vial export are unchanged.
 
 ## Separate device operations
 

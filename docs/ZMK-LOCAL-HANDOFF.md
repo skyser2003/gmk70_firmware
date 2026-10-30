@@ -1,5 +1,22 @@
 # Local continuation: updater-preserving ZMK development
 
+## Function/media flip — 2026-10-30
+
+[Persistent function/media flip](ZMK-FUNCTION-FLIP.md) is installed on LEFT:
+79,612 bytes/CRC32 799253422. RIGHT remains 43,752/2368050678; both resident CRCs
+remain 1770733249. One LEFT INSTALL returned automatically with no physical
+reconnect, RIGHT write or pad recovery. Baseline, post-install and final
+post-layout health each passed 70.375 seconds with zero retries/reconnects/feeds.
+
+Studio advertises the parameterless action. Its one saved binding is restored;
+all other 287 bindings, four layer names/order, source export and factory
+defaults are preserved. Normal Studio is connected. Flip starts off; mechanical
+actuation, host/media response and enabled-state reboot persistence remain
+unobserved on hardware, with dedicated native coverage. Four original positions
+remain unassigned: logo effect, a reserved action and two QMK settings resets.
+See [sanitized validation](validation/2026-10-30-zmk-function-flip/README.md).
+Earlier checkpoints below are historical.
+
 ## Bluetooth and dongle support — 2026-10-29
 
 [Wireless support](ZMK-WIRELESS.md) is installed on LEFT: 78,032 bytes/CRC32
