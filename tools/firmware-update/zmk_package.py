@@ -17,6 +17,13 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
     document: JsonValue = json.loads(report.read_text())
     checked = JsonSchema.mapping(document)
     variant = JsonSchema.text(checked.get("variant"))
+    roles = checked.get("runtime_roles")
+    if roles is not None and (
+        not variant.startswith("wired-studio-") or roles != ["left", "right"]
+    ):
+        raise ValueError(
+            "Universal Studio report requires exactly LEFT and RIGHT runtime roles"
+        )
     if (
         checked.get("board") != "gmk70_wired"
         or variant
@@ -54,7 +61,13 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
         "format": 1,
         "board": "zuoya/gmk70",
         "mcu": "WB32FQ95-256K",
-        "profile": "zmk-studio" if variant.startswith("wired-studio-") else "zmk",
+        "profile": (
+            "zmk-studio-universal"
+            if roles is not None
+            else "zmk-studio"
+            if variant.startswith("wired-studio-")
+            else "zmk"
+        ),
         "app_address": 0x08002000,
         "app_size": len(payload),
         "app_crc": zlib.crc32(payload),

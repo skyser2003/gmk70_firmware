@@ -103,7 +103,8 @@ fi
             printf 'Application at 0x08002000; native updater; no permanent watchdog or outgoing handoff.\n'
             printf 'Hardware reset activates updates; a hung application may require a physical power cycle.\n'
             if [[ "$variant" == wired-studio-* ]]; then
-                printf 'profile=zmk-studio; LEFT only; CDC Studio, Feature updater, 16KiB settings reservation.\n'
+                printf 'profile=zmk-studio-universal; identical application for LEFT and RIGHT.\n'
+                printf 'LEFT owns CDC Studio settings; RIGHT never mounts/writes central settings banks.\n'
                 printf 'Battery: stock-radio inquiry/ACK cache, native sensor and held RGB status.\n'
                 printf 'Radio: stock vendor UART3 Bluetooth/dongle keyboard and consumer endpoint; USB Studio retained.\n'
                 if [[ "$variant" == wired-studio-radio-qualification ]]; then

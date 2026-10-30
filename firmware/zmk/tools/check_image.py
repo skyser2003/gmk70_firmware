@@ -7,6 +7,7 @@ import re
 import struct
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 FLASH_START = 0x08020000
 FLASH_END = FLASH_START + 120 * 1024
@@ -55,6 +56,134 @@ def validate_radio_linking(
 def _function_bodies(disassembly: str) -> dict[str, str]:
     parts = re.split(r"(?m)^[ \t]*[0-9a-fA-F]+ <([^>]+)>:\r?\n", disassembly)
     return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+
+class _ArmInstruction(NamedTuple):
+    address: int
+    opcode: str
+    operands: str
+    source: str
+
+    def is_setup(self) -> bool:
+        return (
+            self.opcode
+            in (
+                "push",
+                "mov",
+                "movs",
+                "movw",
+                "movt",
+                "ldr",
+                "adr",
+                "add",
+                "adds",
+                "sub",
+                "subs",
+                "nop",
+            )
+            and self.operands.split(",", 1)[0].strip() != "pc"
+        )
+
+
+def validate_studio_roles(disassembly: str) -> None:
+    """Admit the pinned compiler's conservative CBZ-r0 role-guard pattern.
+
+    LEFT falls straight through argument setup to the single mount. RIGHT
+    skips past it; every subsequent local branch must stay past that call.
+    Unsupported control flow is rejected rather than guessed about.
+    """
+    body = _function_bodies(disassembly).get("settings_backend_init", "")
+    pattern = (
+        r"^[ \t]*([0-9a-f]+):[ \t]+(?:[0-9a-f]{2,8}[ \t]+)+"
+        r"([a-z][a-z0-9.]*)[ \t]*(.*)$"
+    )
+    instructions = [
+        _ArmInstruction(
+            int(match[1], 16), match[2].split(".")[0].lower(), match[3], line
+        )
+        for line in body.splitlines()
+        if (match := re.fullmatch(pattern, line, re.IGNORECASE)) is not None
+    ]
+    roles = [
+        i
+        for i, inst in enumerate(instructions)
+        if _calls(inst.source, "gmk_wired_is_left")
+    ]
+    mounts = [
+        i
+        for i, inst in enumerate(instructions)
+        if _calls(inst.source, "gmk_settings_store_mount")
+    ]
+    if len(roles) != 1 or len(mounts) != 1 or roles[0] + 1 >= mounts[0]:
+        raise ValueError("Universal Studio requires one guarded role probe and mount")
+    role, mount = roles[0], mounts[0]
+    addresses = {inst.address for inst in instructions}
+    if len(addresses) != len(instructions) or [
+        inst.address for inst in instructions
+    ] != sorted(addresses):
+        raise ValueError("Unsupported Studio instruction address order")
+    guard = instructions[role + 1]
+    target = re.fullmatch(
+        r"r0,\s*([0-9a-f]+)(?:\s+<[^>]+>)?", guard.operands, re.IGNORECASE
+    )
+    if (
+        guard.opcode != "cbz"
+        or target is None
+        or int(target[1], 16) not in addresses
+        or int(target[1], 16) <= instructions[mount].address
+        or any(
+            not inst.is_setup()
+            for inst in instructions[:role] + instructions[role + 2 : mount]
+        )
+    ):
+        raise ValueError("Universal role false must skip mount; true must reach it")
+    branches = {
+        "b",
+        "beq",
+        "bne",
+        "bcs",
+        "bcc",
+        "bmi",
+        "bpl",
+        "bvs",
+        "bvc",
+        "bhi",
+        "bls",
+        "bge",
+        "blt",
+        "bgt",
+        "ble",
+        "bal",
+        "cbz",
+        "cbnz",
+    }
+    for inst in instructions[role + 2 :]:
+        if inst.opcode in branches:
+            destination = re.fullmatch(
+                r"([0-9a-f]+)(?:\s+<[^>]+>)?",
+                inst.operands.rsplit(",", 1)[-1].strip(),
+                re.IGNORECASE,
+            )
+            if (
+                destination is None
+                or int(destination[1], 16) not in addresses
+                or int(destination[1], 16) <= instructions[mount].address
+            ):
+                raise ValueError(
+                    "Peripheral path can re-enter or bypass the guarded mount"
+                )
+        elif (
+            inst.opcode.startswith("it")
+            or inst.opcode in ("tbb", "tbh", "bxj")
+            or (inst.opcode == "bx" and inst.operands.strip() != "lr")
+            or (
+                inst.opcode == "blx"
+                and re.fullmatch(r"[0-9a-f]+\s+<[^>]+>", inst.operands, re.IGNORECASE)
+                is None
+            )
+            or inst.operands.split(",", 1)[0].strip() == "pc"
+        ):
+            raise ValueError("Unsupported indirect Studio role control flow")
 
 
 def validate_flip_linking(symbols: set[str], disassembly: str) -> None:
@@ -128,7 +257,7 @@ def validate_elf(data: bytes, reset: int) -> None:
 
 def check(
     elf: Path, image: Path, board: str = "gmk70_left", variant: str | None = None
-) -> dict[str, str | int]:
+) -> dict[str, str | int | list[str]]:
     if board == "gmk70_wired":
         return check_wired(elf, image, variant)
     if board not in ("gmk70_left", "gmk70_right"):
@@ -163,7 +292,7 @@ def check(
         result["main_return"] = "successful real main + ready kscan + 500ms + SW reset"
     result["application"] = "dependencies/zmk/app"
     result["board"] = board
-    return result
+    return dict(result)
 
 
 def validate_wired_elf(
@@ -270,7 +399,9 @@ def validate_permanent_symbols(symbols: set[str]) -> None:
         )
 
 
-def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | int]:
+def check_wired(
+    elf: Path, image: Path, variant: str | None
+) -> dict[str, str | int | list[str]]:
     if variant not in (
         "wired-updater",
         "wired-update-test",
@@ -288,7 +419,7 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
     qualification = variant == "wired-qualification"
     base = FLASH_START if qualification else 0x08002000
     payload = image.read_bytes()
-    result = validate_vectors(payload, base)
+    result: dict[str, str | int | list[str]] = dict(validate_vectors(payload, base))
     validate_handoff_payload(payload, not qualification)
     lines = subprocess.check_output(
         ["arm-none-eabi-nm", "--defined-only", str(elf)], text=True
@@ -352,6 +483,7 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
     validate_radio_linking(set(symbols), disassembly, variant)
     validate_flip_linking(set(symbols), disassembly)
     if variant.startswith("wired-studio-"):
+        validate_studio_roles(disassembly)
         for name in (
             "settings_backend_init",
             "gmk_zmk_settings_poll",
@@ -380,6 +512,8 @@ def check_wired(elf: Path, image: Path, variant: str | None) -> dict[str, str | 
         trial_backend="absent",
         main_wrapper="absent",
     )
+    if variant.startswith("wired-studio-"):
+        result["runtime_roles"] = ["left", "right"]
     return result
 
 

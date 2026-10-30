@@ -53,8 +53,9 @@ class Clock:
 
 
 class FixtureLink:
-    def __init__(self, clock: Clock) -> None:
+    def __init__(self, clock: Clock, target: int = 0) -> None:
         self.clock = clock
+        self.target = target
         self.packets: list[bytes] = []
         self.opened = self.closed = self.reconnects = 0
         self.ids = list(BEFORE)
@@ -87,7 +88,7 @@ class FixtureLink:
     def close(self) -> None:
         self.closed += 1
         if self.installed:
-            self.ids[0] = (self.size, self.crc)
+            self.ids[self.target] = (self.size, self.crc)
             self.state = 0
             self.installed = False
 
@@ -121,21 +122,21 @@ class FixtureLink:
                         target,
                         Op.INFO,
                         0,
-                        self.state if target == 0 else 0,
+                        self.state if target == self.target else 0,
                         role,
                     )
                 )
                 + struct.pack(
                     "<6I",
-                    self.session if target == 0 else 0,
-                    len(self.data) if target == 0 else 0,
+                    self.session if target == self.target else 0,
+                    len(self.data) if target == self.target else 0,
                     size,
                     crc,
                     1,
                     boot_crc,
                 )
             )
-            if target == 0 and self.state == 2 and self.sealed_info_fault:
+            if target == self.target and self.state == 2 and self.sealed_info_fault:
                 offsets = {
                     "state": 6,
                     "role": 7,
@@ -152,8 +153,8 @@ class FixtureLink:
             if self.fail_install_status:
                 raise OSError("INSTALL status unavailable")
             return self.pending
-        if target != 0:
-            raise AssertionError("Only LEFT may be written")
+        if target != self.target:
+            raise AssertionError("Only the frozen selected target may be written")
         session, offset = struct.unpack_from("<II", packet, 8)
         result = 0
         if operation == Op.BEGIN:
@@ -188,7 +189,7 @@ class FixtureLink:
         else:
             raise AssertionError("Unexpected device operation")
         answer = bytearray(
-            bytes((0x7F, 0x70, 1, 0, operation, result, self.state, 3))
+            bytes((0x7F, 0x70, 1, target, operation, result, self.state, role))
             + struct.pack("<6I", session, len(self.data), self.size, self.crc, 1, 0)
         )
         if operation == Op.INSTALL:
@@ -232,7 +233,7 @@ class QualifiedInstallTests(unittest.TestCase):
         )
 
     @staticmethod
-    def package(directory: Path) -> None:
+    def package(directory: Path, *, universal: bool = False) -> None:
         directory.mkdir()
         image = (
             struct.pack("<II", 0x20006FC0, 0x08002201)
@@ -243,7 +244,7 @@ class QualifiedInstallTests(unittest.TestCase):
             "format": 1,
             "board": "zuoya/gmk70",
             "mcu": "WB32FQ95-256K",
-            "profile": "zmk-studio",
+            "profile": "zmk-studio-universal" if universal else "zmk-studio",
             "app_address": 0x08002000,
             "app_size": len(image),
             "app_crc": zlib.crc32(image),
@@ -257,20 +258,125 @@ class QualifiedInstallTests(unittest.TestCase):
         (directory / "update.json").write_text(json.dumps(manifest))
 
     @contextmanager
-    def fixture(self) -> Iterator[tuple[Path, FixtureLink, QualifiedInstall, Clock]]:
+    def fixture(
+        self, *, target: int = 0, universal: bool = False
+    ) -> Iterator[tuple[Path, FixtureLink, QualifiedInstall, Clock]]:
         with resident_fixture(), tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             package, case = root / "package", root / "case"
-            self.package(package)
-            QualifiedInstall.create_case(case, package, BEFORE[0], BEFORE[1], "a" * 40)
+            self.package(package, universal=universal)
+            QualifiedInstall.create_case(
+                case, package, BEFORE[0], BEFORE[1], "a" * 40, target=target
+            )
             clock = Clock()
-            link = FixtureLink(clock)
+            link = FixtureLink(clock, target)
             with (
                 patch("qualified_install.time.time", side_effect=clock.epoch),
                 patch("qualified_install.time.monotonic", side_effect=clock.monotonic),
                 patch("qualified_install.time.sleep", side_effect=clock.sleep),
             ):
                 yield case, link, QualifiedInstall(case, link.open), clock
+
+    def test_universal_case_installs_only_selected_half_and_observes_both(self) -> None:
+        for target in (0, 1):
+            with (
+                self.subTest(target=target),
+                self.fixture(target=target, universal=True) as (
+                    case,
+                    link,
+                    operator,
+                    _,
+                ),
+            ):
+                operator.baseline()
+                operator.install()
+                operator.observe()
+                self.assertEqual(link.ids[1 - target], BEFORE[1 - target])
+                self.assertNotEqual(link.ids[target], BEFORE[target])
+                self.assertEqual(
+                    [p[3] for p in link.packets if p[4] == Op.INSTALL and p[1] == 0x70],
+                    [target],
+                )
+                self.assertTrue(
+                    all(
+                        p[3] == target
+                        for p in link.packets
+                        if p[1] == 0x70
+                        and p[4] in (Op.BEGIN, Op.DATA, Op.SEAL, Op.INSTALL, Op.ABORT)
+                    )
+                )
+                marker: JsonValue = json.loads(
+                    (case / "INSTALL-requested.json").read_text()
+                )
+                self.assertEqual(JsonSchema.mapping(marker)["target"], target)
+
+    def test_right_rejects_legacy_studio_and_invalid_target_offline(self) -> None:
+        with resident_fixture(), tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            package = root / "package"
+            self.package(package)
+            for target in (1, 2, -1, True):
+                with self.subTest(target=target), self.assertRaises(ValueError):
+                    QualifiedInstall.create_case(
+                        root / "case",
+                        package,
+                        BEFORE[0],
+                        BEFORE[1],
+                        "a" * 40,
+                        target=target,
+                    )
+                self.assertFalse((root / "case").exists())
+
+    def test_right_noop_checks_right_identity_instead_of_left(self) -> None:
+        with resident_fixture(), tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            package = root / "package"
+            self.package(package, universal=True)
+            candidate = update.Package.load(package)
+            identity = (len(candidate.image), candidate.manifest["app_crc"])
+            with self.assertRaises(ValueError):
+                QualifiedInstall.create_case(
+                    root / "noop", package, BEFORE[0], identity, "a" * 40, target=1
+                )
+            QualifiedInstall.create_case(
+                root / "right", package, identity, BEFORE[1], "a" * 40, target=1
+            )
+
+    def test_right_lost_ack_uses_status_and_never_replays_or_aborts(self) -> None:
+        with self.fixture(target=1, universal=True) as (_, link, operator, _):
+            operator.baseline()
+            link.lost_install_ack = True
+            operator.install()
+            operator.observe()
+            self.assertEqual(link.writes().count(Op.INSTALL), 1)
+            self.assertNotIn(Op.ABORT, link.writes())
+            self.assertTrue(any(p[3:5] == bytes((1, Op.STATUS)) for p in link.packets))
+
+    def test_right_sealed_context_and_unchanged_left_are_required(self) -> None:
+        for fault in (
+            "state",
+            "role",
+            "session",
+            "received",
+            "size",
+            "crc",
+            "abi",
+            "resident",
+            "peer",
+        ):
+            with (
+                self.subTest(fault=fault),
+                self.fixture(target=1, universal=True) as (_, link, operator, _),
+            ):
+                operator.baseline()
+                if fault == "peer":
+                    link.on_seal = lambda: link.ids.__setitem__(0, (1024, 999))
+                else:
+                    link.sealed_info_fault = fault
+                with self.assertRaises(RuntimeError):
+                    operator.install()
+                self.assertNotIn(Op.INSTALL, link.writes())
+                self.assertEqual(link.writes()[-1], Op.ABORT)
 
     def test_offline_case_is_exclusive_private_and_freezes_all_inputs(self) -> None:
         with resident_fixture(), tempfile.TemporaryDirectory() as folder:

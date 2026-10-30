@@ -11,13 +11,18 @@
 #include <unistd.h>
 #include <zephyr/settings/settings.h>
 #include <zmk/studio/core.h>
-static struct settings_store   *backend;
-static atomic_bool              busy, stop, fail_write;
-static atomic_bool              usb_ready, pause_worker, worker_paused;
-static atomic_uint              writes;
-static pthread_t                worker_id;
-static unsigned                 loaded;
-static bool                     invalid_mode, invalid_role;
+static struct settings_store *backend;
+static atomic_bool            busy, stop, fail_write;
+static atomic_bool            usb_ready, pause_worker, worker_paused;
+static atomic_uint            writes;
+static pthread_t              worker_id;
+static unsigned               loaded;
+static bool                   invalid_mode, invalid_role;
+static bool                   side_left = true;
+static unsigned               claims;
+bool                          gmk_wired_is_left(void) {
+    return side_left;
+}
 int                             settings_backend_init(void);
 enum zmk_studio_core_lock_state __wrap_zmk_studio_core_get_lock_state(void);
 enum zmk_studio_core_lock_state __real_zmk_studio_core_get_lock_state(void) {
@@ -30,6 +35,7 @@ void settings_dst_register(struct settings_store *s) {
     assert(backend == s);
 }
 bool gmk_zmk_receiver_storage_claim(void) {
+    ++claims;
     return !atomic_exchange(&busy, true);
 }
 void gmk_zmk_receiver_storage_release(void) {
@@ -83,6 +89,20 @@ int main(void) {
     void *flash = mmap((void *)0x0801c000, 16384, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
     assert(flash == (void *)0x0801c000);
     memset(flash, 0xff, 16384);
+    /* A peripheral must not acquire or initialize central storage. Native
+     * behavior-ID commits can still run, but their saves fail immediately. */
+    side_left = false;
+    assert(!settings_backend_init() && !gmk_zmk_settings_ready());
+    assert(__wrap_zmk_studio_core_get_lock_state() == ZMK_STUDIO_CORE_LOCK_STATE_LOCKED);
+    assert(backend->cs_itf->csi_load(backend, NULL) == -EIO);
+    for (unsigned i = 0; i < 20; ++i)
+        assert(backend->cs_itf->csi_save(backend, "behavior/local_id/1", "kp", 2) == -EIO);
+    assert(gmk_zmk_settings_save_runtime("gmk_flip/state", "1", 1) == -EIO);
+    assert(!claims && !atomic_load(&busy) && !atomic_load(&writes));
+    assert(!mprotect(flash, 16384, PROT_NONE));
+    assert(!settings_backend_init() && !gmk_zmk_settings_ready());
+    assert(!mprotect(flash, 16384, PROT_READ | PROT_WRITE));
+    side_left = true;
     assert(__wrap_zmk_studio_core_get_lock_state() == ZMK_STUDIO_CORE_LOCK_STATE_LOCKED);
     assert(settings_backend_init() == 0 && gmk_zmk_settings_ready());
     assert(__wrap_zmk_studio_core_get_lock_state() == ZMK_STUDIO_CORE_LOCK_STATE_UNLOCKED);

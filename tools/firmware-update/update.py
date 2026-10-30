@@ -36,12 +36,27 @@ class Package:
     image: bytes
     manifest: Manifest
 
+    def validate_target(self, target: int) -> None:
+        if isinstance(target, bool) or target not in (0, 1):
+            raise ValueError("Invalid updater target")
+        if self.manifest["profile"] == "zmk-studio" and target != 0:
+            raise ValueError("Studio development image supports LEFT installation only")
+        self.validate_application()
+
     def validate_application(self) -> None:
         """Also protect programmatic callers before any device request."""
         manifest = self.manifest
         image = self.image
         if (
-            manifest["profile"] not in ("debug", "release", "vial", "zmk", "zmk-studio")
+            manifest["profile"]
+            not in (
+                "debug",
+                "release",
+                "vial",
+                "zmk",
+                "zmk-studio",
+                "zmk-studio-universal",
+            )
             or manifest["format"] != 1
             or manifest["board"] != "zuoya/gmk70"
             or manifest["mcu"] != "WB32FQ95-256K"
@@ -53,7 +68,10 @@ class Package:
             or manifest["app_sha256"] != hashlib.sha256(image).hexdigest()
         ):
             raise ValueError("Invalid or corrupt application package")
-        if manifest["profile"] == "zmk-studio" and len(image) > 0x1A000:
+        if (
+            manifest["profile"] in ("zmk-studio", "zmk-studio-universal")
+            and len(image) > 0x1A000
+        ):
             raise ValueError("Studio application overlaps settings reservation")
         stack, reset = struct.unpack_from("<II", image)
         if not (
@@ -65,7 +83,7 @@ class Package:
             raise ValueError(
                 "Wrong application link address; staging cannot be installed"
             )
-        if manifest["profile"] in ("zmk", "zmk-studio") and (
+        if manifest["profile"] in ("zmk", "zmk-studio", "zmk-studio-universal") and (
             manifest["boot_sha256"] != ZMK_BOOT_SHA256
             or manifest["boot_crc"] != ZMK_BOOT_CRC
         ):
@@ -269,6 +287,10 @@ class Updater:
         offset: int = 0,
         data: bytes = b"",
     ) -> Reply:
+        if operation == Op.INSTALL:
+            if offset or data:
+                raise ValueError("INSTALL does not accept offset or payload")
+            return self.request_install(target, session)
         original = self.packet(target, operation, session, offset, data)
         packet = original
         deadline = time.monotonic() + 8
@@ -329,10 +351,43 @@ class Updater:
             )
         return reply
 
+    def request_install(self, target: int, session: int) -> Reply:
+        if (
+            isinstance(target, bool)
+            or target not in (0, 1)
+            or not 0 < session <= 0xFFFFFFFF
+        ):
+            raise ValueError(
+                "INSTALL requires a valid target and nonzero uint32 session"
+            )
+        deadline = time.monotonic() + 5
+        reply: Reply | None = None
+        packet = self.packet(target, Op.INSTALL, session)
+        while True:
+            try:
+                reply = Reply.decode(self._link.exchange(packet), target)
+            except OSError:
+                reply = None
+            if reply is not None and reply.result != 1:
+                break
+            if time.monotonic() >= deadline:
+                raise TimeoutError("INSTALL outcome unknown; observe without replay")
+            # Only STATUS may follow the dispatched request, even after ACK loss.
+            packet = self.packet(target, Op.STATUS)
+            time.sleep(0.005)
+        if (
+            reply.operation != Op.INSTALL
+            or reply.result
+            or reply.session != session
+            or reply.state != 3
+            or reply.role != (0 if target else 3)
+            or reply.abi != 1
+        ):
+            raise RuntimeError("INSTALL acknowledgement differs; never replay")
+        return reply
+
     def install(self, target: int, package: Package) -> None:
-        if package.manifest["profile"] == "zmk-studio" and target != 0:
-            raise ValueError("Studio development image supports LEFT installation only")
-        package.validate_application()
+        package.validate_target(target)
         before = self.inspect(target, package)
         if before.state != 0:
             raise RuntimeError(
@@ -360,7 +415,14 @@ class Updater:
             # Do not send ABORT after requesting INSTALL.
             committed = True
             try:
-                self.command(target, Op.INSTALL, session)
+                reply = self.request_install(target, session)
+                if (reply.size, reply.crc) != (
+                    len(package.image),
+                    package.manifest["app_crc"],
+                ):
+                    raise RuntimeError(
+                        "INSTALL image acknowledgement differs; never replay"
+                    )
             except (OSError, TimeoutError):
                 pass
         finally:
@@ -398,7 +460,12 @@ class Updater:
 
     def install_both(self, package: Package) -> None:
         package.validate_application()
-        if package.manifest["profile"] not in ("debug", "vial", "zmk"):
+        if package.manifest["profile"] not in (
+            "debug",
+            "vial",
+            "zmk",
+            "zmk-studio-universal",
+        ):
             raise ValueError(
                 "The left half must retain USB update support; use a debug, Vial or ZMK updater package for --target both"
             )
@@ -430,7 +497,8 @@ def main() -> None:
     if (
         not args.inspect
         and args.target != "right"
-        and package.manifest["profile"] not in ("debug", "vial", "zmk", "zmk-studio")
+        and package.manifest["profile"]
+        not in ("debug", "vial", "zmk", "zmk-studio", "zmk-studio-universal")
     ):
         parser.error(
             "Left updates require debug, Vial or ZMK updater firmware so completion can be verified over USB"

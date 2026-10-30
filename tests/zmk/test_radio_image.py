@@ -30,6 +30,12 @@ ASSEMBLY = """08002100 <hid_listener.constprop.0>:
 08002600 <zmk_usb_hid_init>:
  8002600: f000 f87e bl 8002700 <__wrap_usb_hid_register_device>
  8002604: 4770      bx lr
+08002800 <settings_backend_init>:
+ 8002800: f000 f87e bl 8002900 <gmk_wired_is_left>
+ 8002804: b108 cbz r0, 8002820 <settings_backend_init+0x20>
+ 8002806: f000 f87e bl 8002a00 <gmk_settings_store_mount>
+ 800280a: 4770 bx lr
+ 8002820: 4770 bx lr
 """
 
 

@@ -1,4 +1,4 @@
-"""Freeze a case offline, qualify both halves, request one LEFT INSTALL, observe return."""
+"""Freeze one target offline, qualify both halves, INSTALL once, observe return."""
 
 import argparse
 import hashlib
@@ -97,7 +97,7 @@ class QualifiedInstall:
     def _application(directory: Path) -> Package:
         package = Package.load(directory)
         if (
-            package.manifest["profile"] != "zmk-studio"
+            package.manifest["profile"] not in ("zmk-studio", "zmk-studio-universal")
             or package.manifest["boot_crc"] != ZMK_BOOT_CRC
             or not package.image.endswith(b"GMK70ZMKBOOT\x01\0\0\0")
         ):
@@ -114,6 +114,7 @@ class QualifiedInstall:
         before_left: tuple[int, int],
         before_right: tuple[int, int],
         source_commit: str,
+        target: int = 0,
     ) -> None:
         if re.fullmatch(r"[0-9a-fA-F]{40}", source_commit) is None:
             raise ValueError(
@@ -121,6 +122,7 @@ class QualifiedInstall:
             )
         metadata: dict[str, JsonValue] = {
             "source_commit": source_commit.lower(),
+            "target": target,
             "before": [
                 [before_left[0], before_left[1]],
                 [before_right[0], before_right[1]],
@@ -128,8 +130,9 @@ class QualifiedInstall:
         }
         before = cls._before(metadata)
         candidate = cls._application(package)
-        if (len(candidate.image), candidate.manifest["app_crc"]) == before[0]:
-            raise ValueError("Fresh case requires a distinct LEFT image")
+        candidate.validate_target(target)
+        if (len(candidate.image), candidate.manifest["app_crc"]) == before[target]:
+            raise ValueError("Fresh case requires a distinct selected-target image")
         case.mkdir(mode=0o700)
         operator = cls(case)
         (case / "package").mkdir(mode=0o700)
@@ -169,10 +172,12 @@ class QualifiedInstall:
                 raise ValueError("Frozen input changed")
         self._before(metadata)
         package = self._application(self._case / "package")
+        target = self._target(metadata)
+        package.validate_target(target)
         if (len(package.image), package.manifest["app_crc"]) == self._before(metadata)[
-            0
+            target
         ]:
-            raise ValueError("Candidate equals before LEFT identity")
+            raise ValueError("Candidate equals before selected-target identity")
         return (
             package,
             metadata,
@@ -180,33 +185,42 @@ class QualifiedInstall:
         )
 
     @staticmethod
+    def _target(metadata: dict[str, JsonValue]) -> int:
+        target = JsonSchema.uint(metadata.get("target", 0))
+        if target not in (0, 1):
+            raise ValueError("Frozen target must be LEFT or RIGHT")
+        return target
+
+    @staticmethod
     def _identities(
         reader: HealthReader,
         expected: tuple[tuple[int, int], tuple[int, int]],
         *,
-        left_info: Reply | None = None,
+        sealed_info: Reply | None = None,
+        install_target: int = 0,
         session: int = 0,
         received: int = 0,
     ) -> None:
-        if left_info is not None and (
-            left_info.operation != Op.INFO
-            or left_info.result
-            or left_info.state != 2
-            or left_info.session != session
+        if sealed_info is not None and (
+            sealed_info.operation != Op.INFO
+            or sealed_info.result
+            or sealed_info.state != 2
+            or sealed_info.session != session
             or not session
-            or left_info.received != received
+            or sealed_info.received != received
         ):
-            raise RuntimeError("Sealed LEFT updater context changed")
+            raise RuntimeError("Sealed selected-target updater context changed")
         for target in (0, 1):
             reply = (
-                left_info
-                if target == 0 and left_info is not None
+                sealed_info
+                if target == install_target and sealed_info is not None
                 else reader.identity(target)
             )
             if (
                 (reply.size, reply.crc) != expected[target]
                 or reply.role != (0 if target else 3)
-                or reply.state != (2 if target == 0 and left_info is not None else 0)
+                or reply.state
+                != (2 if target == install_target and sealed_info is not None else 0)
                 or reply.abi != 1
                 or reply.boot_crc != ZMK_BOOT_CRC
             ):
@@ -289,18 +303,21 @@ class QualifiedInstall:
         if updated and self._read("INSTALL-requested.json")["freeze_sha256"] != digest:
             raise ValueError("Install marker belongs to another case")
         before = self._before(metadata)
-        expected = (
-            ((len(package.image), package.manifest["app_crc"]), before[1])
-            if updated
-            else before
+        target = self._target(metadata)
+        expected = tuple(
+            (len(package.image), package.manifest["app_crc"])
+            if updated and side == target
+            else before[side]
+            for side in (0, 1)
         )
+        expected_pair = (expected[0], expected[1])
         deadline = time.monotonic() + 80
         while True:
             link: Link | None = None
             try:
                 link = self._link_factory()
                 reader = HealthReader(link)
-                self._identities(reader, expected)
+                self._identities(reader, expected_pair)
                 if updated and time.monotonic() >= deadline:
                     raise TimeoutError(
                         "Image return exceeded the 80-second admission bound"
@@ -322,7 +339,7 @@ class QualifiedInstall:
             )
             proof = JsonSchema.mapping(value)
             self._report(proof)
-            self._identities(reader, expected)
+            self._identities(reader, expected_pair)
             samples = [self._sample(reader, target) for target in (0, 1)]
             self._clean(reader)
             proof.update(
@@ -343,6 +360,7 @@ class QualifiedInstall:
 
     def install(self) -> None:
         package, metadata, digest = self._load()
+        target = self._target(metadata)
         marker = self._case / "INSTALL-requested.json"
         if marker.exists():
             raise FileExistsError("INSTALL already requested; never replay")
@@ -359,7 +377,7 @@ class QualifiedInstall:
             self._identities(reader, self._before(metadata))
             self._qualified(reader, proof)
             updater.command(
-                0,
+                target,
                 Op.BEGIN,
                 session,
                 data=struct.pack(
@@ -371,22 +389,23 @@ class QualifiedInstall:
                 self._age(proof)
                 data = package.image[offset : offset + 16]
                 if updater.command(
-                    0, Op.DATA, session, offset, data
+                    target, Op.DATA, session, offset, data
                 ).received != offset + len(data):
                     raise RuntimeError("Staged offset differs from exact image")
-            seal = updater.command(0, Op.SEAL, session)
+            seal = updater.command(target, Op.SEAL, session)
             if seal.state != 2 or (seal.size, seal.crc) != (
                 len(package.image),
                 package.manifest["app_crc"],
             ):
                 raise RuntimeError("Sealed image identity differs")
             self._load()
-            # INFO identifies the running application while retaining LEFT's
-            # sealed state/session. RIGHT must remain idle on the same image.
+            # Selected INFO retains its sealed state/session and running image.
+            # Its peer must remain idle on the exact qualified application.
             self._identities(
                 reader,
                 self._before(metadata),
-                left_info=updater.command(0, Op.INFO),
+                sealed_info=updater.command(target, Op.INFO),
+                install_target=target,
                 session=session,
                 received=len(package.image),
             )
@@ -394,7 +413,7 @@ class QualifiedInstall:
             self._save(
                 marker.name,
                 {
-                    "target": 0,
+                    "target": target,
                     "session": session,
                     "size": len(package.image),
                     "crc": package.manifest["app_crc"],
@@ -403,31 +422,13 @@ class QualifiedInstall:
                 },
             )
             self._age(proof)
-            # Never pass INSTALL to Updater.command: its retry path can replay it.
-            reply: Reply | None = None
-            try:
-                reply = Reply.decode(
-                    link.exchange(Updater.packet(0, Op.INSTALL, session)), 0
-                )
-            except OSError:
-                pass
-            deadline = time.monotonic() + 5
-            while reply is None or reply.result == 1:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        "INSTALL outcome unknown; observe without replay"
-                    )
-                time.sleep(0.005)
-                try:
-                    reply = Reply.decode(link.exchange(Updater.packet(0, Op.STATUS)), 0)
-                except OSError:
-                    reply = None
+            reply = updater.request_install(target, session)
             if (
                 reply.result
                 or reply.operation != Op.INSTALL
                 or reply.session != session
                 or reply.state != 3
-                or reply.role != 3
+                or reply.role != (0 if target else 3)
                 or reply.abi != 1
                 or reply.boot_crc != 0
                 or (reply.size, reply.crc)
@@ -437,7 +438,7 @@ class QualifiedInstall:
             self._save(
                 "INSTALL-ack.json",
                 {
-                    "target": 0,
+                    "target": target,
                     "session": session,
                     "size": reply.size,
                     "crc": reply.crc,
@@ -445,13 +446,13 @@ class QualifiedInstall:
                 },
             )
             print(
-                "One LEFT INSTALL acknowledged; independent read-only observation required",
+                f"One {'RIGHT' if target else 'LEFT'} INSTALL acknowledged; independent read-only observation required",
                 flush=True,
             )
         finally:
             try:
                 if begun and not marker.exists():
-                    updater.command(0, Op.ABORT, session)
+                    updater.command(target, Op.ABORT, session)
             finally:
                 link.close()
 
@@ -466,6 +467,7 @@ def main() -> None:
     parser.add_argument("--source-commit")
     parser.add_argument("--before-left", type=int, nargs=2, metavar=("SIZE", "CRC"))
     parser.add_argument("--before-right", type=int, nargs=2, metavar=("SIZE", "CRC"))
+    parser.add_argument("--target", choices=("left", "right"))
     args = parser.parse_args()
     case: Path = args.case
     if args.action == "create-case":
@@ -478,9 +480,14 @@ def main() -> None:
                 "create-case requires package, source commit and both before size/CRC pairs"
             )
         QualifiedInstall.create_case(
-            case, package, (left[0], left[1]), (right[0], right[1]), commit
+            case,
+            package,
+            (left[0], left[1]),
+            (right[0], right[1]),
+            commit,
+            target=int(args.target == "right"),
         )
-        print("Offline frozen LEFT-only case created; no device accessed")
+        print("Offline frozen single-target case created; no device accessed")
     else:
         if any(
             value is not None
@@ -489,6 +496,7 @@ def main() -> None:
                 args.source_commit,
                 args.before_left,
                 args.before_right,
+                args.target,
             )
         ):
             parser.error("Device operations accept only their frozen --case")

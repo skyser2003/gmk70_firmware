@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "settings_backend.h"
 #include "settings_store.h"
+#include "../wired/wired.h"
 #include <errno.h>
 #include <string.h>
 #include <zephyr/kernel.h>
@@ -123,7 +124,12 @@ void gmk_zmk_settings_poll(const gmk_zmk_update_env_t *env) {
 static const struct settings_store_itf itf     = {.csi_load = load, .csi_save = save};
 static struct settings_store           backend = {.cs_itf = &itf};
 int                                    settings_backend_init(void) {
-    int result = gmk_settings_store_mount(&store, (const uint8_t *)SETTINGS_BASE, write_page, NULL);
+    /* A universal peripheral has no central settings owner. Do not even read
+     * its application tail: it can contain unrelated historical firmware.
+     * Native behavior-ID commits may assign RAM IDs; their saves fail below
+     * before claiming storage or queueing work, so startup cannot deadlock. */
+    int result = -ENODEV;
+    if (gmk_wired_is_left()) result = gmk_settings_store_mount(&store, (const uint8_t *)SETTINGS_BASE, write_page, NULL);
     /* Register even on failure so generic settings calls fail explicitly.
      * Never format unknown nonblank storage or touch external Vial SPI. */
     settings_src_register(&backend);

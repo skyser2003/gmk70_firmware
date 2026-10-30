@@ -75,7 +75,7 @@ class ZmkFixtureIndependenceTests(unittest.TestCase):
 
 def package(profile: str = "debug") -> Package:
     value = fixture_package(profile)
-    if profile == "zmk":
+    if profile in ("zmk", "zmk-studio", "zmk-studio-universal"):
         value.manifest["boot_crc"] = ZMK_BOOT_CRC
         value.manifest["boot_sha256"] = ZMK_BOOT_SHA256
     return value
@@ -89,6 +89,65 @@ class FakeLink(OriginalFakeLink):
 
 
 class ZmkPackageTests(unittest.TestCase):
+    def test_universal_installs_identical_application_on_both_targets(self) -> None:
+        candidate = package("zmk-studio-universal")
+        link = FakeLink()
+        with patch("update.time.sleep"):
+            Updater(link).install_both(candidate)
+        self.assertEqual(
+            [target for target, op in link.operations if op == Op.INSTALL], [1, 0]
+        )
+        self.assertEqual(bytes(link.data[0]), candidate.image)
+        self.assertEqual(bytes(link.data[1]), candidate.image)
+
+    def test_universal_profile_requires_studio_bound_and_pinned_resident(self) -> None:
+        value = package("zmk")
+        value.manifest["profile"] = "zmk-studio-universal"
+        value.validate_application()
+        for corruption in ("resident", "range"):
+            manifest = value.manifest.copy()
+            image = value.image
+            if corruption == "resident":
+                manifest["boot_crc"] ^= 1
+            else:
+                image += bytes(0x1A004 - len(image))
+                manifest["app_size"] = len(image)
+                manifest["app_crc"] = zlib.crc32(image)
+                manifest["app_sha256"] = hashlib.sha256(image).hexdigest()
+            with self.subTest(corruption=corruption), self.assertRaises(ValueError):
+                Package(image, manifest).validate_application()
+
+    def test_only_role_validated_studio_report_emits_universal_package(self) -> None:
+        with synthetic_resident_identity(), tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image, resident, report = (
+                root / name for name in ("app.bin", "boot.bin", "report.json")
+            )
+            payload = package("zmk").image
+            image.write_bytes(payload)
+            resident.write_bytes(SYNTHETIC_RESIDENT)
+            checked: dict[str, JsonValue] = {
+                "board": "gmk70_wired",
+                "variant": "wired-studio-updater",
+                "load_address": 0x08002000,
+                "bytes": 1024,
+                "image_end": 0x08002400,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "main_wrapper": "absent",
+                "trial_backend": "absent",
+                "runtime_roles": ["left", "right"],
+            }
+            report.write_text(json.dumps(checked))
+            build(image, resident, report, root / "universal")
+            self.assertEqual(
+                Package.load(root / "universal").manifest["profile"],
+                "zmk-studio-universal",
+            )
+            for roles in (["left"], ["right"], ["left", "right", "other"]):
+                report.write_text(json.dumps(checked | {"runtime_roles": roles}))
+                with self.subTest(roles=roles), self.assertRaises(ValueError):
+                    build(image, resident, report, root / "bad")
+
     def test_production_pins_are_the_reviewed_resident_identity(self) -> None:
         expected_sha = (
             "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a"
