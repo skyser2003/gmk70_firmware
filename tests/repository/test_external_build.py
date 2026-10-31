@@ -88,6 +88,28 @@ class ExternalGeneratorTests(unittest.TestCase):
                 self.assertEqual("stock_eeprom.c" in sources, platform == "via")
                 self.assertIn("-Wl,--wrap=rgb_matrix_set_color", result)
 
+    def test_both_frameworks_enable_common_hardware_hooks(self) -> None:
+        for framework in ("qmk", "vial-qmk"):
+            with (
+                self.subTest(framework=framework),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                result = self.make(
+                    framework,
+                    Path(temporary),
+                    "--eval=gmk70-test-hardware: ; @printf '%s\\n' 'SOURCES=$(SRC)' 'LINK_FLAGS=$(LDFLAGS)'",
+                    "gmk70-test-hardware",
+                )
+                sources = next(
+                    line.removeprefix("SOURCES=")
+                    for line in result.splitlines()
+                    if line.startswith("SOURCES=")
+                ).split()
+                self.assertEqual(sources.count("hardware.c"), 1)
+                self.assertNotIn("battery_indicators.c", sources)
+                for task in ("housekeeping_task", "rgb_matrix_task"):
+                    self.assertIn(f"-Wl,--wrap={task}", result)
+
     def test_linker_script_edit_invalidates_cached_elf(self) -> None:
         for framework in ("qmk", "vial-qmk"):
             with (

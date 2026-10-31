@@ -5,56 +5,14 @@
 #include "eeprom.h"
 #include "stock_v15_fixture.h"
 #include "wireless.h"
-#include "stock_power.h"
-#include "lowpower.h"
 
-static bool         native_enabled;
-static uint32_t     marker;
-static unsigned     writes, forwarded, replies;
-static unsigned     key_activity, wired_wake, user_calls;
-static uint8_t      device       = DEVS_BT1;
-static bool         user_accepts = true;
-static bool         rgb_enabled, rgb_suspended, battery_requested;
-static unsigned     led_pins, pin_writes, housekeeping_calls;
-static lpwr_state_t power_state = LPWR_NORMAL;
-uint8_t             rgb_matrix_is_enabled(void) {
-    return rgb_enabled;
-}
-bool rgb_matrix_get_suspend_state(void) {
-    return rgb_suspended;
-}
-bool gmk70_vial_battery_indicator_requested(void) {
-    return battery_requested;
-}
-lpwr_state_t lpwr_get_state(void) {
-    return power_state;
-}
-void gpio_write_pin(unsigned pin, bool enabled) {
-    assert(pin == LED_POWER_EN_PIN || pin == LED_POWER_EN2_PIN);
-    if (enabled)
-        led_pins |= 1u << pin;
-    else
-        led_pins &= ~(1u << pin);
-    ++pin_writes;
-}
-void __real_housekeeping_task(void) {
-    ++housekeeping_calls;
-}
-void    __wrap_housekeeping_task(void);
-uint8_t wireless_get_current_devs(void) {
+static bool     native_enabled;
+static uint32_t marker;
+static unsigned writes, forwarded, replies;
+static uint8_t  device = DEVS_BT1;
+uint8_t         wireless_get_current_devs(void) {
     return device;
 }
-void lpwr_activity_trigger(void) {
-    ++key_activity;
-}
-void usb_remote_host(void) {
-    ++wired_wake;
-}
-bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
-    ++user_calls;
-    return user_accepts;
-}
-bool pre_process_record_kb(uint16_t keycode, keyrecord_t *record);
 bool __real_nvm_eeconfig_is_enabled(void) {
     return native_enabled;
 }
@@ -130,86 +88,6 @@ int main(void) {
     assert(stock_v15_fixture.activity == activity && forwarded == before);
     assert(replies == 19 && writes == 1);
 
-    // A physical combo/repeat trigger can be consumed before process_record_kb.
-    // Both halves' presses must still refresh activity and prevent idle sleep.
-    for (unsigned row = 0; row < MATRIX_ROWS; ++row) {
-        stock_power_reset_keys();
-        keyrecord_t key             = {.event = {.key = {.row = row, .col = 1}, .type = KEY_EVENT, .pressed = true}};
-        unsigned    activity_before = key_activity;
-        user_accepts                = false;
-        assert(!pre_process_record_kb(4, &key));
-        assert(key_activity == activity_before + 1 && !stock_power_prepare_allowed(false));
-        // Vial's virtual macro position, combo output and encoder events cannot
-        // decrement the held physical key count, even with unbalanced releases.
-        const keyevent_t synthetic[] = {
-            {.key = {.row = 240, .col = 240}, .type = KEY_EVENT}, {.type = COMBO_EVENT}, {.type = ENCODER_CW_EVENT}, {.type = ENCODER_CCW_EVENT}, {.key = {.row = MATRIX_ROWS, .col = 0}, .type = KEY_EVENT}, {.key = {.row = 0, .col = MATRIX_COLS}, .type = KEY_EVENT},
-        };
-        for (unsigned i = 0; i < sizeof(synthetic) / sizeof(synthetic[0]); ++i) {
-            keyrecord_t output = {.event = synthetic[i]};
-            pre_process_record_kb(4, &output);
-            assert(!stock_power_prepare_allowed(false) && key_activity == activity_before + 1);
-        }
-        key.event.pressed = false;
-        pre_process_record_kb(4, &key);
-        assert(stock_power_prepare_allowed(false) && key_activity == activity_before + 1);
-    }
-    user_accepts        = true;
-    device              = DEVS_USB;
-    keyrecord_t encoder = {.event = {.type = ENCODER_CW_EVENT, .pressed = true}};
-    assert(pre_process_record_kb(4, &encoder));
-    assert(wired_wake == 1 && stock_power_prepare_allowed(false));
-    keyrecord_t    tick            = {.event = {.type = TICK_EVENT, .pressed = true}};
-    const unsigned activity_before = key_activity, calls_before = user_calls;
-    assert(pre_process_record_kb(4, &tick));
-    assert(wired_wake == 1 && key_activity == activity_before && user_calls == calls_before + 1);
-
-    // The slave can boot with RGB disabled in its local EEPROM. Native split
-    // sync replaces that RAM setting with the enabled master setting, without
-    // calling the board's physical RGB Toggle handler or changing LED power.
-    const unsigned both_pins              = (1u << LED_POWER_EN_PIN) | (1u << LED_POWER_EN2_PIN);
-    const unsigned writes_before_lighting = writes;
-    rgb_enabled                           = true;
-    assert(led_pins == 0);
-    __wrap_housekeeping_task();
-    assert(led_pins == both_pins && housekeeping_calls == 1);
-
-    // Native VialRGB Off/On also bypasses the stock toggle RPC. Hardware power
-    // must follow the resulting config on both halves, with no EEPROM writes.
-    rgb_enabled = false;
-    __wrap_housekeeping_task();
-    assert(led_pins == 0);
-    rgb_enabled = true;
-    __wrap_housekeeping_task();
-    assert(led_pins == both_pins);
-    rgb_suspended = true;
-    __wrap_housekeeping_task();
-    assert(led_pins == 0);
-    rgb_suspended = false;
-    __wrap_housekeeping_task();
-    assert(led_pins == both_pins);
-    assert(writes == writes_before_lighting);
-
-    // Sleep preparation and recovery own the pins outside NORMAL. A master's
-    // still-enabled config must not undo the slave's STOP/critical power-down.
-    const unsigned pin_writes_before_sleep = pin_writes;
-    led_pins                               = 0;
-    for (power_state = LPWR_PRESLEEP; power_state <= LPWR_WAKEUP; ++power_state) {
-        __wrap_housekeeping_task();
-        assert(led_pins == 0 && pin_writes == pin_writes_before_sleep);
-    }
-    power_state = LPWR_NORMAL;
-    __wrap_housekeeping_task();
-    assert(led_pins == both_pins && housekeeping_calls == 9);
-
-    // A held battery query needs LED power while the saved RGB state is off.
-    rgb_enabled       = false;
-    battery_requested = true;
-    __wrap_housekeeping_task();
-    assert(led_pins == both_pins && !rgb_enabled);
-    battery_requested = false;
-    __wrap_housekeeping_task();
-    assert(led_pins == 0 && !rgb_enabled);
-    puts("PASS: Vial schema isolation, native protocol/unlock routing, packet bounds and physical activity before consumed/synthetic events");
-    puts("PASS: Vial split RGB power recovery, native Off/On, suspend and sleep ownership without EEPROM writes");
+    puts("PASS: Vial schema isolation, native protocol/unlock routing and packet bounds");
     return 0;
 }

@@ -5,10 +5,6 @@
 #include "usb_endpoints.h"
 #include "raw_hid.h"
 #include "wireless.h"
-#include "stock_power.h"
-#include "lowpower.h"
-#include "rgb_matrix.h"
-#include "battery_indicators.h"
 #ifdef GMK70_RADIO_DIAGNOSTICS
 #    include "via.h"
 #    include "nvm_via.h"
@@ -68,31 +64,6 @@ bool gmk_update_usb_authorized(uint8_t operation) {
 bool __real_nvm_eeconfig_is_enabled(void);
 void __real_nvm_eeconfig_enable(void);
 void __real_raw_hid_receive(uint8_t *data, uint8_t length);
-void __real_housekeeping_task(void);
-
-void __wrap_housekeeping_task(void) {
-    __real_housekeeping_task();
-    // Native split RGB sync copies config directly, and VialRGB changes it
-    // without the stock C1/C2 toggle RPC. Reconcile each half's LED supply after
-    // those updates, including a slave that booted with RGB disabled locally.
-    // Stock sleep/wake callbacks retain ownership outside normal operation.
-    if (lpwr_get_state() != LPWR_NORMAL) return;
-    bool enabled = (rgb_matrix_is_enabled() || gmk70_vial_battery_indicator_requested()) && !rgb_matrix_get_suspend_state();
-    gpio_write_pin(LED_POWER_EN_PIN, enabled);
-    gpio_write_pin(LED_POWER_EN2_PIN, enabled);
-}
-
-bool pre_process_record_kb(uint16_t keycode, keyrecord_t *record) {
-    // Run once, before combos, tap dance and repeat keys consume/replay events.
-    // Synthetic output must not release the stock physical held-key counter.
-    if (IS_EVENT(record->event)) {
-        if (wireless_get_current_devs() == DEVS_USB) usb_remote_host();
-        if (record->event.pressed) lpwr_activity_trigger();
-        if (IS_KEYEVENT(record->event) && record->event.key.row < MATRIX_ROWS && record->event.key.col < MATRIX_COLS) stock_power_key(record->event.pressed);
-    }
-    return pre_process_record_user(keycode, record);
-}
-
 bool __wrap_nvm_eeconfig_is_enabled(void) {
     // Native Vial settings do not share stock V15's packed EEPROM layout.
     return __real_nvm_eeconfig_is_enabled() && eeprom_read_dword(GMK70_VIAL_SCHEMA_ADDR) == GMK70_VIAL_SCHEMA_MAGIC;

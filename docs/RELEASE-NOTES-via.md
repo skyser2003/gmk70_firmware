@@ -1,5 +1,10 @@
 GMK70 QMK/VIA firmware, built from the commit selected by this VIA tag.
 
+VIA and Vial now share the GMK70 hardware hooks. Held battery/charging indicators
+can display while RGB is off, and physical LED power follows GUI and split RGB
+changes. Temporary indicators leave saved lighting settings unchanged. Physical
+key activity is tracked before features consume or replay events.
+
 - Normal images: `gmk70-via-release` and `gmk70-via-debug`.
 - Split updater packages: `gmk70-via-release-updater` and `gmk70-via-debug-updater`.
 - Each `.tar.gz` includes firmware, ELF/map files, dependency pins, build information, checksums and matching `source.tar.gz`.

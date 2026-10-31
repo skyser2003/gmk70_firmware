@@ -11,10 +11,11 @@ bool                bat_full_flag;
 static bool         cable, enabled, suspended, right;
 static lpwr_state_t state;
 static uint32_t     now;
-static unsigned     power, flushes, native_calls;
+static unsigned     power, power_writes, flushes, native_calls;
+static unsigned     housekeeping_calls;
 static uint8_t      frame[77][3], shown[77][3];
 void                __wrap_rgb_matrix_task(void);
-bool                gmk70_vial_battery_indicator_requested(void);
+void                __wrap_housekeeping_task(void);
 
 bool gmk70_stock_cable_flag(void) {
     return cable;
@@ -37,8 +38,12 @@ uint32_t timer_elapsed32(uint32_t previous) {
 void __real_rgb_matrix_task(void) {
     ++native_calls;
 }
+void __real_housekeeping_task(void) {
+    ++housekeeping_calls;
+}
 void gpio_write_pin(unsigned pin, bool on) {
     assert(pin == LED_POWER_EN_PIN || pin == LED_POWER_EN2_PIN);
+    ++power_writes;
     if (on)
         power |= 1u << pin;
     else
@@ -123,7 +128,6 @@ int main(void) {
         // No charging color without a cable. Normal animations keep their task.
         cable = false;
         request(0xF0);
-        assert(!gmk70_vial_battery_indicator_requested());
         old_flushes = flushes;
         next_frame();
         assert(flushes == old_flushes && power == 0);
@@ -155,5 +159,34 @@ int main(void) {
         assert_black();
         assert(power == 0);
     }
+    // A GUI or split update must restore rails even when the slave booted off.
+    enabled = true;
+    __wrap_housekeeping_task();
+    assert(power == both && housekeeping_calls == 1);
+    enabled = false;
+    __wrap_housekeeping_task();
+    assert(power == 0);
+    enabled   = true;
+    suspended = true;
+    __wrap_housekeeping_task();
+    assert(power == 0);
+    suspended = false;
+    __wrap_housekeeping_task();
+    assert(power == both);
+    const unsigned writes_before_sleep = power_writes;
+    for (state = LPWR_PRESLEEP; state <= LPWR_WAKEUP; ++state) {
+        power = 0;
+        __wrap_housekeeping_task();
+        assert(power == 0 && power_writes == writes_before_sleep);
+    }
+    state   = LPWR_NORMAL;
+    enabled = false;
+    request(0xA4);
+    __wrap_housekeeping_task();
+    assert(power == both && !enabled);
+    request(0xA5);
+    __wrap_housekeeping_task();
+    assert(power == 0 && !enabled);
     puts("PASS: RGB-off battery/charging frames, both halves, flush limit, release clearing and sleep/suspend ownership");
+    puts("PASS: shared split/GUI RGB power recovery and native housekeeping dispatch");
 }

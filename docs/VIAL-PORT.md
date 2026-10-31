@@ -98,7 +98,8 @@ Caps Word, Layer Lock and Repeat keys are available for assignment without
 replacing the stock default keymap. VialRGB uses the native fork's lighting API;
 matching every stock lighting control or animation across forks is unverified.
 
-During normal operation, each half reconciles its LED power switches with the
+VIA and Vial compile the same `qmk-common/keyboards/zuoya/gmk70/hardware.c`
+hooks. During normal operation, each half reconciles its LED power switches with the
 native synchronized RGB enable and suspend state. Held battery-level and
 charging-status queries also power the LEDs and render their indicators when
 RGB is off. Releasing the query clears the temporary frame and restores darkness
@@ -117,12 +118,12 @@ knob button below these controls edits its press action independently. The
 embedded layout uses Vial's separate encoder-direction entries; the stock VIA
 definition and physical matrix layout remain unchanged.
 
-The Vial adapter tracks activity and physical held keys in
+The shared hardware hook tracks activity and physical held keys in
 `pre_process_record_kb`, before combos and tapping can consume/replay records.
 Synthetic combo/macro/repeat output does not decrement physical held keys.
 This preserves the board's idle-sleep gate while using advanced features and
-requests wired host wake even when a key is consumed by a feature. QMK/VIA
-keeps its original hook. The stock four-key saturation policy is unchanged.
+requests wired host wake even when a key is consumed by a feature. VIA and Vial
+use this same early hook; the stock four-key saturation policy is unchanged.
 
 ## EEPROM boundary
 
