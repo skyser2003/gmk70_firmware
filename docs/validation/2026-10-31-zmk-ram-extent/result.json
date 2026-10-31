@@ -1,0 +1,120 @@
+{
+  "date": "2026-10-31",
+  "base_commit": "1eae97b52f24ba630d51a72c9265e0e53eda401a",
+  "source_commit_of_recorded_installation": "bf0ccad85030f886e39aa13c0663e8c022aab654",
+  "toolchain": "xPack arm-none-eabi GCC 14.2.1 20241119",
+  "before": {
+    "linker_capacity": 27648,
+    "allocated": 27576,
+    "unallocated": 72
+  },
+  "after": {
+    "linker_capacity": 28544,
+    "allocated": 27576,
+    "unallocated": 968
+  },
+  "recovered_bytes": 896,
+  "application_bytes": 79624,
+  "application_sha256": "1e3cfa64060fbbeb7832dd8f5545d45bdba1cd4c6c212cfb2d38bf633739a1d9",
+  "application_matches_recorded_installation": true,
+  "all_linked_ram_objects_keep_addresses_and_sizes": true,
+  "ram_object_count": 245,
+  "resident_padded_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a",
+  "resident_padded_crc32": 1770733249,
+  "offline_checks": [
+    "make test",
+    "make test-zmk",
+    "make check-tools",
+    "nine ZMK builds and image checks",
+    "native linker allocation/overflow fixtures",
+    "pinned dependency verification",
+    "binary and RAM object comparison"
+  ],
+  "variants": {
+    "wired-studio-updater": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 27576,
+      "ram_unallocated": 968,
+      "bytes": 79624,
+      "sha256": "1e3cfa64060fbbeb7832dd8f5545d45bdba1cd4c6c212cfb2d38bf633739a1d9"
+    },
+    "wired-updater": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 17280,
+      "ram_unallocated": 11264,
+      "bytes": 43724,
+      "sha256": "ce284cd8e47c1a0a910636d6cfccc56bf3514b80f5654ad7bcab32ce602eaa35"
+    },
+    "wired-peripheral": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 17288,
+      "ram_unallocated": 11256,
+      "bytes": 43732,
+      "sha256": "d460a53c16cc137329d16004f85243da70b4a9df68d7c17a02938b1fbd1d5227"
+    },
+    "wired-update-test": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 17304,
+      "ram_unallocated": 11240,
+      "bytes": 43748,
+      "sha256": "724441ddb1ab4b4d57a2530a8b5da713ab8983a861cfbd442c025c3a6761f715"
+    },
+    "wired-studio-update-test": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 27592,
+      "ram_unallocated": 952,
+      "bytes": 79640,
+      "sha256": "c2cc7488f351739fc38b358ff1a4fd327b4d6b60d293ab9881cbbc9fa71bdba9"
+    },
+    "wired-studio-radio-qualification": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 27600,
+      "ram_unallocated": 944,
+      "bytes": 80132,
+      "sha256": "3a8b5ac817cc6e2752d5896e36d05a06e77ce03062d0a5f8c955b7869f7b00d8"
+    },
+    "wired-qualification": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 17312,
+      "ram_unallocated": 11232,
+      "bytes": 43584,
+      "sha256": "bd13f883d1c4e24b00a4ac8818c8eaaf49781cabe5d0533e7a61568c78ef91fb"
+    },
+    "left-trial": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 8608,
+      "ram_unallocated": 19936,
+      "bytes": 27624,
+      "sha256": "2261ebca1e3a51b70c7507f6e0a302890fece9b4a8824242642246a8d6248643"
+    },
+    "right-trial": {
+      "ram_start": 536870976,
+      "ram_limit": 536899520,
+      "ram_capacity": 28544,
+      "ram_used": 8664,
+      "ram_unallocated": 19880,
+      "bytes": 27840,
+      "sha256": "b7faa5bdf4f4e6e2559ce676ed6cd0abbaf29957ab8fc67b5eff7179694b8ac6"
+    }
+  },
+  "device_operations": false,
+  "hardware_test": "Not run: cloud has no PC USB/remote command access.",
+  "no_reflash_required_for_recorded_application": true,
+  "remaining_limit": "No new RAM-cell or runtime stack-watermark measurement; current binary does not allocate the recovered tail."
+}

@@ -15,6 +15,29 @@ RAM_START = 0x20000040
 RAM_END = 0x20006FC0
 
 
+def validate_ram_symbols(symbols: dict[str, int]) -> dict[str, int]:
+    """Require the full byte extent and both retained-memory exclusions."""
+    expected = {
+        "__gmk_ram_start": RAM_START,
+        "__gmk_ram_end": RAM_END,
+        "__kernel_ram_end": RAM_END,
+        "_image_ram_start": RAM_START,
+    }
+    for name, value in expected.items():
+        if symbols.get(name) != value:
+            raise ValueError(f"Wrong or missing byte-accurate RAM boundary: {name}")
+    end = symbols.get("_image_ram_end", 0)
+    if not RAM_START <= end <= RAM_END:
+        raise ValueError("Image allocation exceeds admitted RAM")
+    return {
+        "ram_start": RAM_START,
+        "ram_limit": RAM_END,
+        "ram_capacity": RAM_END - RAM_START,
+        "ram_used": end - RAM_START,
+        "ram_unallocated": RAM_END - end,
+    }
+
+
 def validate_radio_linking(
     symbols: set[str], disassembly: str, variant: str | None
 ) -> None:
@@ -268,6 +291,15 @@ def check(
         ["arm-none-eabi-nm", "--defined-only", str(elf)], text=True
     )
     symbol_names = {line.split()[-1] for line in symbols.splitlines() if line.split()}
+    result.update(
+        validate_ram_symbols(
+            {
+                parts[-1]: int(parts[0], 16)
+                for line in symbols.splitlines()
+                if len(parts := line.split()) == 3
+            }
+        )
+    )
     for name in (
         "zmk_keymap_position_state_changed",
         "zmk_usb_get_conn_state",
@@ -429,6 +461,7 @@ def check_wired(
         for line in lines.splitlines()
         if len(parts := line.split()) == 3
     }
+    result.update(validate_ram_symbols(symbols))
     for name in (
         "main",
         "__gmk_image_end",

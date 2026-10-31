@@ -183,6 +183,10 @@ class RadioImageTests(unittest.TestCase):
                 "__rom_region_start": base,
                 "__gmk_image_end": base + size,
                 "_flash_used": size,
+                "__gmk_ram_start": 0x20000040,
+                "__gmk_ram_end": 0x20006FC0,
+                "__kernel_ram_end": 0x20006FC0,
+                "_image_ram_start": 0x20000040,
                 "_image_ram_end": 0x20006F00,
             }
         )

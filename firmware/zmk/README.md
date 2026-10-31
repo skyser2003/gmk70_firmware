@@ -1,5 +1,9 @@
 # GMK70 ZMK wired development and staging trials
 
+The [exact RAM extent](../../docs/ZMK-RAM-EXTENT.md) exposes 28,544 bytes while
+preserving both retained records. The recorded universal image keeps identical
+application bytes and gains 896 bytes of available space for future allocations.
+
 Current checkpoint: [battery indicators and saved layout import](../../docs/ZMK-BATTERY-LAYOUT.md)
 installs LEFT 74,020/3805544436 with RIGHT unchanged at 43,752/2368050678.
 Battery telemetry and both visible held actions work. The user's 275 supported
