@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+config GMK70_NKRO
+    bool
+    depends on BOARD_GMK70_WIRED && ZMK_USB
+    default y
+    select ZMK_HID_KEYBOARD_NKRO_EXTENDED_REPORT
+    select ZMK_USB_BOOT
+    help
+      Native NKRO and USB boot fallback, with a Studio-assignable toggle.
+      Disabled mode limits reports to six ordinary keys without changing
+      the report descriptor. Studio builds remember the mode using the
+      existing gated settings backend; other profiles are runtime-only.

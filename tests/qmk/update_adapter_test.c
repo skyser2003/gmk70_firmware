@@ -381,6 +381,207 @@ static void test_buffered_data_mode_and_timeout(void) {
     assert(!gmk_update_active() && flash_writes == 1 && !resets);
 }
 
+static void test_readonly_and_rejected_traffic_does_not_renew_lease(void) {
+    const uint8_t operations[] = {GMK_INFO, GMK_SEAL, GMK_INSTALL, GMK_ABORT};
+    for (unsigned i = 0; i < sizeof(operations); ++i) {
+        fixture();
+        left = master = false;
+        uint8_t packet[32], response[32];
+        begin(packet, 1);
+        rpc(32, packet, 32, response);
+        gmk_update_task();
+        assert(flash_writes == 1 && gmk_update_active());
+        now += 9000;
+        query(packet, 1, operations[i], 99, 0, 0);
+        rpc(32, packet, 32, response);
+        assert(response[5] == GMK_BUSY);
+        gmk_update_task();
+        query(packet, 1, GMK_STATUS, 0, 0, 0);
+        rpc(32, packet, 32, response);
+        assert(response[5] == (operations[i] == GMK_INFO ? GMK_OK : GMK_BAD_STATE));
+        assert(gmk_update_active());
+        now += 1001;
+        gmk_update_task();
+        assert(!gmk_update_active() && flash_writes == 1 && !resets);
+    }
+}
+
+static void test_expiry_precedes_pending_command(void) {
+    const uint8_t operations[] = {GMK_INFO, GMK_SEAL, GMK_DATA};
+    for (unsigned i = 0; i < sizeof(operations); ++i) {
+        fixture();
+        left = master = false;
+        uint8_t packet[32], response[32];
+        begin(packet, 1);
+        rpc(32, packet, 32, response);
+        gmk_update_task();
+        if (operations[i] == GMK_DATA) {
+            for (unsigned offset = 0; offset < 256; offset += 16) {
+                query(packet, 1, GMK_DATA, 42, offset, 16);
+                rpc(32, packet, 32, response);
+                assert(response[5] == (offset == 240 ? GMK_BUSY : GMK_OK));
+            }
+        } else {
+            query(packet, 1, operations[i], 42, 0, 0);
+            rpc(32, packet, 32, response);
+            assert(response[5] == GMK_BUSY);
+        }
+        now += 10001;
+        gmk_update_task();
+        query(packet, 1, GMK_STATUS, 0, 0, 0);
+        rpc(32, packet, 32, response);
+        assert(response[4] == operations[i] && response[6] == GMK_IDLE);
+        assert(response[5] == (operations[i] == GMK_INFO ? GMK_OK : GMK_BAD_STATE));
+        assert(!gmk_update_active() && flash_writes == 1 && !resets);
+    }
+}
+
+static void test_deferred_peer_role_and_wired_gates(void) {
+    for (unsigned gate = 0; gate < 3; ++gate) {
+        fixture();
+        left = master = false;
+        uint8_t packet[32], response[32];
+        begin(packet, 1);
+        rpc(32, packet, 32, response);
+        assert(response[5] == GMK_BUSY);
+        if (gate == 0) left = true;
+        if (gate == 1) master = true;
+        if (gate == 2) mode = DEVS_BT1;
+        gmk_update_task();
+        assert(!flash_writes && !resets && !gmk_update_active());
+        left = master = false;
+        mode          = DEVS_USB;
+        query(packet, 1, GMK_STATUS, 0, 0, 0);
+        rpc(32, packet, 32, response);
+        assert(response[4] == GMK_BEGIN && response[5] == GMK_UNAVAILABLE);
+    }
+    // The right receiver inherits the USB master's authorization; it has
+    // neither a configured USB device nor a native Vial unlock handshake.
+    fixture();
+    left = master    = false;
+    USB_DRIVER.state = 0;
+    transport        = TRANSPORT_WLS;
+#ifdef GMK70_VIAL_UPDATE
+    vial_unlocked = false;
+#endif
+    uint8_t packet[32], response[32];
+    begin(packet, 1);
+    rpc(32, packet, 32, response);
+    assert(response[5] == GMK_BUSY);
+    gmk_update_task();
+    assert(flash_writes == 1 && gmk_update_active() && !resets);
+}
+
+#if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
+typedef enum {
+    REVOKE_LEFT,
+    REVOKE_MASTER,
+    REVOKE_TRANSPORT,
+    REVOKE_USB,
+    REVOKE_WIRED,
+#    ifdef GMK70_VIAL_UPDATE
+    REVOKE_UNLOCK,
+#    endif
+    REVOKE_COUNT,
+} revoked_gate_t;
+
+static void revoke_local_gate(revoked_gate_t gate) {
+    switch (gate) {
+        case REVOKE_LEFT:
+            left = false;
+            break;
+        case REVOKE_MASTER:
+            master = false;
+            break;
+        case REVOKE_TRANSPORT:
+            transport = TRANSPORT_WLS;
+            break;
+        case REVOKE_USB:
+            USB_DRIVER.state = 0;
+            break;
+        case REVOKE_WIRED:
+            mode = DEVS_BT1;
+            break;
+#    ifdef GMK70_VIAL_UPDATE
+        case REVOKE_UNLOCK:
+            vial_unlocked = false;
+            break;
+#    endif
+        case REVOKE_COUNT:
+            assert(false);
+    }
+}
+
+static void restore_local_gates(void) {
+    left = master    = true;
+    transport        = TRANSPORT_USB;
+    USB_DRIVER.state = USB_ACTIVE;
+    mode             = DEVS_USB;
+#    ifdef GMK70_VIAL_UPDATE
+    vial_unlocked = true;
+#    endif
+}
+
+static void queue_local_mutation(uint8_t operation) {
+    uint8_t image[1024] = {0}, packet[32];
+    gmk_write_u32(image, GMK_RAM_END - 8);
+    gmk_write_u32(image + 4, GMK_APP_BASE + 0x201);
+    begin(packet, 0);
+    gmk_write_u32(packet + 20, gmk_crc32(image, sizeof(image)));
+    assert(gmk_update_usb(packet, 32) && packet[5] == GMK_BUSY);
+    if (operation == GMK_BEGIN) return;
+    gmk_update_task();
+    assert(flash_writes == 1);
+    if (operation != GMK_ABORT) {
+        unsigned size = operation == GMK_DATA ? GMK_PAGE_SIZE : sizeof(image);
+        for (unsigned offset = 0; offset < size; offset += 16) {
+            query(packet, 0, GMK_DATA, 42, offset, 16);
+            memcpy(packet + 16, image + offset, 16);
+            assert(gmk_update_usb(packet, 32));
+            if ((offset + 16) % GMK_PAGE_SIZE) {
+                assert(packet[5] == GMK_OK);
+            } else {
+                assert(packet[5] == GMK_BUSY);
+                if (operation == GMK_DATA) return;
+                gmk_update_task();
+            }
+        }
+        if (operation == GMK_INSTALL) {
+            query(packet, 0, GMK_SEAL, 42, 0, 0);
+            assert(gmk_update_usb(packet, 32) && packet[5] == GMK_BUSY);
+            gmk_update_task();
+        }
+    }
+    query(packet, 0, operation, 42, 0, 0);
+    assert(gmk_update_usb(packet, 32) && packet[5] == GMK_BUSY);
+}
+
+static void test_deferred_local_mutation_gates(void) {
+    const uint8_t operations[] = {GMK_BEGIN, GMK_DATA, GMK_SEAL, GMK_INSTALL, GMK_ABORT};
+    for (unsigned i = 0; i < sizeof(operations); ++i) {
+        for (revoked_gate_t gate = REVOKE_LEFT; gate < REVOKE_COUNT; ++gate) {
+            fixture();
+            queue_local_mutation(operations[i]);
+            unsigned before = flash_writes;
+            revoke_local_gate(gate);
+            gmk_update_task();
+            assert(flash_writes == before && !resets);
+            restore_local_gates();
+            uint8_t packet[32];
+            query(packet, 0, GMK_STATUS, 0, 0, 0);
+            assert(gmk_update_usb(packet, 32));
+            assert(packet[4] == operations[i]);
+            gmk_update_result_t expected = GMK_UNAVAILABLE;
+#    ifdef GMK70_VIAL_UPDATE
+            if (gate == REVOKE_UNLOCK) expected = GMK_LOCKED;
+#    endif
+            assert(packet[5] == expected);
+            assert(packet[6] == (operations[i] == GMK_BEGIN ? GMK_IDLE : operations[i] == GMK_INSTALL ? GMK_SEALED : GMK_RECEIVING));
+        }
+    }
+}
+#endif
+
 #ifndef GMK70_VIAL_UPDATE
 static void test_eeprom_peer(void) {
     fixture();
@@ -464,12 +665,13 @@ static void test_eeprom_update_and_radio_gates(void) {
     rpc(32, packet, 32, response);
     gmk_update_task();
     assert(flash_writes == 1);
-    now += 10001;
+    now += 9000;
     query(packet, 1, GMK_EEPROM_INFO, 5, 0, 0);
     rpc(32, packet, 32, response);
     gmk_update_task();
     rpc(32, status, 32, response);
     assert(response[5] == GMK_BAD_STATE && gmk_read_u32(response + 8) == 5 && !eeprom_reads && flash_writes == 1);
+    now += 1001;
     gmk_update_task();
     assert(!gmk_update_active()); // The rejected read did not extend the update.
     mode = DEVS_BT1;
@@ -707,6 +909,67 @@ static void trial_command(uint8_t packet[32], uint8_t target) {
     uint8_t status[32] = {GMK_UPDATE_COMMAND, 0x71, 2, target, GMK_STATUS};
     assert(gmk_update_usb(status, 32));
     memcpy(packet, status, 32);
+}
+
+static void test_trial_deferred_launch_gates(void) {
+    for (revoked_gate_t gate = REVOKE_LEFT; gate < REVOKE_COUNT; ++gate) {
+        fixture();
+        memset(memory, 0xFF, sizeof(memory));
+        uint8_t packet[32];
+        query(packet, 0, GMK_TRIAL_WATCHDOG, 42, 0, 0);
+        packet[1] = GMK_TRIAL_NAMESPACE;
+        packet[2] = GMK_TRIAL_ABI;
+        assert(gmk_update_usb(packet, 32) && packet[5] == GMK_BUSY);
+        revoke_local_gate(gate);
+        gmk_update_task();
+        assert(!trial_preparations && !flash_writes && !resets && !gmk_update_active());
+        restore_local_gates();
+        query(packet, 0, GMK_STATUS, 0, 0, 0);
+        packet[1] = GMK_TRIAL_NAMESPACE;
+        packet[2] = GMK_TRIAL_ABI;
+        assert(gmk_update_usb(packet, 32));
+        assert(packet[4] == GMK_TRIAL_WATCHDOG);
+        assert(packet[5] == (gate == REVOKE_UNLOCK ? GMK_LOCKED : GMK_UNAVAILABLE));
+    }
+}
+
+static void test_trial_readonly_lease_and_namespace_expiry(void) {
+    const uint8_t operations[] = {GMK_INFO, GMK_TRIAL_RESULT, GMK_TRIAL_CAPS, GMK_TRIAL_TRACE};
+    for (unsigned i = 0; i < sizeof(operations); ++i) {
+        fixture();
+        memset(memory, 0xFF, sizeof(memory));
+        left = master = false;
+        uint8_t packet[32], response[32];
+        trial_begin(packet, 1);
+        rpc(32, packet, 32, response);
+        gmk_update_task();
+        assert(gmk_update_active() && !flash_writes);
+        now += 9000;
+        query(packet, 1, operations[i], 99, operations[i] == GMK_TRIAL_TRACE ? 1 : 0, 0);
+        packet[1] = GMK_TRIAL_NAMESPACE;
+        packet[2] = GMK_TRIAL_ABI;
+        rpc(32, packet, 32, response);
+        assert(response[5] == GMK_BUSY);
+        gmk_update_task();
+        query(packet, 1, GMK_STATUS, 0, 0, 0);
+        packet[1] = GMK_TRIAL_NAMESPACE;
+        packet[2] = GMK_TRIAL_ABI;
+        rpc(32, packet, 32, response);
+        assert(response[4] == operations[i] && response[5] == GMK_OK);
+        now += 1001;
+        // A read-only request queued at the deadline must not postpone expiry.
+        query(packet, 1, GMK_INFO, 0, 0, 0);
+        packet[1] = GMK_TRIAL_NAMESPACE;
+        packet[2] = GMK_TRIAL_ABI;
+        rpc(32, packet, 32, response);
+        gmk_update_task();
+        assert(!gmk_update_active() && !trial_preparations && !resets);
+        begin(packet, 1);
+        rpc(32, packet, 32, response);
+        assert(response[5] == GMK_BUSY);
+        gmk_update_task();
+        assert(gmk_update_active() && flash_writes == 1);
+    }
 }
 
 static void test_trial_run_recovery(void) {
@@ -1043,6 +1306,16 @@ static void test_trial_watchdog_and_result(void) {
 #endif
 
 int main(void) {
+#ifdef GMK70_VIAL_TRIAL
+    test_trial_readonly_lease_and_namespace_expiry();
+    test_trial_deferred_launch_gates();
+#endif
+    test_readonly_and_rejected_traffic_does_not_renew_lease();
+    test_expiry_precedes_pending_command();
+#if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
+    test_deferred_local_mutation_gates();
+#endif
+    test_deferred_peer_role_and_wired_gates();
 #ifdef GMK70_VIAL_TRIAL
 #    ifdef GMK70_TRIAL_RUNTIME
     test_runtime_right_is_unqualified();

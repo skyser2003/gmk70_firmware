@@ -3,11 +3,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "lighting_frame.h"
+#include "../../qmk-common/keyboards/zuoya/gmk70/battery_holds.h"
 
 struct gmk_battery_status;
 enum gmk_battery_indicator { GMK_BATTERY_LEVEL, GMK_BATTERY_CHARGING };
 struct gmk_battery_view {
-    uint32_t held[2][3];
+    struct gmk_battery_holds holds;
 };
 
 int  gmk_battery_view_set(struct gmk_battery_view *view, enum gmk_battery_indicator kind, uint32_t position, bool pressed);

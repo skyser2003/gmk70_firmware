@@ -1,5 +1,28 @@
 # Stock battery synchronization and historical repairs
 
+## Current safeguards — October 31, 2026
+
+VIA and Vial now share held-position tracking with ZMK through the small pure-C
+`battery_holds.c` helper in `firmware/qmk-common/keyboards/zuoya/gmk70/`.
+Multiple physical bindings keep a query active until the last release; the early
+physical hook also clears a held query after a live mapping change. The original
+USB guard applies to a new level-query press, while release always clears an
+accepted hold. Local and received split requests are tracked separately.
+
+The A4/A5 and F0/F1 packet formats remain unchanged. A transition of the aggregate
+local request makes one send attempt, without retry or reconnect recovery. The
+two-second `0x55` percentage exchange is retained, using 255 for unknown. Valid
+percentages range from 0 through 100 and expire after ten seconds. Unknown bars
+are purple; missing telemetry cannot trigger low-battery warning or shutdown.
+The common hardware hook allows a held query while RGB is off without changing
+saved lighting settings. Suspend and sleep continue to own LED power.
+
+The dated sections below describe earlier revisions, including their different
+USB-release guard and RGB-off behavior. See
+[current compatibility notes](STOCK-COMPATIBILITY.md#repository-safeguards-beyond-stock-reconstruction)
+for the other safeguards ported from ZMK. No device installation was performed
+as part of this synchronization.
+
 ## Current scope — October 3, 2026
 
 The normal firmware uses official QMK 0.34.4 unchanged, with the existing GMK70 board/radio integration derived from uk-taniyama and Hangsheng. The comparison baseline for the battery repair is `c5c24d42d13f424a4c007a325f2579dbd21bca4e`, the integrated build before that work. Relative to that baseline, runtime changes in normal `release`/`default` are Custom(27)/Custom(7) handling/rendering, global `sym_defer_g` debounce increased from 1 to 5 ms, and the separately evidenced October 3 correction that retains STOP for wake cause NONE. The debug distribution adds the RAM recorder and direct-USB bootloader command; see [debug/release](DEBUG-RELEASE.md).

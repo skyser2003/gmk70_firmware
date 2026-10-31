@@ -2,7 +2,7 @@
 #include "flip.h"
 #include "core.h"
 #include "../wired/wired.h"
-#include "../studio/settings_backend.h"
+#include "../studio/bool_setting.h"
 #include <errno.h>
 #include <string.h>
 #include <zephyr/init.h>
@@ -12,11 +12,9 @@
 #include <zmk/keymap.h>
 #include <zmk/rgb_underglow.h>
 
-static struct gmk_flip_core core;
-static struct k_spinlock    lock;
-static struct k_work        save_work;
-static uint32_t             changed_at, last_try;
-static bool                 stored, saving, attempted;
+static struct gmk_flip_core    core;
+static struct k_spinlock       lock;
+static struct gmk_bool_setting setting;
 
 int __real_raise_zmk_keycode_state_changed(struct zmk_keycode_state_changed event);
 
@@ -28,9 +26,11 @@ static struct zmk_keycode_state_changed encoded_event(struct zmk_keycode_state_c
 }
 int __wrap_raise_zmk_keycode_state_changed(struct zmk_keycode_state_changed ev) {
     if (!gmk_wired_is_left() || ev.usage_page != 7 || ev.keycode > 0xffff) return __real_raise_zmk_keycode_state_changed(ev);
-    bool                   mac    = zmk_keymap_layer_active(2) || zmk_keymap_layer_active(3);
-    uint32_t               input  = 0x70000 | ev.keycode | ((uint32_t)ev.implicit_modifiers << 24);
-    k_spinlock_key_t       key    = k_spin_lock(&lock);
+    bool             mac          = zmk_keymap_layer_active(2) || zmk_keymap_layer_active(3);
+    uint32_t         input        = 0x70000 | ev.keycode | ((uint32_t)ev.implicit_modifiers << 24);
+    bool             enabled      = gmk_bool_setting_get(&setting);
+    k_spinlock_key_t key          = k_spin_lock(&lock);
+    core.enabled                  = enabled;
     struct gmk_flip_output output = gmk_flip_core_event(&core, input, ev.state, mac);
     k_spin_unlock(&lock, key);
     if (output.release_previous) {
@@ -44,53 +44,20 @@ int __wrap_raise_zmk_keycode_state_changed(struct zmk_keycode_state_changed ev) 
 }
 int gmk_flip_toggle(void) {
     if (!gmk_wired_is_left()) return -ENODEV;
-    k_spinlock_key_t key = k_spin_lock(&lock);
-    core.enabled         = !core.enabled;
-    changed_at           = k_uptime_get_32();
-    k_spin_unlock(&lock, key);
+    gmk_bool_setting_toggle(&setting);
     return 0;
 }
-static void save(struct k_work *work) {
-    ARG_UNUSED(work);
-    k_spinlock_key_t key   = k_spin_lock(&lock);
-    uint8_t          value = core.enabled;
-    k_spin_unlock(&lock, key);
-    int result = gmk_zmk_settings_save_runtime("gmk_flip/state", &value, sizeof(value));
-    key        = k_spin_lock(&lock);
-    if (!result) stored = value != 0;
-    saving = false;
-    k_spin_unlock(&lock, key);
-}
 void gmk_flip_poll(bool writes_allowed) {
-    if (!writes_allowed) return;
-    uint32_t         now   = k_uptime_get_32();
-    k_spinlock_key_t key   = k_spin_lock(&lock);
-    bool             queue = core.enabled != stored && !saving && (uint32_t)(now - changed_at) >= 250 && (!attempted || (uint32_t)(now - last_try) >= 1000);
-    if (queue) {
-        saving = attempted = true;
-        last_try           = now;
-    }
-    k_spin_unlock(&lock, key);
-    if (queue) k_work_submit(&save_work);
+    gmk_bool_setting_poll(&setting, writes_allowed);
 }
 static int load(const char *name, size_t len, settings_read_cb read, void *ctx) {
     if (strcmp(name, "state")) return -ENOENT;
-    if (len != 1) return -EINVAL;
-    uint8_t value;
-    ssize_t result = read(ctx, &value, sizeof(value));
-    if (result != 1) return result < 0 ? (int)result : -EINVAL;
-    if (value > 1) return -EINVAL;
-    k_spinlock_key_t key = k_spin_lock(&lock);
-    core.enabled = stored = value != 0;
-    k_spin_unlock(&lock, key);
-    return 0;
+    return gmk_bool_setting_load(&setting, len, read, ctx);
 }
 SETTINGS_STATIC_HANDLER_DEFINE(gmk_flip, "gmk_flip", NULL, load, NULL, NULL);
 static int flip_init(void) {
-    core   = (struct gmk_flip_core){0};
-    stored = saving = attempted = false;
-    changed_at = last_try = 0;
-    k_work_init(&save_work, save);
+    core = (struct gmk_flip_core){0};
+    gmk_bool_setting_init(&setting, "gmk_flip/state", false);
     return 0;
 }
 SYS_INIT(flip_init, POST_KERNEL, 88);

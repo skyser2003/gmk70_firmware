@@ -6,6 +6,11 @@
 #include "smsg.h"
 #include "uart.h"
 #include "radio_capture.h"
+#ifdef PROTOCOL_CHIBIOS
+#    include "hal.h"
+static event_listener_t md_uart_errors;
+static bool             md_uart_errors_registered;
+#endif
 #ifdef GMK70_RADIO_THREAD
 #    include "ch.h"
 static MUTEX_DECL(md_uart_mutex);
@@ -59,16 +64,30 @@ static MUTEX_DECL(md_uart_mutex);
 #    define MD_RAW_SIZE 32
 #endif
 
+#define MD_RECEIVE_TIMEOUT_MS 10U
+#define MD_BATTERY_FRESH_MS 10000U
+
 #define USBCONCAT(a, b) a##b
 #define USBSTR(s) USBCONCAT(L, s)
 
 typedef struct {
-    uint8_t state;
-    uint8_t indicator;
-    uint8_t version;
-    uint8_t bat;
-    bool    inhibit_reports;
+    uint8_t  state;
+    uint8_t  indicator;
+    uint8_t  version;
+    uint8_t  bat;
+    bool     inhibit_reports;
+    bool     battery_valid;
+    uint32_t battery_sample_ms;
 } md_info_t;
+
+typedef struct {
+    uint16_t count;
+    uint16_t remaining;
+    uint32_t last_byte_ms;
+    bool     discard;
+} md_receive_t;
+
+static md_receive_t md_receive;
 
 static uint8_t md_pkt_payload[MD_SEND_PKT_PAYLOAD_MAX] = {0};
 static uint8_t md_rev_payload[MD_SEND_PKT_PAYLOAD_MAX] = {0};
@@ -128,15 +147,55 @@ void md_receive_raw_cb(uint8_t *pdata, uint8_t len) {}
 void md_receive_host_cb(bool resume) __attribute__((weak));
 void md_receive_host_cb(bool resume) {}
 
-static void md_receive_msg_task(void) {
-    static uint32_t data_count  = 0x00;
-    static uint8_t  data_remain = 0x00;
+static void md_quarantine_or_reset(void) {
+    if (md_receive.count && (md_rev_payload[0] == MD_REV_CMD_RAW || md_receive.discard)) {
+        if (!md_receive.discard && md_receive.count < 3) {
+            // The length has not arrived: bound the whole frame at 255 + 4.
+            md_receive.remaining = 259U - md_receive.count;
+        }
+        // Retain this finite byte budget even across empty timeout polls.
+        md_receive.discard = true;
+    } else {
+        md_receive = (md_receive_t){0};
+    }
+}
 
-    while (uart_available()) {
+static bool md_uart_fault(void) {
+#ifdef PROTOCOL_CHIBIOS
+    return (chEvtGetAndClearFlags(&md_uart_errors) & (SD_PARITY_ERROR | SD_FRAMING_ERROR | SD_OVERRUN_ERROR | SD_BREAK_DETECTED | SD_QUEUE_FULL_ERROR)) != 0;
+#else
+    return false;
+#endif
+}
+
+static void md_receive_msg_task(void) {
+    if (md_receive.count && !md_receive.discard && sync_timer_elapsed32(md_receive.last_byte_ms) >= MD_RECEIVE_TIMEOUT_MS) {
+        md_quarantine_or_reset();
+    }
+
+    for (;;) {
+        if (md_uart_fault()) {
+            md_quarantine_or_reset();
+            // Bytes lost to a line fault are unknown. Drop buffered damage
+            // without reducing a raw quarantine's remaining byte budget.
+            while (uart_available()) {
+                (void)uart_read();
+                gmk_radio_diag_count(GMK_RADIO_RX_BYTES, selected_device);
+            }
+            return;
+        }
+        if (!uart_available()) return;
+
         uint8_t data = uart_read();
         gmk_radio_diag_count(GMK_RADIO_RX_BYTES, selected_device);
+        md_receive.last_byte_ms = sync_timer_read32();
 
-        switch (data_count) {
+        if (md_receive.discard) {
+            if (--md_receive.remaining == 0) md_receive = (md_receive_t){0};
+            continue;
+        }
+
+        switch (md_receive.count) {
             case 0: { // cmd
                 switch (data) {
                     case MD_REV_CMD_RAW:
@@ -146,19 +205,23 @@ static void md_receive_msg_task(void) {
                     case MD_REV_CMD_MD_FW_VERSION:
                     case MD_REV_CMD_HOST_STATE:
                     case 0x61: {
-                        md_rev_payload[data_count++] = data;
-                        data_remain                  = 2;
+                        md_rev_payload[md_receive.count++] = data;
+                        md_receive.remaining               = 2;
                     } break;
                     default: {
                         gmk_radio_diag_count(GMK_RADIO_UNKNOWN_BYTES, selected_device);
-                        data_count = 0;
+                        md_receive.count = 0;
                     } break;
                 }
                 continue;
             } break;
             case 1: {
-                md_rev_payload[data_count++] = data;
-                data_remain--;
+                if (md_rev_payload[0] == MD_REV_CMD_RAW && data != MD_REV_CMD_RAW_OUT) {
+                    md_receive = (md_receive_t){0};
+                    continue;
+                }
+                md_rev_payload[md_receive.count++] = data;
+                md_receive.remaining--;
                 continue;
             } break;
             case 2: {
@@ -168,7 +231,7 @@ static void md_receive_msg_task(void) {
                     if (smsg_get_state() == smsg_state_busy) {
                         smsg_set_state(smsg_state_replied);
                     }
-                    data_count = 0;
+                    md_receive = (md_receive_t){0};
                     return;
                 }
 
@@ -177,33 +240,34 @@ static void md_receive_msg_task(void) {
                     gmk_radio_diag_header(data, selected_device);
                     if (data > MD_RAW_SIZE) {
                         gmk_radio_diag_count(GMK_RADIO_RAW_OVERSIZE, selected_device);
-                        data_count = 0;
-                        continue;
+                        md_receive.discard = true;
                     }
-                    md_rev_payload[data_count++] = data;
-                    data_remain                  = data + 1;
+                    md_rev_payload[md_receive.count++] = data;
+                    md_receive.remaining               = (uint16_t)data + 1;
                     continue;
                 }
             }
                 __attribute__((fallthrough));
             default: {
-                md_rev_payload[data_count++] = data;
-                data_remain--;
+                md_rev_payload[md_receive.count++] = data;
+                md_receive.remaining--;
 
-                if (data_remain) {
+                if (md_receive.remaining) {
                     continue;
                 }
             } break;
         }
 
-        if (md_check_sum(md_rev_payload, data_count)) {
+        uint8_t length = md_receive.count;
+        md_receive     = (md_receive_t){0};
+        if (md_check_sum(md_rev_payload, length)) {
             gmk_radio_diag_count(GMK_RADIO_VALID_FRAMES, selected_device);
             if (md_rev_payload[0] == MD_REV_CMD_RAW && md_rev_payload[1] == MD_REV_CMD_RAW_OUT) {
                 gmk_radio_diag_count(md_rev_payload[2] == 31 ? GMK_RADIO_RAW_31 : md_rev_payload[2] == 32 ? GMK_RADIO_RAW_32 : GMK_RADIO_RAW_OTHER, selected_device);
             }
             md_send_ack();
 
-            if (md_receive_process_kb(md_rev_payload, data_count) != true) {
+            if (md_receive_process_kb(md_rev_payload, length) != true) {
                 return;
             }
 
@@ -249,7 +313,11 @@ static void md_receive_msg_task(void) {
                     }
                 } break;
                 case MD_REV_CMD_BATVOL: {
-                    md_info.bat = md_rev_payload[1];
+                    if (md_rev_payload[1] <= 100) {
+                        md_info.bat               = md_rev_payload[1];
+                        md_info.battery_sample_ms = sync_timer_read32();
+                        md_info.battery_valid     = true;
+                    }
                 } break;
                 case MD_REV_CMD_MD_FW_VERSION: {
                     md_info.version = md_rev_payload[1];
@@ -264,7 +332,6 @@ static void md_receive_msg_task(void) {
         } else {
             gmk_radio_diag_count(GMK_RADIO_CHECKSUM_ERRORS, selected_device);
         }
-        data_count = 0;
     }
 }
 
@@ -326,7 +393,18 @@ static THD_FUNCTION(md_worker, arg) {
 void md_init(void) {
     gmk_radio_diag_init();
     uart_init(MD_BAUD_RATE);
+#ifdef PROTOCOL_CHIBIOS
+    if (!md_uart_errors_registered) {
+        // WB32's pinned driver also sets NOISE_ERROR for ordinary DR bytes.
+        // Parity, framing, hardware/software overflow and break lose framing.
+        chEvtRegisterMaskWithFlags(chnGetEventSource(&UART_DRIVER), &md_uart_errors, 0, SD_PARITY_ERROR | SD_FRAMING_ERROR | SD_OVERRUN_ERROR | SD_BREAK_DETECTED | SD_QUEUE_FULL_ERROR);
+        md_uart_errors_registered = true;
+    }
+    (void)chEvtGetAndClearFlags(&md_uart_errors);
+#endif
     smsg_init();
+    md_receive      = (md_receive_t){0};
+    md_info         = (md_info_t){.bat = 100, .state = MD_STATE_NONE};
     smsg_timer      = 0;
     smsg_retry      = 0;
     selected_device = status_context = 0;
@@ -341,6 +419,7 @@ void md_init(void) {
 }
 
 void md_main_task(void) {
+    if (md_info.battery_valid && sync_timer_elapsed32(md_info.battery_sample_ms) > MD_BATTERY_FRESH_MS) md_info.battery_valid = false;
     md_send_pkt_task();
     md_receive_msg_task();
 }
@@ -362,6 +441,10 @@ uint8_t *md_getp_state(void) {
 
 uint8_t *md_getp_bat(void) {
     return &md_info.bat;
+}
+
+bool md_battery_is_fresh(void) {
+    return md_info.battery_valid && sync_timer_elapsed32(md_info.battery_sample_ms) <= MD_BATTERY_FRESH_MS;
 }
 
 uint8_t *md_getp_indicator(void) {

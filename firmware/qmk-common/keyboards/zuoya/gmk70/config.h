@@ -3,6 +3,9 @@
 
 #pragma once
 
+// Initialize absent/reset native settings without overriding a saved choice.
+#define NKRO_DEFAULT_ON true
+
 #define USB_POWER_EN_PIN B1  // USB ENABLE pin
 #define LED_POWER_EN_PIN A5  // LED ENABLE pin
 #define LED_POWER_EN2_PIN A8 // LED ENABLE pin

@@ -4,12 +4,7 @@
 #include "module_test.c"
 #undef main
 
-bool            gmk_radio_diag_query(uint8_t *packet, uint8_t length, bool allowed, uint32_t uptime) __attribute__((weak));
-static unsigned raw_delivered;
-void            md_receive_raw_cb(uint8_t *data, uint8_t length) {
-    assert(length == 32 && data[0] == 1);
-    ++raw_delivered;
-}
+bool gmk_radio_diag_query(uint8_t *packet, uint8_t length, bool allowed, uint32_t uptime) __attribute__((weak));
 
 static uint32_t read_word(const uint8_t *p) {
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
@@ -46,11 +41,18 @@ int main(void) {
     snapshot(before, 1);
     assert(before[1] == 0); // No firmware-version reply observed yet.
     raw_packet(31, true);
-    assert(raw_delivered == 0); // Observe the rejection; do not change it.
+    assert(raw_dispatches == 0); // Observe the rejection; do not change it.
     raw_packet(32, true);
-    assert(raw_delivered == 1);
+    assert(raw_dispatches == 1 && raw_received[0] == 1);
     raw_packet(31, false);
     feed((uint8_t[]){MD_REV_CMD_RAW, MD_REV_CMD_RAW_OUT, 255}, 3);
+    // A valid-looking notification inside an oversized RAW tail is payload,
+    // not a new control frame. Drain the complete bounded tail before recovery.
+    uint8_t damaged_tail[256] = {0xEE, MD_REV_CMD_MD_FW_VERSION, 0, MD_REV_CMD_MD_FW_VERSION};
+    feed(damaged_tail, sizeof(damaged_tail));
+    uint32_t quarantined[30];
+    snapshot(quarantined, 0x10);
+    assert(quarantined[1] == 0 && quarantined[2] == 0);
     feed((uint8_t[]){0xEE}, 1);
     feed((uint8_t[]){MD_REV_CMD_MD_FW_VERSION, 0, MD_REV_CMD_MD_FW_VERSION}, 3);
     uint8_t outgoing[32] = {1};

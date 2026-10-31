@@ -12,6 +12,10 @@ static void expect_frame(struct gmk_radio_core *radio, uint32_t now, const uint8
     assert(!gmk_radio_core_next(radio, now, &frame)); /* Claimed frame is immutable until completed. */
     gmk_radio_core_sent(radio, now, true);
 }
+static void expect_zero_overflow(struct gmk_radio_core *radio, uint32_t now) {
+    const uint8_t overflow[16] = {0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa2};
+    expect_frame(radio, now, overflow, sizeof(overflow));
+}
 static void settle(struct gmk_radio_core *radio, uint8_t channel) {
     gmk_radio_core_init(radio);
     assert(gmk_radio_core_select(radio, channel, false) == 0);
@@ -21,6 +25,7 @@ static void settle(struct gmk_radio_core *radio, uint8_t channel) {
     gmk_radio_core_notification(radio, 0x5b, 0x32);
     const uint8_t keyboard[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1}, consumer[] = {0xa3, 0, 0, 0xa3};
     expect_frame(radio, 1, keyboard, sizeof(keyboard));
+    expect_zero_overflow(radio, 1);
     expect_frame(radio, 1, consumer, sizeof(consumer));
     assert(radio->connection == GMK_RADIO_CONNECTED);
 }
@@ -42,6 +47,7 @@ static void selectors_and_non_destructive_pairing(void) {
     assert(gmk_radio_core_select(&radio, 1, true) == 0);
     const uint8_t keyboard[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1}, consumer[] = {0xa3, 0, 0, 0xa3}, pair[] = {0xa6, 0x51, 0xf7};
     expect_frame(&radio, 2, keyboard, sizeof(keyboard));
+    expect_zero_overflow(&radio, 2);
     expect_frame(&radio, 2, consumer, sizeof(consumer));
     expect_frame(&radio, 2, pair, sizeof(pair));
     assert(radio.connection == GMK_RADIO_PAIRING);
@@ -70,10 +76,12 @@ static void releases_precede_switch_and_queue_overflow(void) {
     }
     const uint8_t keyboard[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1}, consumer[] = {0xa3, 0, 0, 0xa3};
     expect_frame(&radio, 3, keyboard, sizeof(keyboard));
+    expect_zero_overflow(&radio, 3);
     expect_frame(&radio, 3, consumer, sizeof(consumer));
     assert(radio.count == 1 && radio.errors == 1);
     assert(gmk_radio_core_select(&radio, 2, false) == 0);
     expect_frame(&radio, 4, keyboard, sizeof(keyboard));
+    expect_zero_overflow(&radio, 4);
     expect_frame(&radio, 4, consumer, sizeof(consumer));
     const uint8_t select[] = {0xa6, 0x32, 0xd8};
     expect_frame(&radio, 4, select, sizeof(select));
@@ -119,6 +127,7 @@ static void status_attribution_and_disconnect(void) {
     gmk_radio_core_notification(&radio, 0x5b, 0x32);
     const uint8_t keyboard[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1}, consumer[] = {0xa3, 0, 0, 0xa3};
     expect_frame(&radio, 1, keyboard, sizeof(keyboard));
+    expect_zero_overflow(&radio, 1);
     expect_frame(&radio, 1, consumer, sizeof(consumer));
     assert(radio.count == 0);
 }
@@ -134,7 +143,89 @@ static void failed_partial_frame_requires_explicit_reselection(void) {
     assert(gmk_radio_core_select(&radio, 1, false) == 0);
     assert(gmk_radio_core_next(&radio, 100, &frame));
 }
+static void nkro_snapshots_are_coherent_and_preserve_fast_taps(void) {
+    struct gmk_radio_core radio;
+    settle(&radio, 1);
+    uint8_t keyboard[8]  = {2, 0, 4, 5, 6, 7, 8, 9};
+    uint8_t overflow[14] = {0, 4};
+    assert(gmk_radio_core_nkro(&radio, keyboard, overflow) == 0);
+    memset(keyboard, 0, sizeof(keyboard));
+    memset(overflow, 0, sizeof(overflow));
+    assert(gmk_radio_core_nkro(&radio, keyboard, overflow) == 0);
+    const uint8_t pressed[]  = {0xa1, 2, 0, 4, 5, 6, 7, 8, 9, 0xca};
+    const uint8_t extra[]    = {0xa2, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa6};
+    const uint8_t released[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1};
+    expect_frame(&radio, 2, pressed, sizeof(pressed));
+    expect_frame(&radio, 2, extra, sizeof(extra));
+    expect_frame(&radio, 2, released, sizeof(released));
+    expect_zero_overflow(&radio, 2);
+    assert(!radio.count);
+}
+static void interrupted_nkro_releases_both_formats_before_host_controls(void) {
+    for (unsigned action = 0; action < 4; ++action) {
+        struct gmk_radio_core  radio;
+        struct gmk_radio_frame frame;
+        settle(&radio, 1);
+        const uint8_t keyboard[8]  = {0, 0, 4};
+        const uint8_t overflow[14] = {0, 4};
+        assert(gmk_radio_core_nkro(&radio, keyboard, overflow) == 0);
+        assert(gmk_radio_core_next(&radio, 2, &frame) && frame.bytes[0] == 0xa1);
+        if (action == 0)
+            gmk_radio_core_release(&radio, false);
+        else if (action == 1)
+            assert(gmk_radio_core_select(&radio, 2, false) == 0);
+        else if (action == 2)
+            assert(gmk_radio_core_select(&radio, 1, true) == 0);
+        else {
+            for (unsigned queued = 0; queued < 8; ++queued)
+                assert(gmk_radio_core_nkro(&radio, keyboard, overflow) == (queued == 7 ? -ENOBUFS : 0));
+        }
+        gmk_radio_core_sent(&radio, 2, true);
+        const uint8_t release[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1};
+        expect_frame(&radio, 3, release, sizeof(release));
+        expect_zero_overflow(&radio, 3);
+        if (action) {
+            const uint8_t consumer[] = {0xa3, 0, 0, 0xa3};
+            expect_frame(&radio, 3, consumer, sizeof(consumer));
+        }
+        if (action == 1 || action == 2) {
+            const uint8_t control[] = {0xa6, action == 1 ? 0x32 : 0x51, action == 1 ? 0xd8 : 0xf7};
+            expect_frame(&radio, 3, control, sizeof(control));
+        } else if (action == 0)
+            assert(!gmk_radio_core_next(&radio, 3, &frame));
+        else {
+            assert(gmk_radio_core_next(&radio, 3, &frame) && frame.bytes[0] == 0xa1 && frame.bytes[3] == 4);
+            gmk_radio_core_sent(&radio, 3, true);
+            const uint8_t extra[] = {0xa2, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa6};
+            expect_frame(&radio, 3, extra, sizeof(extra));
+        }
+    }
+}
+static void failed_overflow_requires_clears_before_reselection(void) {
+    struct gmk_radio_core  radio;
+    struct gmk_radio_frame frame;
+    settle(&radio, 1);
+    const uint8_t keyboard[8]  = {0, 0, 4};
+    const uint8_t overflow[14] = {0, 4};
+    assert(gmk_radio_core_nkro(&radio, keyboard, overflow) == 0);
+    assert(gmk_radio_core_next(&radio, 2, &frame) && frame.bytes[0] == 0xa1);
+    gmk_radio_core_sent(&radio, 2, true);
+    assert(gmk_radio_core_next(&radio, 2, &frame) && frame.bytes[0] == 0xa2);
+    gmk_radio_core_sent(&radio, 2, false);
+    assert(radio.faulted && !gmk_radio_core_next(&radio, 3, &frame));
+    assert(gmk_radio_core_select(&radio, 2, false) == 0);
+    const uint8_t release[]  = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1};
+    const uint8_t consumer[] = {0xa3, 0, 0, 0xa3};
+    const uint8_t control[]  = {0xa6, 0x32, 0xd8};
+    expect_frame(&radio, 3, release, sizeof(release));
+    expect_zero_overflow(&radio, 3);
+    expect_frame(&radio, 3, consumer, sizeof(consumer));
+    expect_frame(&radio, 3, control, sizeof(control));
+}
 int main(void) {
+    nkro_snapshots_are_coherent_and_preserve_fast_taps();
+    interrupted_nkro_releases_both_formats_before_host_controls();
+    failed_overflow_requires_clears_before_reselection();
     selectors_and_non_destructive_pairing();
     fast_taps_and_consumer_transitions();
     releases_precede_switch_and_queue_overflow();

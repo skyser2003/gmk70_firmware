@@ -13,6 +13,7 @@ ifeq ($(strip $(WIRELESS_ENABLE)), yes)
 
     SRC += \
         $(WIRELESS_DIR)/wireless.c \
+        $(WIRELESS_DIR)/radio_keys.c \
         $(WIRELESS_DIR)/transport.c \
         $(WIRELESS_DIR)/lowpower.c \
         $(WIRELESS_DIR)/md_raw.c \

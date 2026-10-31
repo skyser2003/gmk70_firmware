@@ -40,7 +40,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         _______,    _______, _______,  KC_F1,    KC_F2,    KC_F3,    KC_F4,    KC_F5,             KC_F6,    KC_F7,    KC_F8,    KC_F9,    KC_F10,   KC_F11,   KC_F12,   EE_CLR,
         _______,    UG_NEXT,  KC_BT1,   KC_BT2,   KC_BT3,   KC_2G4,   _______,                      KC_PSCR,  KC_SCRL,  KC_PAUSE, _______,  _______,  UG_HUED,  UG_HUEU,  RL_MOD,
         _______,    _______,  TO(_BL),  KC_NO,    _______,  _______,  _______,                      KC_HOME,  KC_END,   KC_PGUP,  KC_PGDN,  UG_SATD,  UG_SATU,            KC_END,
-        _______,    _______,  _______,  UG_TOGG,  _______,  _______,  HS_BATQ,            HS_BATQ,  _______,  _______,  _______,  _______,  _______,  STOCK_RESERVED_19,  UG_VALU,  KC_INS,
+        _______,    _______,  _______,  UG_TOGG,  _______,  NK_TOGG,  HS_BATQ,            HS_BATQ,  _______,  _______,  _______,  _______,  _______,  STOCK_RESERVED_19,  UG_VALU,  KC_INS,
         _______,    KC_FILP,  _______,  KC_LGUI,            KC_BATQ,                                KC_BATQ,            KC_RGUI,  KC_RALT,            UG_SPDD,  UG_VALD,  UG_SPDU),
 
 };

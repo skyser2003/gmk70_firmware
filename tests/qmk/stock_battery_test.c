@@ -60,9 +60,9 @@ static void test_key_events(void) {
     for (unsigned i = 0; i < 1000; ++i)
         stock_battery_render(75);
     assert(sends == 5);
-    // Preserve the observed stock guard even if mode changes before release.
+    // A mode change must not strand a request that was accepted while wireless.
     stock_battery_key(0x7E1B, false, false);
-    assert(sends == 5 && stock_battery_level_requested());
+    assert(sends == 6 && !stock_battery_level_requested());
     stock_battery_key(0x7E1B, false, true);
     assert(sends == 6 && !stock_battery_level_requested());
     transport_ok = true;
@@ -110,8 +110,66 @@ static void test_receiver_and_rendering(void) {
     assert(sends == before); // Receiving or rendering must never echo commands.
 }
 
+static void test_unknown_percentage(void) {
+    uint8_t response;
+    assert(stock_battery_receive(0xA4, &response));
+    const uint8_t bar[] = {5, 6, 7, 8, 9, 39, 40, 41, 42, 43};
+    for (unsigned half = 0; half < 2; ++half) {
+        right_half = half;
+        memset(pixels, 0, sizeof(pixels));
+        stock_battery_render(255);
+        for (unsigned i = 0; i < sizeof(bar); ++i)
+            if ((bar[i] >= 36) == right_half) {
+                assert(pixels[bar[i]][0] == 24);
+                assert(pixels[bar[i]][1] == 0);
+                assert(pixels[bar[i]][2] == 24);
+            }
+    }
+    assert(stock_battery_receive(0xA5, &response));
+}
+
+static void test_position_holds(void) {
+    unsigned before = sends;
+    stock_battery_key_at(0x7E1B, 12, true, true);
+    stock_battery_key_at(0x7E1B, 55, true, true);
+    assert(stock_battery_level_requested() && sends == before + 1);
+    stock_battery_release_position(12);
+    assert(stock_battery_level_requested() && sends == before + 1);
+    stock_battery_release_position(55);
+    assert(!stock_battery_level_requested() && sends == before + 2);
+    stock_battery_key_at(0x7E07, 41, true, false);
+    assert(stock_battery_charging_requested());
+    // A live remap can send an entirely different keycode on physical release.
+    stock_battery_key_at(0x0004, 41, false, false);
+    assert(!stock_battery_charging_requested());
+    before = sends;
+    stock_battery_key_at(0x7E1B, 0, true, false);
+    stock_battery_key_at(0x7E1B, 90, true, true);
+    stock_battery_release_position(255);
+    assert(!stock_battery_level_requested() && sends == before);
+    stock_battery_key_at(0x7E1B, 63, true, true);
+    stock_battery_key_at(0x7E1B, 63, false, false);
+    assert(!stock_battery_level_requested());
+}
+
+static void test_sample_age_and_range(void) {
+    assert(stock_battery_sample_read(100) == 255);
+    stock_battery_sample(73, 100);
+    assert(stock_battery_sample_read(10100) == 73);
+    assert(stock_battery_sample_read(10101) == 255);
+    stock_battery_sample(101, 20000);
+    assert(stock_battery_sample_read(20000) == 255);
+    stock_battery_sample(55, UINT32_MAX - 5);
+    assert(stock_battery_sample_read(5) == 55);
+    stock_battery_sample(0, 500);
+    assert(stock_battery_sample_read(500) == 0);
+}
+
 int main(void) {
     test_key_events();
     test_receiver_and_rendering();
+    test_unknown_percentage();
+    test_position_holds();
+    test_sample_age_and_range();
     puts("Stock battery: event packets, USB guard, failed-send behavior and both halves' shared bar passed");
 }

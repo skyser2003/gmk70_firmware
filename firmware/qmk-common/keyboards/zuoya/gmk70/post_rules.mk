@@ -2,10 +2,13 @@ DEBOUNCE_TYPE = sym_defer_g
 SRC += split_role.c
 SRC += stock_keycodes.c
 SRC += stock_battery.c
+SRC += battery_holds.c
 SRC += stock_power.c
 SRC += stock_lighting.c
 SRC += hardware.c
+SRC += function_flip.c function_flip_qmk.c
 LDFLAGS += -Wl,--wrap=housekeeping_task -Wl,--wrap=rgb_matrix_task
+LDFLAGS += -Wl,--wrap=host_keyboard_send -Wl,--wrap=host_nkro_send
 ifeq ($(strip $(GMK70_SPLIT_UPDATE)), yes)
     OPT_DEFS += -DGMK70_SPLIT_UPDATE
     SRC += update/image.c update/protocol.c update/wb32_flash.c update/qmk_update.c

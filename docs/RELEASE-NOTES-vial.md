@@ -1,8 +1,20 @@
 GMK70 Vial firmware, built from the commit selected by this Vial tag.
 
+NKRO defaults enabled for new/reset settings; a saved off choice survives
+startup. Both Windows and Mac defaults include Fn+V. Report transitions clear
+held flip contributions and inactive boot-fallback state. See
+[NKRO behavior and radio limits](NKRO.md).
+
 RGB power, temporary battery indicators and physical-key activity hooks now live
 in the common GMK70 hardware implementation shared with VIA. Vial keeps its
 native protocol, storage schema, unlock and fork-specific RGB routing.
+
+The common board code also adopts the repository's ZMK safeguards: press-time
+function/media outputs survive flip or OS changes, battery queries track each
+held position, and invalid or stale readings show an unknown indication. Radio
+input quarantines damaged raw-frame tails; actual host changes release outgoing
+reports first. Deferred updater mutations recheck native unlock and USB/role
+gates, while read-only or rejected traffic no longer extends upload timeouts.
 
 Battery-level and charging-status queries now display while RGB is off, without
 enabling the saved lighting setting. Custom-key descriptions contain only the

@@ -53,24 +53,24 @@ static void start(void) {
     assert(registered_init() == 0);
 }
 static void run_work(void) {
-    assert(save_work.pending);
-    save_work.pending = false;
-    save_work.handler(&save_work);
+    assert(setting.work.pending);
+    setting.work.pending = false;
+    setting.work.handler(&setting.work);
 }
 static void persistence_is_deferred_coalesced_gated_and_retried(void) {
     start();
     assert(gmk_flip_toggle() == 0);
     radio_test_time = 250;
     gmk_flip_poll(false);
-    assert(!save_work.pending && writes == 0);
+    assert(!setting.work.pending && writes == 0);
     gmk_flip_poll(true);
-    assert(save_work.pending && writes == 0);
+    assert(setting.work.pending && writes == 0);
     save_result = -EBUSY;
     run_work();
     assert(writes == 1 && persisted == 0);
     radio_test_time = 1249;
     gmk_flip_poll(true);
-    assert(!save_work.pending);
+    assert(!setting.work.pending);
     radio_test_time = 1250;
     gmk_flip_poll(true);
     save_result = 0;
@@ -78,12 +78,12 @@ static void persistence_is_deferred_coalesced_gated_and_retried(void) {
     assert(writes == 2 && persisted == 1);
     radio_test_time = 2500;
     gmk_flip_poll(true);
-    assert(!save_work.pending);
+    assert(!setting.work.pending);
     assert(gmk_flip_toggle() == 0);
     assert(gmk_flip_toggle() == 0);
     radio_test_time = 4000;
     gmk_flip_poll(true);
-    assert(!save_work.pending);
+    assert(!setting.work.pending);
     assert(gmk_flip_toggle() == 0);
     radio_test_time = 4500;
     gmk_flip_poll(true);

@@ -19,6 +19,9 @@ bool md_reports_inhibited(void) {
 void set_transport(transport_t transport) {
     radio_fixture.transport = transport;
 }
+void wls_transport_enable(bool enable) {
+    (void)enable;
+}
 transport_t get_transport(void) {
     return radio_fixture.transport;
 }

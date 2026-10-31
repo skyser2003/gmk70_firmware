@@ -28,6 +28,7 @@ static void ack(void) {
     feed(bytes, sizeof(bytes));
 }
 static void expect_bytes(size_t offset, const uint8_t *expected, size_t length) {
+    if (tx_count < offset + length) fprintf(stderr, "UART fixture is short at offset %zu: expected %zu bytes, have %zu\n", offset, length, tx_count);
     assert(tx_count >= offset + length);
     if (memcmp(tx + offset, expected, length) != 0) {
         fprintf(stderr, "UART fixture mismatch at offset %zu (total %zu):", offset, tx_count);
@@ -54,15 +55,18 @@ static void test_select_then_query_ack_ownership(void) {
     gmk_battery_poll();
     assert(tx_count == 6); /* Battery ACK must precede the next acknowledged control. */
     ack();
-    const uint8_t release_keyboard[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1};
-    const uint8_t release_consumer[] = {0xa3, 0, 0, 0xa3};
+    const uint8_t release_keyboard[]   = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1};
+    const uint8_t release_consumer[]   = {0xa3, 0, 0, 0xa3};
+    const uint8_t release_overflow[16] = {0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa2};
     expect_bytes(6, release_keyboard, sizeof(release_keyboard));
     assert(!state.waiting_ack && !radio.waiting);
     gmk_battery_poll();
-    expect_bytes(16, release_consumer, sizeof(release_consumer));
+    expect_bytes(16, release_overflow, sizeof(release_overflow));
+    gmk_battery_poll();
+    expect_bytes(32, release_consumer, sizeof(release_consumer));
     gmk_battery_poll();
     const uint8_t next_selection[] = {0xa6, 0x32, 0xd8};
-    expect_bytes(20, next_selection, sizeof(next_selection));
+    expect_bytes(36, next_selection, sizeof(next_selection));
     assert(!state.waiting_ack && radio.waiting && radio.active == GMK_HOST_BT2);
     ack();
     assert(!radio.waiting && snapshot().queries == 1);
@@ -148,6 +152,40 @@ static void test_partial_timeout_does_not_complete_frame(void) {
     gmk_battery_poll();
     assert(tx_count == 2 && radio.reports == reports);
 }
+static void test_nkro_overflow_is_immutable_during_partial_uart_transmit(void) {
+    for (unsigned allowance = 1; allowance <= 2; ++allowance) {
+        connected();
+        const uint8_t keyboard[8]  = {2, 0, 4};
+        uint8_t       overflow[14] = {0, 4};
+        assert(gmk_radio_core_nkro(&radio, keyboard, overflow) == 0);
+        memset(overflow, 0, sizeof(overflow));
+        tx_allowance = 32; /* The stock UART FIFO has room for the full A1 frame. */
+        gmk_battery_poll();
+        assert(tx_count == 10 && !radio.inflight && radio.count == 1);
+        tx_allowance = allowance;
+        gmk_battery_poll();
+        assert(tx_count == 10 + allowance && radio.inflight == GMK_RADIO_TX_NKRO);
+        const uint8_t reply[] = {0x5c, 67, 0x9f};
+        tx_allowance          = 0;
+        feed(reply, sizeof(reply));
+        assert(snapshot().valid && state.acknowledgements && tx_count == 10 + allowance);
+        while (state.transmitting == BATTERY_TX_RADIO) {
+            /* Several FIFO refills may occur inside one millisecond. Keep the
+             * complete frame inside the existing ten-millisecond deadline. */
+            tx_allowance = allowance;
+            gmk_battery_poll();
+            assert(tx_count <= 26);
+        }
+        const uint8_t expected[16] = {0xa2, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa6};
+        expect_bytes(10, expected, sizeof(expected));
+        assert(tx_count == 26 && !radio.count);
+        tx_allowance = 32;
+        gmk_battery_poll();
+        const uint8_t acknowledgement[] = {0x61, 0x0d, 0x0a};
+        expect_bytes(26, acknowledgement, sizeof(acknowledgement));
+        assert(tx_count == 29);
+    }
+}
 static void test_ten_byte_budget_and_partial_timeout_wrap(void) {
     connected();
     const uint8_t report[8] = {0, 0, 4};
@@ -210,6 +248,7 @@ int main(void) {
     test_select_then_query_ack_ownership();
     test_control_early_ack_cannot_complete_partial_transmit();
     test_partial_keyboard_ack_between_frames();
+    test_nkro_overflow_is_immutable_during_partial_uart_transmit();
     test_partial_timeout_does_not_complete_frame();
     test_ten_byte_budget_and_partial_timeout_wrap();
     test_notifications_obey_checksum_raw_quarantine_and_errors();

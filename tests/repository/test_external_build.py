@@ -105,9 +105,20 @@ class ExternalGeneratorTests(unittest.TestCase):
                     for line in result.splitlines()
                     if line.startswith("SOURCES=")
                 ).split()
-                self.assertEqual(sources.count("hardware.c"), 1)
+                for source in (
+                    "hardware.c",
+                    "battery_holds.c",
+                    "function_flip.c",
+                    "function_flip_qmk.c",
+                ):
+                    self.assertEqual(sources.count(source), 1)
                 self.assertNotIn("battery_indicators.c", sources)
-                for task in ("housekeeping_task", "rgb_matrix_task"):
+                for task in (
+                    "housekeeping_task",
+                    "rgb_matrix_task",
+                    "host_keyboard_send",
+                    "host_nkro_send",
+                ):
                     self.assertIn(f"-Wl,--wrap={task}", result)
 
     def test_linker_script_edit_invalidates_cached_elf(self) -> None:

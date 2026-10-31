@@ -12,12 +12,18 @@
 struct recorded_report {
     bool     consumer;
     uint8_t  keyboard[8];
+    uint8_t  overflow[14];
     uint16_t usage;
 };
 static struct recorded_report reports[16];
 static unsigned               report_count;
 static bool                   selected;
 static int                    submit_result;
+static bool                   nkro_enabled = true;
+
+bool gmk_nkro_enabled(void) {
+    return nkro_enabled;
+}
 
 bool gmk_radio_selected(void) {
     return selected;
@@ -28,6 +34,11 @@ int gmk_radio_submit_keyboard(const uint8_t report[8]) {
     entry->consumer               = false;
     memcpy(entry->keyboard, report, 8);
     return submit_result;
+}
+int gmk_radio_submit_nkro(const uint8_t report[8], const uint8_t overflow[14]) {
+    int result = gmk_radio_submit_keyboard(report);
+    memcpy(reports[report_count - 1].overflow, overflow, 14);
+    return result;
 }
 int gmk_radio_submit_consumer(uint16_t usage) {
     assert(report_count < 16);
@@ -52,6 +63,7 @@ static void reset(bool radio) {
     report_count  = 0;
     selected      = radio;
     submit_result = 0;
+    nkro_enabled  = true;
 }
 static void usb_forwarding_preserves_results(void) {
     reset(false);
@@ -66,7 +78,14 @@ static void keyboard_fast_tap_is_snapshotted_before_release(void) {
     reset(true);
     struct zmk_hid_keyboard_report *keyboard = zmk_hid_get_keyboard_report();
     keyboard->report_id                      = 0x91;
-    keyboard->body                           = (struct zmk_hid_keyboard_report_body){.modifiers = 0x42, ._reserved = 0xff, .keys = {4, 5, 6, 7, 8, 9}};
+    keyboard->body                           = (struct zmk_hid_keyboard_report_body){.modifiers = 0x42, ._reserved = 0xff};
+#if defined(CONFIG_ZMK_HID_REPORT_TYPE_NKRO) && CONFIG_ZMK_HID_REPORT_TYPE_NKRO == 1
+    keyboard->body.keys[0] = 0xf0;
+    keyboard->body.keys[1] = 3;
+#else
+    const uint8_t keys[6] = {4, 5, 6, 7, 8, 9};
+    memcpy(keyboard->body.keys, keys, sizeof(keys));
+#endif
     assert(zmk_endpoint_send_report(HID_USAGE_KEY) == 0);
     keyboard->body = (struct zmk_hid_keyboard_report_body){0};
     assert(zmk_endpoint_send_report(HID_USAGE_KEY) == 0);
@@ -79,6 +98,36 @@ static void keyboard_fast_tap_is_snapshotted_before_release(void) {
     submit_result = -ENOBUFS;
     assert(zmk_endpoint_send_report(HID_USAGE_KEY) == -ENOBUFS);
 }
+#if defined(CONFIG_ZMK_HID_REPORT_TYPE_NKRO) && CONFIG_ZMK_HID_REPORT_TYPE_NKRO == 1
+static void nkro_overflow_is_snapshotted_and_disabled_in_compatibility_mode(void) {
+    reset(true);
+    gmk_radio_clear_hid();
+    report_count                              = 0;
+    struct zmk_hid_keyboard_report_body *body = &zmk_hid_get_keyboard_report()->body;
+    body->modifiers                           = 2;
+    body->keys[0]                             = 0xf0;
+    body->keys[1]                             = 0x0f;
+    assert(zmk_endpoint_send_report(HID_USAGE_KEY) == 0);
+    const uint8_t keyboard[8]  = {2, 0, 4, 5, 6, 7, 8, 9};
+    const uint8_t overflow[14] = {0, 0x0c};
+    assert(report_count == 1);
+    assert(memcmp(reports[0].keyboard, keyboard, sizeof(keyboard)) == 0);
+    assert(memcmp(reports[0].overflow, overflow, sizeof(overflow)) == 0);
+    nkro_enabled = false;
+    assert(zmk_endpoint_send_report(HID_USAGE_KEY) == 0);
+    const uint8_t zero[14] = {0};
+    assert(memcmp(reports[1].keyboard, keyboard, sizeof(keyboard)) == 0);
+    assert(memcmp(reports[1].overflow, zero, sizeof(zero)) == 0);
+    nkro_enabled         = true;
+    body->keys[0]        = 0x20;
+    body->keys[1]        = 2;
+    body->keys[0x73 / 8] = 8;
+    assert(zmk_endpoint_send_report(HID_USAGE_KEY) == 0);
+    const uint8_t holes[8] = {2, 0, 0x73, 5, 0, 0, 0, 9};
+    assert(memcmp(reports[2].keyboard, holes, sizeof(holes)) == 0);
+    assert(memcmp(reports[2].overflow, zero, sizeof(zero)) == 0);
+}
+#endif
 static void consumer_selects_first_held_usage_and_restores_next(void) {
     reset(true);
     struct zmk_hid_consumer_report *consumer = zmk_hid_get_consumer_report();
@@ -122,6 +171,9 @@ static void usb_clear_keeps_native_dispatch_and_releases_radio(void) {
     assert(reports[1].consumer && reports[1].usage == 0);
 }
 int main(void) {
+#if defined(CONFIG_ZMK_HID_REPORT_TYPE_NKRO) && CONFIG_ZMK_HID_REPORT_TYPE_NKRO == 1
+    nkro_overflow_is_snapshotted_and_disabled_in_compatibility_mode();
+#endif
     usb_forwarding_preserves_results();
     keyboard_fast_tap_is_snapshotted_before_release();
     consumer_selects_first_held_usage_and_restores_next();

@@ -8,6 +8,9 @@
 #    include "../function_flip/flip.h"
 #endif
 #include "../battery/battery.h"
+#ifdef CONFIG_GMK70_NKRO
+#    include "../nkro/nkro.h"
+#endif
 #ifdef CONFIG_GMK70_RADIO
 #    include "radio.h"
 #endif
@@ -63,6 +66,9 @@ static void worker(void *a, void *b, void *c) {
         /* The settings caller runs on system work, never on its own storage
          * worker. Radio changes remain runtime-only until wired USB returns. */
         gmk_flip_poll(env.left && env.wired && env.usb_configured && env.writes_ready);
+#endif
+#ifdef CONFIG_GMK70_NKRO
+        gmk_nkro_poll(env.left && env.wired && env.usb_configured && env.writes_ready);
 #endif
         gmk_zmk_raw_hid_poll(&env);
         /* Admission and execution are distinct boundaries: resample physical

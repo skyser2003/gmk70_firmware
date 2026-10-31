@@ -481,7 +481,7 @@ class VialToZmk:
         if code in (0x7009, 0x700A, 0x700B, 0x7E24):
             raise UnsupportedKeycode(IssueCategory.GUI_LOCK)
         if code in (0x7011, 0x7012, 0x7013):
-            raise UnsupportedKeycode(IssueCategory.NKRO)
+            return Binding("gmk_nkro", ({0x7011: 1, 0x7012: 2, 0x7013: 0}[code],))
         if code == 0x7C03:
             raise UnsupportedKeycode(IssueCategory.SETTINGS_RESET)
         if 0x7E00 <= code <= 0x7E3F:

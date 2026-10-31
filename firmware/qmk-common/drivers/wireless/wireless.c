@@ -5,6 +5,7 @@
 #include "quantum.h"
 #include "wireless.h"
 #include "split_diagnostics.h"
+#include "radio_keys.h"
 
 #ifndef WLS_INQUIRY_BAT_TIME
 #    define WLS_INQUIRY_BAT_TIME 3000
@@ -53,48 +54,14 @@ void wireless_send_keyboard(report_keyboard_t *report) {
 }
 
 void wireless_send_nkro(report_nkro_t *report) {
-    static report_keyboard_t keyboard_report                      = {0};
-    uint8_t                  overflow_report[MD_SND_CMD_NKRO_LEN] = {0};
+    static struct gmk70_radio_keys keys;
+    uint8_t                        keyboard_report[MD_SND_CMD_KB_LEN];
+    uint8_t                        overflow_report[MD_SND_CMD_NKRO_LEN];
 
     if (md_reports_inhibited()) return;
 
-    if (report == NULL) {
-        memset(&keyboard_report, 0, sizeof(keyboard_report));
-    } else {
-        keyboard_report.mods = report->mods;
-        // Keep held keys in their existing slots; holes must not end the scan.
-        for (uint8_t slot = 0; slot < KEYBOARD_REPORT_KEYS; slot++) {
-            uint8_t key = keyboard_report.keys[slot];
-            if (key / 8 >= NKRO_REPORT_BITS || !(report->bits[key / 8] & (1u << (key % 8)))) {
-                keyboard_report.keys[slot] = 0;
-            }
-        }
-        for (uint16_t key = 1; key < NKRO_REPORT_BITS * 8; key++) {
-            if (!(report->bits[key / 8] & (1u << (key % 8)))) {
-                continue;
-            }
-            uint8_t empty_slot = KEYBOARD_REPORT_KEYS;
-            bool    present    = false;
-            for (uint8_t slot = 0; slot < KEYBOARD_REPORT_KEYS; slot++) {
-                if (keyboard_report.keys[slot] == key) {
-                    present = true;
-                    break;
-                }
-                if (!keyboard_report.keys[slot] && empty_slot == KEYBOARD_REPORT_KEYS) {
-                    empty_slot = slot;
-                }
-            }
-            if (present) {
-                continue;
-            }
-            if (empty_slot < KEYBOARD_REPORT_KEYS) {
-                keyboard_report.keys[empty_slot] = (uint8_t)key;
-            } else if (key < sizeof(overflow_report) * 8) {
-                overflow_report[key / 8] |= 1u << (key % 8);
-            }
-        }
-    }
-    wireless_driver.send_keyboard(&keyboard_report);
+    gmk70_radio_keys_encode(&keys, report ? report->mods : 0, report ? report->bits : NULL, report ? sizeof(report->bits) : 0, keyboard_report, overflow_report);
+    md_send_kb(keyboard_report);
     md_send_nkro(overflow_report);
 }
 
@@ -152,6 +119,11 @@ void wireless_devs_change(uint8_t old_devs, uint8_t new_devs, bool reset) {
     // Select the host driver before the asynchronous radio connection completes.
     // Otherwise the first connection leaves reports routed to USB indefinitely.
     if (is_keyboard_master()) {
+        // Wireless channel changes keep the same driver, so set_transport()
+        // cannot release their outgoing host. Preserve same-channel wake keys.
+        if (get_transport() == TRANSPORT_WLS && new_devs != DEVS_USB && (wls_devs != new_devs || reset)) {
+            wls_transport_enable(false);
+        }
         set_transport(new_devs == DEVS_USB ? TRANSPORT_USB : TRANSPORT_WLS);
     }
 

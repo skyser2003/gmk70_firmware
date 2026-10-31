@@ -36,8 +36,24 @@ static gmk_update_t  update;
 static uint8_t       queued[GMK_PACKET_SIZE];
 static uint8_t       last_response[GMK_PACKET_SIZE];
 static volatile bool pending;
+static bool          queued_usb;
 static uint32_t      last_request;
 static uint32_t      reset_at;
+
+static gmk_update_result_t update_gate(bool usb, uint8_t operation) {
+    if (wireless_get_current_devs() != DEVS_USB) return GMK_UNAVAILABLE;
+    if (usb) {
+        if (!is_keyboard_left() || !is_keyboard_master() || get_transport() != TRANSPORT_USB || USB_DRIVER.state != USB_ACTIVE) return GMK_UNAVAILABLE;
+#ifdef GMK70_VIAL_UPDATE
+        if (!gmk_update_usb_authorized(operation)) return GMK_LOCKED;
+#else
+        (void)operation;
+#endif
+    } else if (is_keyboard_left() || is_keyboard_master()) {
+        return GMK_UNAVAILABLE;
+    }
+    return GMK_OK;
+}
 
 bool gmk_update_active(void) {
 #ifdef GMK70_VIAL_TRIAL
@@ -60,7 +76,7 @@ static void update_response(const uint8_t request[GMK_PACKET_SIZE], gmk_update_r
 // The split transport calls this in its high-priority thread. Only copy RAM here;
 // flash programming, EEPROM reads and CRC checks run in normal housekeeping.
 // DATA fills the existing page buffer immediately; only a full/final page queues.
-static void receive(const uint8_t *request, uint8_t *response) {
+static void receive(const uint8_t *request, uint8_t *response, bool usb) {
     chSysLock();
     if (!packet_valid(request)) {
         memcpy(response, request, GMK_PACKET_SIZE);
@@ -107,13 +123,15 @@ static void receive(const uint8_t *request, uint8_t *response) {
         if (result == GMK_OK || result == GMK_BUSY) last_request = timer_read32();
         if (result == GMK_BUSY) {
             memcpy(queued, request, GMK_PACKET_SIZE);
-            pending = true;
+            queued_usb = usb;
+            pending    = true;
         } else {
             memcpy(last_response, response, GMK_PACKET_SIZE);
         }
     } else {
         memcpy(queued, request, GMK_PACKET_SIZE);
-        pending = true;
+        queued_usb = usb;
+        pending    = true;
         memcpy(response, request, GMK_PACKET_SIZE);
         response[5] = GMK_BUSY;
     }
@@ -129,7 +147,7 @@ static void peer_handler(uint8_t in_size, const void *in, uint8_t out_size, void
         response[5] = GMK_UNAVAILABLE;
         return;
     }
-    receive(request, response);
+    receive(request, response, false);
 }
 
 void gmk_update_init(void) {
@@ -146,6 +164,7 @@ void gmk_update_init(void) {
 #endif
     update                                 = (gmk_update_t){0};
     pending                                = false;
+    queued_usb                             = false;
     last_request                           = 0;
     reset_at                               = 0;
     const uint8_t request[GMK_PACKET_SIZE] = {GMK_UPDATE_COMMAND, 0x70, GMK_UPDATE_ABI, !is_keyboard_left(), GMK_STATUS};
@@ -168,31 +187,36 @@ void gmk_update_task(void) {
         return;
     }
     chSysLock();
-    if (!pending) {
-        if (update.state != GMK_IDLE && timer_elapsed32(last_request) > 10000) {
-            update = (gmk_update_t){0};
+    if (update.state != GMK_IDLE && timer_elapsed32(last_request) > 10000) {
+        update = (gmk_update_t){0};
 #ifdef GMK70_VIAL_TRIAL
-            trial_launch = (gmk_trial_launch_t){0};
-            trial_mode   = false;
+        trial_launch = (gmk_trial_launch_t){0};
+        trial_mode   = false;
 #endif
-        }
+    }
+    if (!pending) {
         chSysUnlock();
         return;
     }
     chSysUnlock();
     uint8_t request[GMK_PACKET_SIZE];
+    bool    usb;
     chSysLock();
     memcpy(request, queued, GMK_PACKET_SIZE);
+    usb = queued_usb;
     chSysUnlock();
-    bool                eeprom_query = request[4] == GMK_EEPROM_INFO || request[4] == GMK_EEPROM_READ;
-    bool                log_query    = request[4] == GMK_SLEEP_LOG_INFO || request[4] == GMK_SLEEP_LOG_READ;
-    gmk_update_result_t result       = GMK_UNAVAILABLE;
+    bool eeprom_query = request[4] == GMK_EEPROM_INFO || request[4] == GMK_EEPROM_READ;
+    bool log_query    = request[4] == GMK_SLEEP_LOG_INFO || request[4] == GMK_SLEEP_LOG_READ;
+    // Local work must still own the USB master and native Vial unlock. A right
+    // peer inherits master authorization, but must remain a wired right slave.
+    gmk_update_result_t result = update_gate(usb, request[4]);
     uint8_t             response[GMK_PACKET_SIZE];
     if (eeprom_query) {
 #ifndef GMK70_VIAL_UPDATE
-        if (wireless_get_current_devs() == DEVS_USB) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
+        if (result == GMK_OK) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
         gmk_eeprom_query(request, result, response);
 #else
+        result = GMK_UNAVAILABLE;
         memset(response, 0, sizeof(response));
         memcpy(response, request, 5);
         memcpy(response + 8, request + 8, 8);
@@ -200,16 +224,17 @@ void gmk_update_task(void) {
 #endif
     } else if (log_query) {
 #ifdef GMK70_PERSISTENT_DIAGNOSTICS
-        if (wireless_get_current_devs() == DEVS_USB) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
+        if (result == GMK_OK) result = update.state == GMK_IDLE ? GMK_OK : GMK_BAD_STATE;
         gmk_sleep_log_query(request, result, response);
 #else
+        result = GMK_UNAVAILABLE;
         memset(response, 0, sizeof(response));
         memcpy(response, request, 5);
         memcpy(response + 8, request + 8, 8);
         response[5] = GMK_UNAVAILABLE;
 #endif
     } else {
-        if (wireless_get_current_devs() == DEVS_USB) {
+        if (result == GMK_OK) {
 #ifdef GMK70_VIAL_TRIAL
             bool trial = request[1] == GMK_TRIAL_NAMESPACE;
             if (trial) {
@@ -275,8 +300,13 @@ void gmk_update_task(void) {
         gmk_write_u32(response + 16, size);
         gmk_write_u32(response + 20, gmk_crc32(gmk_flash_view(GMK_APP_BASE), size));
     }
-    // A rejected settings query must not keep an unfinished update alive.
-    if (!eeprom_query && !log_query) last_request = timer_read32();
+    // Only successful mutations renew an unfinished upload's lease.
+    if (result == GMK_OK && !eeprom_query && !log_query && request[4] != GMK_INFO
+#ifdef GMK70_VIAL_TRIAL
+        && request[4] != GMK_TRIAL_RESULT && request[4] != GMK_TRIAL_CAPS && request[4] != GMK_TRIAL_TRACE
+#endif
+    )
+        last_request = timer_read32();
     if (update.state == GMK_COMMITTED) reset_at = last_request;
     chSysLock();
     memcpy(last_response, response, sizeof(response));
@@ -290,18 +320,15 @@ bool gmk_update_usb(uint8_t *data, uint8_t length) {
     uint8_t response[GMK_PACKET_SIZE];
     memcpy(response, data, sizeof(response));
     response[5] = GMK_UNAVAILABLE;
-    if (packet_valid(data) && is_keyboard_left() && is_keyboard_master() && get_transport() == TRANSPORT_USB && USB_DRIVER.state == USB_ACTIVE) {
-#    ifdef GMK70_VIAL_UPDATE
-        // USB enumeration alone does not mean the mode switch is wired.
-        bool wired = wireless_get_current_devs() == DEVS_USB;
-        if (!wired || !gmk_update_usb_authorized(data[4])) {
-            response[5] = wired ? GMK_LOCKED : GMK_UNAVAILABLE;
+    if (packet_valid(data)) {
+        gmk_update_result_t gate = update_gate(true, data[4]);
+        if (gate != GMK_OK) {
+            response[5] = gate;
             memcpy(data, response, sizeof(response));
             return true;
         }
-#    endif
         if (data[3] == 0) {
-            receive(data, response);
+            receive(data, response, true);
         } else {
             bool delivered = transaction_rpc_exec(GMK_UPDATE_RPC, GMK_PACKET_SIZE, data, GMK_PACKET_SIZE, response);
             if (!delivered) {

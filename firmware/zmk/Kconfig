@@ -10,6 +10,7 @@ rsource "lighting/Kconfig"
 rsource "battery/Kconfig"
 rsource "radio/Kconfig"
 rsource "function_flip/Kconfig"
+rsource "nkro/Kconfig"
 endif
 
 config GMK70_TRIAL_MAIN_RETURN

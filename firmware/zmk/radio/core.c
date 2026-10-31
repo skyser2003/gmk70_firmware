@@ -12,6 +12,7 @@ static bool wireless(uint8_t channel) {
 }
 static void discard(struct gmk_radio_core *radio) {
     radio->head = radio->count = 0;
+    radio->overflow_pending    = false;
 }
 void gmk_radio_core_init(struct gmk_radio_core *radio) {
     *radio = (struct gmk_radio_core){.last_bt = GMK_HOST_BT1, .pending_select = true};
@@ -21,7 +22,7 @@ int gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pa
     if (!pair && channel == radio->selected && radio->accept_status && !radio->pending_select) return 0;
     radio->faulted = false;
     discard(radio);
-    if (wireless(radio->active)) radio->release |= 3;
+    if (wireless(radio->active)) radio->release |= 7;
     radio->selected = channel;
     if (channel >= GMK_HOST_BT1 && channel <= GMK_HOST_BT5) radio->last_bt = channel;
     radio->pending_select = channel != radio->active || !radio->accept_status;
@@ -33,25 +34,33 @@ int gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pa
     radio->accept_status = !radio->pending_select;
     return 0;
 }
-int gmk_radio_core_report(struct gmk_radio_core *radio, bool consumer, const uint8_t bytes[8]) {
+static int enqueue(struct gmk_radio_core *radio, uint8_t kind, const uint8_t bytes[8], const uint8_t overflow[14]) {
     if (!wireless(radio->selected) || radio->active != radio->selected || radio->connection != GMK_RADIO_CONNECTED || radio->pending_pair) return -ENOTCONN;
-    bool overflow = radio->count == 8;
-    if (overflow) {
+    bool full = radio->count == 8;
+    if (full) {
         discard(radio);
-        radio->release |= 3;
+        radio->release |= 7;
         ++radio->errors;
     }
     struct gmk_radio_report *report = &radio->queue[(radio->head + radio->count) % 8];
     memcpy(report->bytes, bytes, sizeof(report->bytes));
-    report->consumer = consumer;
+    if (overflow) memcpy(report->overflow, overflow, sizeof(report->overflow));
+    report->kind = kind;
     ++radio->count;
-    return overflow ? -ENOBUFS : 0;
+    return full ? -ENOBUFS : 0;
+}
+int gmk_radio_core_report(struct gmk_radio_core *radio, bool consumer, const uint8_t bytes[8]) {
+    return enqueue(radio, consumer ? GMK_RADIO_TX_CONSUMER : GMK_RADIO_TX_KEYBOARD, bytes, NULL);
 }
 void gmk_radio_core_release(struct gmk_radio_core *radio, bool consumer) {
     if (!wireless(radio->active) && !wireless(radio->selected)) return;
     /* A reserved barrier survives a full FIFO and discards obsolete presses. */
+    if (radio->overflow_pending) radio->release |= 5;
     discard(radio);
-    radio->release |= consumer ? 2 : 1;
+    radio->release |= consumer ? 2 : 5;
+}
+int gmk_radio_core_nkro(struct gmk_radio_core *radio, const uint8_t keyboard[8], const uint8_t overflow[14]) {
+    return enqueue(radio, GMK_RADIO_TX_NKRO, keyboard, overflow);
 }
 void gmk_radio_core_notification(struct gmk_radio_core *radio, uint8_t command, uint8_t value) {
     if (command != 0x5b || !radio->accept_status || !wireless(radio->active) || radio->active != radio->selected) return;
@@ -75,7 +84,7 @@ void gmk_radio_core_notification(struct gmk_radio_core *radio, uint8_t command, 
     if (connection == radio->connection) return;
     radio->connection = connection;
     discard(radio);
-    radio->release |= 3;
+    radio->release |= 7;
     radio->clear_requested = true;
 }
 void gmk_radio_core_ack(struct gmk_radio_core *radio) {
@@ -122,6 +131,10 @@ bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_
         frame->bytes[0] = 0xa1;
         return claim(radio, frame, GMK_RADIO_TX_RELEASE_KEYBOARD, 10);
     }
+    if (radio->release & 4) {
+        frame->bytes[0] = 0xa2;
+        return claim(radio, frame, GMK_RADIO_TX_RELEASE_NKRO, 16);
+    }
     if (radio->release & 2) {
         frame->bytes[0] = 0xa3;
         return claim(radio, frame, GMK_RADIO_TX_RELEASE_CONSUMER, 4);
@@ -129,12 +142,26 @@ bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_
     if (radio->pending_select || radio->selected != radio->active) return control(radio, frame, false, radio->selected);
     if (radio->pending_pair) return control(radio, frame, true, radio->selected);
     if (!radio->count || radio->connection != GMK_RADIO_CONNECTED || radio->active != radio->selected) return false;
-    const struct gmk_radio_report *report   = &radio->queue[radio->head];
-    bool                           consumer = report->consumer;
-    frame->bytes[0]                         = consumer ? 0xa3 : 0xa1;
+    const struct gmk_radio_report *report = &radio->queue[radio->head];
+    if (radio->overflow_pending) {
+        frame->bytes[0] = 0xa2;
+        memcpy(frame->bytes + 1, report->overflow, sizeof(report->overflow));
+        radio->overflow_pending = false;
+        radio->head             = (uint8_t)((radio->head + 1) % 8);
+        --radio->count;
+        return claim(radio, frame, GMK_RADIO_TX_NKRO, 16);
+    }
+    bool consumer   = report->kind == GMK_RADIO_TX_CONSUMER;
+    frame->bytes[0] = consumer ? 0xa3 : 0xa1;
     memcpy(frame->bytes + 1, report->bytes, consumer ? 2 : 8);
-    radio->head = (uint8_t)((radio->head + 1) % 8);
-    --radio->count;
+    if (report->kind == GMK_RADIO_TX_NKRO)
+        /* Keep the snapshot at the head until its paired A2 is claimed. A
+         * discard cancels that pair and reserves zero A1/A2 release frames. */
+        radio->overflow_pending = true;
+    else {
+        radio->head = (uint8_t)((radio->head + 1) % 8);
+        --radio->count;
+    }
     return claim(radio, frame, consumer ? GMK_RADIO_TX_CONSUMER : GMK_RADIO_TX_KEYBOARD, consumer ? 4 : 10);
 }
 void gmk_radio_core_sent(struct gmk_radio_core *radio, uint32_t now, bool success) {
@@ -167,6 +194,7 @@ void gmk_radio_core_sent(struct gmk_radio_core *radio, uint32_t now, bool succes
     } else {
         if (kind == GMK_RADIO_TX_RELEASE_KEYBOARD) radio->release &= (uint8_t)~1U;
         if (kind == GMK_RADIO_TX_RELEASE_CONSUMER) radio->release &= (uint8_t)~2U;
+        if (kind == GMK_RADIO_TX_RELEASE_NKRO) radio->release &= (uint8_t)~4U;
         ++radio->reports;
     }
 }

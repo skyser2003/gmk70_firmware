@@ -1,5 +1,10 @@
 # GMK70 ZMK wired development and staging trials
 
+Current sources include [default-on NKRO](../../docs/NKRO.md), a remappable
+Studio toggle/on/off behavior, and Fn+V on both Windows and Mac defaults.
+Saved layouts are preserved; these additions have not been installed as part
+of the implementation work described here.
+
 The [exact RAM extent](../../docs/ZMK-RAM-EXTENT.md) exposes 28,544 bytes while
 preserving both retained records. The recorded universal image keeps identical
 application bytes and gains 896 bytes of available space for future allocations.

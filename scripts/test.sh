@@ -34,12 +34,16 @@ cc "${common_flags[@]}" -DGMK_TRIAL_PLATFORM_TEST -ffunction-sections -fdata-sec
     firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
     -o artifacts/tests/qmk/trial-platform
 artifacts/tests/qmk/trial-platform
-cc "${common_flags[@]}" -Itests/qmk/module_stubs \
-    '-DPRODUCT="ZUOYA GMK70"' '-DMANUFACTURER="HS"' \
-    -DVENDOR_ID=0x342d -DPRODUCT_ID=0xe491 \
-    tests/qmk/module_test.c firmware/qmk-common/drivers/wireless/module.c \
-    firmware/qmk-common/drivers/wireless/smsg.c -o artifacts/tests/qmk/module
-artifacts/tests/qmk/module
+for profile in native faults; do
+    module_flags=()
+    if [[ "$profile" == faults ]]; then module_flags+=(-DPROTOCOL_CHIBIOS); fi
+    cc "${common_flags[@]}" -Itests/qmk/module_stubs "${module_flags[@]}" \
+        '-DPRODUCT="ZUOYA GMK70"' '-DMANUFACTURER="HS"' \
+        -DVENDOR_ID=0x342d -DPRODUCT_ID=0xe491 \
+        tests/qmk/module_test.c firmware/qmk-common/drivers/wireless/module.c \
+        firmware/qmk-common/drivers/wireless/smsg.c -o "artifacts/tests/qmk/module-$profile"
+    "artifacts/tests/qmk/module-$profile"
+done
 cc "${common_flags[@]}" tests/qmk/stock_power_test.c \
     firmware/qmk-common/keyboards/zuoya/gmk70/stock_power.c -o artifacts/tests/qmk/stock-power
 artifacts/tests/qmk/stock-power
@@ -69,6 +73,18 @@ cc -Itests/qmk/transport_stubs "${common_flags[@]}" \
     -DKEEP_USB_CONNECTION_IN_WIRELESS_MODE -DUSB_SUSPEND_WAKEUP_DELAY=1000 \
     tests/qmk/transport_test.c firmware/qmk-common/drivers/wireless/transport.c -o artifacts/tests/qmk/transport
 artifacts/tests/qmk/transport
+for endpoint in dedicated shared; do
+    endpoint_flags=()
+    if [[ "$endpoint" == shared ]]; then endpoint_flags+=(-DKEYBOARD_SHARED_EP -DMOUSE_SHARED_EP); fi
+    cc -Itests/qmk/transport_stubs -Itests/qmk/module_stubs "${common_flags[@]}" \
+        -DKEEP_USB_CONNECTION_IN_WIRELESS_MODE "${endpoint_flags[@]}" \
+        '-DPRODUCT="ZUOYA GMK70"' '-DMANUFACTURER="HS"' -DVENDOR_ID=0x342d -DPRODUCT_ID=0xe491 \
+        tests/qmk/host_switch_test.c firmware/qmk-common/drivers/wireless/transport.c \
+        firmware/qmk-common/drivers/wireless/wireless.c firmware/qmk-common/drivers/wireless/module.c \
+        firmware/qmk-common/drivers/wireless/radio_keys.c \
+        firmware/qmk-common/drivers/wireless/smsg.c -o "artifacts/tests/qmk/host-switch-$endpoint"
+    "artifacts/tests/qmk/host-switch-$endpoint"
+done
 cc "${common_flags[@]}" -Ifirmware/qmk-common/keyboards/zuoya/gmk70/wls \
     tests/qmk/wireless_mode_test.c -o artifacts/tests/qmk/wireless-mode
 artifacts/tests/qmk/wireless-mode
@@ -84,6 +100,7 @@ for endpoint in dedicated shared; do
     cc "${common_flags[@]}" -DRAW_ENABLE "${endpoint_flags[@]}" \
         tests/qmk/wireless_test.c tests/qmk/radio_fixture.c \
         firmware/qmk-common/drivers/wireless/wireless.c firmware/qmk-common/drivers/wireless/md_raw.c \
+        firmware/qmk-common/drivers/wireless/radio_keys.c \
         -Wl,--wrap=raw_hid_send -o "artifacts/tests/qmk/wireless-$endpoint"
     "artifacts/tests/qmk/wireless-$endpoint"
 done
@@ -100,8 +117,12 @@ artifacts/tests/qmk/vial-manual-keys
 cc "${common_flags[@]}" -Itests/qmk/stock_battery_stubs \
     -include firmware/qmk-common/keyboards/zuoya/gmk70/config.h \
     tests/qmk/stock_battery_test.c firmware/qmk-common/keyboards/zuoya/gmk70/stock_battery.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_holds.c \
     -o artifacts/tests/qmk/stock-battery
 artifacts/tests/qmk/stock-battery
+cc "${common_flags[@]}" tests/qmk/battery_holds_test.c \
+    firmware/qmk-common/keyboards/zuoya/gmk70/battery_holds.c -o artifacts/tests/qmk/battery-holds
+artifacts/tests/qmk/battery-holds
 for framework in qmk vial-qmk; do
     for fixture in rgb activity; do
         cc -Itests/qmk/vial_stubs -Itests/qmk/stock_battery_stubs -Itests/qmk/stubs \
@@ -113,9 +134,33 @@ for framework in qmk vial-qmk; do
             "tests/qmk/hardware_${fixture}_test.c" \
             firmware/qmk-common/keyboards/zuoya/gmk70/hardware.c \
             firmware/qmk-common/keyboards/zuoya/gmk70/stock_battery.c \
+            firmware/qmk-common/keyboards/zuoya/gmk70/battery_holds.c \
             firmware/qmk-common/keyboards/zuoya/gmk70/stock_power.c \
             -o "artifacts/tests/qmk/hardware-$framework-$fixture"
         "artifacts/tests/qmk/hardware-$framework-$fixture"
+    done
+    for fixture in function_flip function_flip_adapter; do
+        flip_sources=()
+        if [[ "$fixture" == function_flip_adapter ]]; then
+            flip_sources+=(tests/qmk/function_flip_report_fixture.c)
+        fi
+        cc -Itests/qmk/function_flip_stubs -Itests/qmk/vial_stubs -Itests/qmk/stock_battery_stubs -Itests/qmk/stubs \
+            -I"dependencies/$framework/quantum" \
+            -I"dependencies/$framework/quantum/keymap_extras" -I"dependencies/$framework/quantum/sequencer" \
+            -I"dependencies/$framework/tmk_core/protocol" \
+            "${common_flags[@]}" -Wconversion -Wsign-conversion -DNKRO_ENABLE \
+            -DA5=5 -DA8=8 -DCOMBO_ENABLE -DREPEAT_KEY_ENABLE \
+            -DMATRIX_ROWS=10 -DMATRIX_COLS=9 -Idependencies/qmk/platforms \
+            -ffunction-sections -fdata-sections -Wl,--gc-sections \
+            -include firmware/qmk-common/keyboards/zuoya/gmk70/config.h \
+            "tests/qmk/${fixture}_test.c" \
+            "${flip_sources[@]}" \
+            firmware/qmk-common/keyboards/zuoya/gmk70/function_flip.c \
+            firmware/qmk-common/keyboards/zuoya/gmk70/function_flip_qmk.c \
+            firmware/qmk-common/keyboards/zuoya/gmk70/hardware.c \
+            -Wl,--wrap=host_keyboard_send -Wl,--wrap=host_nkro_send \
+            -o "artifacts/tests/qmk/$framework-$fixture"
+        "artifacts/tests/qmk/$framework-$fixture"
     done
 done
 cc -Itests/qmk/vial_stubs "${common_flags[@]}" -DEEPROM_TEST_HARNESS -Idependencies/qmk/platforms \

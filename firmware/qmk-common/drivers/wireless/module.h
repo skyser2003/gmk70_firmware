@@ -124,6 +124,7 @@ void     md_devs_change(uint8_t devs, bool reset);
 bool     md_inquire_bat(void);
 uint8_t  md_get_version(void);
 bool     md_reports_inhibited(void);
+bool     md_battery_is_fresh(void);
 uint8_t *md_getp_state(void);
 uint8_t *md_getp_bat(void);
 uint8_t *md_getp_indicator(void);

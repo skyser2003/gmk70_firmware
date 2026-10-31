@@ -80,7 +80,12 @@ class StockTablesTests(unittest.TestCase):
             )
             data = subprocess.check_output([binary])
         values = list(struct.unpack("<368H", data))
-        self.assertEqual(values[:360], stock["keymaps"])
+        # Mac Fn+V now matches the Windows NKRO toggle; all other stock cells
+        # and the encoder table retain their reconstructed values.
+        self.assertEqual(values[:302], stock["keymaps"][:302])
+        self.assertEqual(values[302], 0x7013)
+        self.assertEqual(stock["keymaps"][302], 0x0001)
+        self.assertEqual(values[303:360], stock["keymaps"][303:])
         self.assertEqual(values[360:], stock["encoder"])
 
     def test_rgb_geometry_flags_and_physical_lookup_are_stock(self) -> None:

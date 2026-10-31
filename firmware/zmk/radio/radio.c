@@ -186,20 +186,23 @@ bool gmk_radio_selected(void) {
     k_spin_unlock(&lock, key);
     return selected;
 }
-static int submit(bool consumer, const uint8_t report[8]) {
+static int submit(bool consumer, const uint8_t report[8], const uint8_t overflow[14]) {
     uint8_t          raw    = gmk_host_switch();
     k_spinlock_key_t key    = k_spin_lock(&lock);
     int              result = admission_locked(raw);
-    if (!result) result = gmk_radio_core_report(&core, consumer, report);
+    if (!result) result = overflow ? gmk_radio_core_nkro(&core, report, overflow) : gmk_radio_core_report(&core, consumer, report);
     k_spin_unlock(&lock, key);
     return result;
 }
 int gmk_radio_submit_keyboard(const uint8_t report[8]) {
-    return submit(false, report);
+    return submit(false, report, NULL);
+}
+int gmk_radio_submit_nkro(const uint8_t report[8], const uint8_t overflow[14]) {
+    return submit(false, report, overflow);
 }
 int gmk_radio_submit_consumer(uint16_t usage) {
     const uint8_t report[8] = {(uint8_t)usage, (uint8_t)(usage >> 8)};
-    return submit(true, report);
+    return submit(true, report, NULL);
 }
 void gmk_radio_release(bool consumer) {
     k_spinlock_key_t key = k_spin_lock(&lock);

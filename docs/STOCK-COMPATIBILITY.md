@@ -26,6 +26,44 @@ The stock default matrix keymap starts at binary offset `0x126C0`; its Windows F
 
 The explicit enum in `firmware/qmk-common/keyboards/zuoya/gmk70/stock_keycodes.h` preserves gaps instead of renumbering later keys. Unused slots remain unhandled. Bluetooth 4/5 and USB now have handlers; mode selection still respects the physical switch. The radio module's actual support for five simultaneous stored Bluetooth pairings remains a hardware-validation item. Wireless selection/pairing retains the three-second hold, and unrelated key events no longer replace the pending pairing key.
 
+## Repository safeguards beyond stock reconstruction
+
+NKRO defaults on through native configuration, with a persistent Fn+V toggle on
+both Windows and Mac defaults. The Mac binding is an intentional change from
+stock's transparent cell. Existing saved maps are preserved. See
+[NKRO](NKRO.md) for format transitions, ZMK parity and radio limits.
+
+VIA and Vial share these board safeguards, adapted from this repository's ZMK
+implementation. Custom-key numbers, persistent flags and native settings schemas
+are unchanged.
+
+- Function/media flip remembers the output selected on key press and releases
+  that output after a flip or OS change. Plain number/function keys keep native
+  processing when no remapping is needed. Shortcut modifiers are merged into
+  outgoing report copies, independently of native real and weak modifiers.
+- Battery queries track physical positions. Multiple bindings remain active
+  until their last release, including release after live keymap replacement.
+  The USB guard blocks a new percentage query, but releasing an accepted query
+  still clears it after changing modes. Existing A4/A5 and F0/F1 packets are sent
+  once per aggregate transition, with no retry or reconnect protocol.
+- Only radio percentages from 0 through 100 are accepted. Samples older than ten
+  seconds are unknown; the existing two-second `0x55` exchange uses 255 for an
+  unknown reading. Unknown percentage bars are purple and do not cause a
+  low-battery warning or shutdown. Both halves should run matching firmware.
+- Radio framing rejects invalid raw subtypes, quarantines oversized or damaged
+  raw tails with a finite byte budget, and expires partial ordinary frames after
+  ten milliseconds. Host/channel changes send zero keyboard, consumer, system
+  and mouse reports before selecting the new destination. Same-channel wake
+  does not release held input.
+- Deferred updater work rechecks wired mode, USB activity, role and native Vial
+  authorization. Right peers inherit authorization from the USB master. Reads
+  and rejected mutations do not renew an unfinished upload's ten-second lease.
+
+The held-position bitsets in `qmk-common/.../battery_holds.c` are also used by
+ZMK. Framework event hooks, keycode adapters, radio I/O and updater integration
+remain local to each stack. These changes have native regression coverage;
+hardware acceptance is a separate step.
+
 ## Lighting
 
 The factory slider uses 0–255. Upstream QMK already scales that protocol range to the configured LED maximum of 80, so no increase in LED current or change to the original JSON is needed. Effects 0–44 keep their upstream ordering. The factory “Close All” entry 45 is routed to the normal disable command, instead of selecting this fork's recorded-RGB effect. Readback of a disabled matrix is the equivalent “All Off” value 0.

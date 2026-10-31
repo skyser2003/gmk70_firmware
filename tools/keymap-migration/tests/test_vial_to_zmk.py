@@ -34,6 +34,21 @@ class VialToZmkTests(unittest.TestCase):
     def setUp(self) -> None:
         self.converter = VialToZmk(self._root)
 
+    def test_nkro_controls_translate_to_studio_actions(self) -> None:
+        cases: tuple[tuple[JsonValue, int], ...] = (
+            ("NK_TOGG", 0),
+            (0x7013, 0),
+            ("NK_ON", 1),
+            (0x7011, 1),
+            ("NK_OFF", 2),
+            (0x7012, 2),
+        )
+        for keycode, action in cases:
+            with self.subTest(keycode=keycode):
+                self.assertEqual(
+                    self.converter.translate(keycode, 4), Binding("gmk_nkro", (action,))
+                )
+
     @staticmethod
     def _document() -> dict[str, JsonValue]:
         layers: list[JsonValue] = [
@@ -206,7 +221,6 @@ class VialToZmkTests(unittest.TestCase):
         cases: tuple[tuple[JsonValue, IssueCategory], ...] = (
             ("QK_CLEAR_EEPROM", IssueCategory.SETTINGS_RESET),
             ("GU_TOGG", IssueCategory.GUI_LOCK),
-            ("NK_TOGG", IssueCategory.NKRO),
             ("STOCK_USB_SLEEP_TOGGLE", IssueCategory.SLEEP),
             ("RL_MOD", IssueCategory.LIGHTING),
             ("STOCK_RESERVED_19", IssueCategory.RESERVED),

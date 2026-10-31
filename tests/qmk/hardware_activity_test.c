@@ -4,10 +4,21 @@
 #include "quantum.h"
 #include "wireless.h"
 #include "stock_power.h"
+#include "stock_battery.h"
+#include "transactions.h"
 
 static unsigned key_activity, wired_wake, user_calls;
 static uint8_t  device       = DEVS_BT1;
 static bool     user_accepts = true;
+static unsigned battery_commands;
+
+bool transaction_rpc_exec(int8_t id, uint8_t in_length, const void *in, uint8_t out_length, void *out) {
+    (void)in;
+    (void)out;
+    assert(id == USER_SYNC_MMS && in_length == 5 && out_length == 5);
+    ++battery_commands;
+    return false;
+}
 
 uint8_t wireless_get_current_devs(void) {
     return device;
@@ -56,5 +67,11 @@ int main(void) {
     const unsigned activity_before = key_activity, calls_before = user_calls;
     assert(pre_process_record_kb(4, &tick));
     assert(wired_wake == 1 && key_activity == activity_before && user_calls == calls_before + 1);
+    stock_battery_key_at(0x7E1B, 10, true, true);
+    assert(stock_battery_level_requested() && battery_commands == 1);
+    keyrecord_t remapped = {.event = {.key = {.row = 1, .col = 1}, .type = KEY_EVENT, .pressed = false}};
+    user_accepts         = false;
+    assert(!pre_process_record_kb(4, &remapped));
+    assert(!stock_battery_level_requested() && battery_commands == 2);
     puts("PASS: shared physical activity before consumed/synthetic events and wired wake");
 }

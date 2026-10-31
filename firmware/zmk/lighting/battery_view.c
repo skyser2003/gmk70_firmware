@@ -5,17 +5,12 @@
 #include <string.h>
 
 static bool held(const struct gmk_battery_view *view, enum gmk_battery_indicator kind) {
-    return view->held[kind][0] || view->held[kind][1] || view->held[kind][2];
+    return gmk_battery_holds_active(&view->holds, kind == GMK_BATTERY_LEVEL ? GMK_BATTERY_ACTION_LEVEL : GMK_BATTERY_ACTION_CHARGING);
 }
 
 int gmk_battery_view_set(struct gmk_battery_view *view, enum gmk_battery_indicator kind, uint32_t position, bool pressed) {
     if ((unsigned)kind > GMK_BATTERY_CHARGING || position >= 72) return -EINVAL;
-    uint32_t *word = &view->held[kind][position / 32];
-    uint32_t  mask = 1U << (position % 32);
-    if (pressed)
-        *word |= mask;
-    else
-        *word &= ~mask;
+    (void)gmk_battery_holds_set(&view->holds, kind == GMK_BATTERY_LEVEL ? GMK_BATTERY_ACTION_LEVEL : GMK_BATTERY_ACTION_CHARGING, position, pressed);
     return 0;
 }
 
@@ -25,12 +20,7 @@ bool gmk_battery_view_active(const struct gmk_battery_view *view) {
 
 bool gmk_battery_view_release(struct gmk_battery_view *view, uint32_t position) {
     if (position >= 72) return false;
-    uint32_t mask    = 1U << (position % 32);
-    unsigned word    = position / 32;
-    bool     changed = ((view->held[GMK_BATTERY_LEVEL][word] | view->held[GMK_BATTERY_CHARGING][word]) & mask) != 0;
-    view->held[GMK_BATTERY_LEVEL][word] &= ~mask;
-    view->held[GMK_BATTERY_CHARGING][word] &= ~mask;
-    return changed;
+    return gmk_battery_holds_release(&view->holds, position);
 }
 
 static void color(uint8_t *rgb, unsigned index, uint8_t r, uint8_t g, uint8_t b) {

@@ -10,6 +10,8 @@ struct gmk_radio_status {
 bool gmk_radio_selected(void);
 int  gmk_radio_select(uint8_t channel, bool pair);
 int  gmk_radio_submit_keyboard(const uint8_t report[8]);
+/* Snapshot both halves together; each A1 is followed by its matching A2. */
+int  gmk_radio_submit_nkro(const uint8_t report[8], const uint8_t overflow[14]);
 int  gmk_radio_submit_consumer(uint16_t usage);
 void gmk_radio_release(bool consumer);
 void gmk_radio_clear_hid(void);

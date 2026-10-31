@@ -8,3 +8,8 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wconversion -Wsign-conversion -fno-pie
   -Ifirmware/zmk/radio tests/zmk/radio_core_test.c firmware/zmk/radio/core.c \
   -o artifacts/tests/zmk/radio-core
 artifacts/tests/zmk/radio-core
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wconversion -Wsign-conversion -fno-pie -no-pie \
+  -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer \
+  -Ifirmware/qmk-common/drivers/wireless tests/qmk/radio_keys_test.c \
+  firmware/qmk-common/drivers/wireless/radio_keys.c -o artifacts/tests/zmk/radio-keys
+artifacts/tests/zmk/radio-keys

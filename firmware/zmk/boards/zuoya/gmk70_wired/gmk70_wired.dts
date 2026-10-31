@@ -6,6 +6,13 @@
 / {
     model = "ZUOYA GMK70 universal wired updater";
     compatible = "zuoya,gmk70-wired-board";
+    behaviors {
+        gmk_nkro: gmk_nkro {
+            compatible = "zuoya,gmk70-behavior-nkro";
+            display-name = "GMK70 NKRO";
+            #binding-cells = <1>;
+        };
+    };
     chosen {
         zephyr,sram = &sram0;
         zephyr,flash = &flash0;

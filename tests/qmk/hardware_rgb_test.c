@@ -9,6 +9,7 @@
 uint8_t             pov = 73;
 bool                bat_full_flag;
 static bool         cable, enabled, suspended, right;
+static bool         source_fresh = true;
 static lpwr_state_t state;
 static uint32_t     now;
 static unsigned     power, power_writes, flushes, native_calls;
@@ -19,6 +20,15 @@ void                __wrap_housekeeping_task(void);
 
 bool gmk70_stock_cable_flag(void) {
     return cable;
+}
+bool is_keyboard_master(void) {
+    return !right;
+}
+bool md_battery_is_fresh(void) {
+    return source_fresh;
+}
+uint8_t *md_getp_bat(void) {
+    return &pov;
 }
 uint8_t rgb_matrix_is_enabled(void) {
     return enabled;
@@ -73,8 +83,8 @@ bool transaction_rpc_exec(int8_t id, uint8_t in_length, const void *in, uint8_t 
     return false; // Even a failed peer send must preserve the local query.
 }
 static void request(uint8_t command) {
-    uint8_t response;
-    assert(stock_battery_receive(command, &response));
+    assert(command == 0xA4 || command == 0xA5 || command == 0xF0 || command == 0xF1);
+    stock_battery_key(command == 0xA4 || command == 0xA5 ? 0x7E1B : 0x7E07, command == 0xA4 || command == 0xF0, true);
 }
 static void next_frame(void) {
     now += RGB_MATRIX_LED_FLUSH_LIMIT;
@@ -94,6 +104,7 @@ int main(void) {
         memset(shown, 0, sizeof(shown));
         enabled = cable = suspended = false;
         state                       = LPWR_NORMAL;
+        stock_battery_sample(pov, now);
         stock_battery_key(0x7E1B, true, true);
         unsigned old_flushes = flushes;
         __wrap_rgb_matrix_task();
@@ -187,6 +198,16 @@ int main(void) {
     request(0xA5);
     __wrap_housekeeping_task();
     assert(power == 0 && !enabled);
+    right        = false;
+    source_fresh = false;
+    assert(gmk70_stock_battery_percentage() == 255);
+    source_fresh = true;
+    assert(gmk70_stock_battery_percentage() == pov);
+    right = true;
+    stock_battery_sample(42, now);
+    assert(gmk70_stock_battery_percentage() == 42);
+    now += 10001;
+    assert(gmk70_stock_battery_percentage() == 255);
     puts("PASS: RGB-off battery/charging frames, both halves, flush limit, release clearing and sleep/suspend ownership");
     puts("PASS: shared split/GUI RGB power recovery and native housekeeping dispatch");
 }

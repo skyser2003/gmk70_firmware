@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+description: GMK70 NKRO toggle, enable or disable
+compatible: "zuoya,gmk70-behavior-nkro"
+include: one_param.yaml

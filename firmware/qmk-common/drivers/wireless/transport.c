@@ -20,6 +20,27 @@ extern host_driver_t wireless_driver;
 
 static transport_t transport = TRANSPORT_USB;
 
+static void release_reports(host_driver_t *driver) {
+    report_keyboard_t keyboard = {0};
+    report_nkro_t     nkro     = {.report_id = REPORT_ID_NKRO};
+    report_extra_t    consumer = {.report_id = REPORT_ID_CONSUMER};
+    report_extra_t    system   = {.report_id = REPORT_ID_SYSTEM};
+    report_mouse_t    mouse    = {0};
+#ifdef KEYBOARD_SHARED_EP
+    keyboard.report_id = REPORT_ID_KEYBOARD;
+#endif
+#ifdef MOUSE_SHARED_EP
+    mouse.report_id = REPORT_ID_MOUSE;
+#endif
+    if (driver->send_keyboard) driver->send_keyboard(&keyboard);
+    if (driver->send_nkro) driver->send_nkro(&nkro);
+    if (driver->send_extra) {
+        driver->send_extra(&consumer);
+        driver->send_extra(&system);
+    }
+    if (driver->send_mouse) driver->send_mouse(&mouse);
+}
+
 void wls_transport_enable(bool enable) __attribute__((weak));
 void wls_transport_enable(bool enable) {
     if (enable) {
@@ -28,10 +49,7 @@ void wls_transport_enable(bool enable) {
             usb_device_state_set_protocol(USB_PROTOCOL_REPORT);
         }
     } else {
-        if (*md_getp_state() == MD_STATE_CONNECTED) {
-            wireless_driver.send_keyboard(NULL);
-            wireless_driver.send_nkro(NULL);
-        }
+        release_reports(&wireless_driver);
     }
 }
 
@@ -60,8 +78,7 @@ void usb_transport_enable(bool enable) {
         }
     } else {
         if (USB_DRIVER.state == USB_ACTIVE) {
-            chibios_driver.send_keyboard(NULL);
-            chibios_driver.send_nkro(NULL);
+            release_reports(&chibios_driver);
         }
 
 #if !defined(KEEP_USB_CONNECTION_IN_WIRELESS_MODE)

@@ -80,6 +80,22 @@ static void test_keyboard_report(void) {
     assert(memcmp(radio_fixture.keyboard, expected, sizeof(expected)) == 0);
 }
 
+static void test_high_usages_do_not_displace_low_usage_overflow(void) {
+    report_nkro_t report = {0};
+    wireless_driver.send_nkro(NULL);
+    for (uint8_t key = 4; key < 12; ++key) {
+        report.bits[key / 8] |= (uint8_t)(1u << (key % 8));
+    }
+    wireless_driver.send_nkro(&report);
+    report.bits[0x73 / 8] |= (uint8_t)(1u << (0x73 % 8));
+    wireless_driver.send_nkro(&report);
+    assert(radio_has_key(0x73));
+    for (uint8_t key = 4; key < 12; ++key) {
+        assert(radio_has_key(key));
+    }
+    wireless_driver.send_nkro(NULL);
+}
+
 static void test_extra_reports(void) {
     report_extra_t report = {.report_id = REPORT_ID_SYSTEM, .usage = 0x82};
     wireless_driver.send_extra(&report);
@@ -132,6 +148,7 @@ int main(void) {
     test_mode_sync_wakes_sleeping_peer();
     test_transport_selection();
     test_rollover_and_release();
+    test_high_usages_do_not_displace_low_usage_overflow();
     test_keyboard_report();
     test_extra_reports();
     test_raw_hid_routing();

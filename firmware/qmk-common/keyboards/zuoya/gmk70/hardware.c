@@ -6,11 +6,15 @@
 #include "stock_power.h"
 #include "wireless.h"
 
-extern uint8_t pov;
-extern bool    bat_full_flag;
-bool           gmk70_stock_cable_flag(void);
-void           __real_rgb_matrix_task(void);
-void           __real_housekeeping_task(void);
+extern bool bat_full_flag;
+bool        gmk70_stock_cable_flag(void);
+void        __real_rgb_matrix_task(void);
+void        __real_housekeeping_task(void);
+
+uint8_t gmk70_stock_battery_percentage(void) {
+    if (is_keyboard_master()) return md_battery_is_fresh() ? *md_getp_bat() : UINT8_MAX;
+    return stock_battery_sample_read(timer_read32());
+}
 
 static bool battery_indicator_requested(void) {
     return stock_battery_level_requested() || (stock_battery_charging_requested() && gmk70_stock_cable_flag());
@@ -31,7 +35,10 @@ bool pre_process_record_kb(uint16_t keycode, keyrecord_t *record) {
     if (IS_EVENT(record->event)) {
         if (wireless_get_current_devs() == DEVS_USB) usb_remote_host();
         if (record->event.pressed) lpwr_activity_trigger();
-        if (IS_KEYEVENT(record->event) && record->event.key.row < MATRIX_ROWS && record->event.key.col < MATRIX_COLS) stock_power_key(record->event.pressed);
+        if (IS_KEYEVENT(record->event) && record->event.key.row < MATRIX_ROWS && record->event.key.col < MATRIX_COLS) {
+            stock_power_key(record->event.pressed);
+            if (!record->event.pressed) stock_battery_release_position((uint8_t)(record->event.key.row * MATRIX_COLS + record->event.key.col));
+        }
     }
     return pre_process_record_user(keycode, record);
 }
@@ -50,7 +57,7 @@ void __wrap_rgb_matrix_task(void) {
             gpio_write_pin(LED_POWER_EN_PIN, true);
             gpio_write_pin(LED_POWER_EN2_PIN, true);
             rgb_matrix_set_color_all(0, 0, 0);
-            stock_battery_render(pov);
+            stock_battery_render(gmk70_stock_battery_percentage());
             stock_battery_render_charging(gmk70_stock_cable_flag(), bat_full_flag);
             rgb_matrix_update_pwm_buffers();
             last_frame      = timer_read32();

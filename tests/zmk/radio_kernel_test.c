@@ -176,6 +176,24 @@ static void notifications_and_fifo_use_existing_core(void) {
     physical_raw = 0;
     assert(gmk_radio_submit_keyboard(pressed) < 0);
 }
+static void nkro_submission_preserves_both_reports_and_role_gates(void) {
+    start(false);
+    uint8_t keyboard[8]  = {2, 0, 4};
+    uint8_t overflow[14] = {0, 4};
+    assert(gmk_radio_submit_nkro(keyboard, overflow) == -ENODEV);
+    start(true);
+    connect_radio();
+    assert(gmk_radio_submit_nkro(keyboard, overflow) == 0);
+    memset(keyboard, 0, sizeof(keyboard));
+    memset(overflow, 0, sizeof(overflow));
+    struct gmk_radio_frame frame;
+    assert(gmk_radio_next(0, &frame) && frame.length == 10 && frame.bytes[0] == 0xa1 && frame.bytes[1] == 2 && frame.bytes[3] == 4);
+    gmk_radio_sent(0, true);
+    assert(gmk_radio_next(0, &frame) && frame.length == 16 && frame.bytes[0] == 0xa2 && frame.bytes[2] == 4 && frame.bytes[15] == 0xa6);
+    gmk_radio_sent(0, true);
+    physical_raw = 0;
+    assert(gmk_radio_submit_nkro(keyboard, overflow) == -EPERM);
+}
 static void release_after_timeout_cancels_pair_before_syswork(void) {
     start(true);
     gmk_radio_poll();
@@ -299,6 +317,7 @@ static void qualification_marker_is_only_fixed_f24_and_respects_held_input(void)
 }
 #endif
 int main(void) {
+    nkro_submission_preserves_both_reports_and_role_gates();
     canceled_pair_after_syswork_preserves_connected_typing();
     async_selection_and_latest_request();
     mode_and_hold_work_remain_deferred();

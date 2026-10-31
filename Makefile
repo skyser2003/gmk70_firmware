@@ -75,6 +75,7 @@ test-zmk:
 	bash ./tests/zmk/run_battery_status_tests.sh
 	bash ./tests/zmk/run_radio_core_tests.sh
 	bash ./tests/zmk/run_function_flip_tests.sh
+	bash ./tests/zmk/run_nkro_tests.sh
 	bash ./tests/zmk/run_radio_selection_tests.sh
 	bash ./tests/zmk/run_radio_endpoint_tests.sh
 	bash ./tests/zmk/run_radio_behavior_tests.sh

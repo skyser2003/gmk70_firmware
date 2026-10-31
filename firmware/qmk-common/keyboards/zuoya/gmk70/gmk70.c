@@ -12,6 +12,7 @@
 #    include "sleep_log.h"
 #endif
 #include "stock_battery.h"
+#include "function_flip_qmk.h"
 #include "stock_power.h"
 #include "stock_v15.h"
 void last_matrix_activity_trigger(void);
@@ -39,9 +40,14 @@ typedef union {
         uint8_t reserved : 4;
     };
 } confinfo_t;
-confinfo_t      confinfo;
-static uint32_t stock_board_flags;
-static void     stock_gui_lock(bool locked) {
+confinfo_t                confinfo;
+static uint32_t           stock_board_flags;
+static gmk70_flip_state_t stock_flip;
+uint8_t                   gmk70_stock_flip_modifiers(void) {
+    return gmk70_flip_held_modifiers(&stock_flip);
+}
+
+static void stock_gui_lock(bool locked) {
     keymap_config.no_gui = locked;
     if (locked)
         stock_board_flags |= 4;
@@ -102,7 +108,6 @@ static bool     stock_bootloader_pending;
 bool            test_white_light_flag = false;
 bool            lower_sleep           = false;
 static bool     stock_usb_sleep_requested;
-uint8_t         pov;
 uint8_t         buff[] = {14, 8, 2, 1, 1, 1, 1, 1, 1, 1, 0};
 
 bool gmk70_stock_cable_flag(void) {
@@ -191,12 +196,41 @@ void gmk70_stock_sleep_set(uint8_t selector) {
     eeconfig_confinfo_update(confinfo.raw);
 }
 
+static void stock_nkro_release_reports(void) {
+    const bool held_flip_modifiers = gmk70_stock_flip_modifiers() != 0;
+    // NKRO transitions discard held inputs, including flip's independent mask.
+    // Preserve the configured flip flag; only its current held context resets.
+    stock_flip = (gmk70_flip_state_t){0};
+    clear_keyboard();
+    // A modified media target can leave the native body/cache already empty.
+    // Force that independent modifier release past native report deduplication.
+    if (held_flip_modifiers) {
+#ifdef NKRO_ENABLE
+        if (host_can_send_nkro() && keymap_config.nkro)
+            host_nkro_send(nkro_report);
+        else
+#endif
+            host_keyboard_send(keyboard_report);
+    }
+    // Native clear_keys() clears only the selected format. USB boot protocol
+    // can hide an old NKRO bitmap even when changing the configured mode.
+    memset(keyboard_report->keys, 0, sizeof(keyboard_report->keys));
+#ifdef NKRO_ENABLE
+    memset(nkro_report->bits, 0, sizeof(nkro_report->bits));
+#endif
+}
+
 uint8_t gmk70_stock_nkro_get(void) {
     return keymap_config.nkro;
 }
 
 void gmk70_stock_nkro_set(uint8_t enabled) {
+    if (keymap_config.nkro == (enabled != 0)) return;
+    // VIA's stock value is live-only. Release the outgoing format and discard
+    // any inactive report before allowing it to become the active format.
+    stock_nkro_release_reports();
     keymap_config.nkro = enabled != 0;
+    clear_keyboard();
 }
 
 uint8_t gmk70_stock_brightness_get(void) {
@@ -281,7 +315,6 @@ void keyboard_post_init_kb(void) {
 
     keyboard_post_init_user();
 
-    pov = *md_getp_bat();
     // usart_init();
     transaction_register_rpc(USER_SYNC_MMS, user_sync_mms_slave_handler);
 #ifdef GMK70_SPLIT_UPDATE
@@ -571,6 +604,7 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
         }
         return false;
     }
+    if (!gmk70_flip_process_record(&stock_flip, keycode, record->event.pressed, (stock_board_flags & 0x10) != 0, keymap_is_mac_system())) return false;
     switch (keycode) {
         case GU_TOGG:
         case RM_TOGG:
@@ -588,390 +622,6 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
                 (void)transaction_rpc_exec(USER_SYNC_MMS, sizeof(request), &request, sizeof(response), &response);
             }
             return false;
-        case KC_F1: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_MSEL);
-                    } else {
-                        unregister_code16(KC_MSEL);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F2: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_VOLD);
-                    } else {
-                        unregister_code16(KC_VOLD);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F3: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_VOLU);
-                    } else {
-                        unregister_code16(KC_VOLU);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F4: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_MUTE);
-                    } else {
-                        unregister_code16(KC_MUTE);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F5: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_MSTP);
-                    } else {
-                        unregister_code16(KC_MSTP);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F6: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_MPRV);
-                    } else {
-                        unregister_code16(KC_MPRV);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F7: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_MPLY);
-                    } else {
-                        unregister_code16(KC_MPLY);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F8: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_MNXT);
-                    } else {
-                        unregister_code16(KC_MNXT);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F9: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_MAIL);
-                    } else {
-                        unregister_code16(KC_MAIL);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F10: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_WHOM);
-                    } else {
-                        unregister_code16(KC_WHOM);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F11: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_CALC);
-                    } else {
-                        unregister_code16(KC_CALC);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_F12: {
-            if ((stock_board_flags & 0x10)) {
-                if (keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code16(KC_WSCH);
-                    } else {
-                        unregister_code16(KC_WSCH);
-                    }
-                    return false;
-                }
-            }
-            return true;
-        } break;
-        case KC_1: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F1);
-                    } else {
-                        unregister_code(KC_F1);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_BRID);
-                    } else {
-                        unregister_code(KC_BRID);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_2: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F2);
-                    } else {
-                        unregister_code(KC_F2);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_BRIU);
-                    } else {
-                        unregister_code(KC_BRIU);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_3: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F3);
-                    } else {
-                        unregister_code(KC_F3);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_LGUI);
-                        register_code(KC_TAB);
-                    } else {
-                        unregister_code(KC_LGUI);
-                        unregister_code(KC_TAB);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_4: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F4);
-                    } else {
-                        unregister_code(KC_F4);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_LGUI);
-                        register_code(KC_E);
-                    } else {
-                        unregister_code(KC_LGUI);
-                        unregister_code(KC_E);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_5: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F5);
-                    } else {
-                        unregister_code(KC_F5);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        rgb_matrix_decrease_val();
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_6: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F6);
-                    } else {
-                        unregister_code(KC_F6);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        rgb_matrix_increase_val();
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_7: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F7);
-                    } else {
-                        unregister_code(KC_F7);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_MPRV);
-                    } else {
-                        unregister_code(KC_MPRV);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_8: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F8);
-                    } else {
-                        unregister_code(KC_F8);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_MPLY);
-                    } else {
-                        unregister_code(KC_MPLY);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_9: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F9);
-                    } else {
-                        unregister_code(KC_F9);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_MNXT);
-                    } else {
-                        unregister_code(KC_MNXT);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_0: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F10);
-                    } else {
-                        unregister_code(KC_F10);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_MUTE);
-                    } else {
-                        unregister_code(KC_MUTE);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_MINS: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F11);
-                    } else {
-                        unregister_code(KC_F11);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_VOLD);
-                    } else {
-                        unregister_code(KC_VOLD);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
-        case KC_EQL: {
-            if ((stock_board_flags & 0x10)) {
-                if (!keymap_is_mac_system()) {
-                    if (record->event.pressed) {
-                        register_code(KC_F12);
-                    } else {
-                        unregister_code(KC_F12);
-                    }
-                } else {
-                    if (record->event.pressed) {
-                        register_code(KC_VOLU);
-                    } else {
-                        unregister_code(KC_VOLU);
-                    }
-                }
-                return false;
-            }
-            return true;
-        } break;
         case KC_FILP: {
             if (record->event.pressed) {
                 stock_board_flags ^= 0x10;
@@ -981,7 +631,10 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
         } break;
         case KC_BATQ:
         case HS_BATQ:
-            stock_battery_key(keycode, record->event.pressed, confinfo.devs != DEVS_USB);
+            if (IS_KEYEVENT(record->event) && record->event.key.row < MATRIX_ROWS && record->event.key.col < MATRIX_COLS)
+                stock_battery_key_at(keycode, (uint8_t)(record->event.key.row * MATRIX_COLS + record->event.key.col), record->event.pressed, confinfo.devs != DEVS_USB);
+            else
+                stock_battery_key(keycode, record->event.pressed, confinfo.devs != DEVS_USB);
             return false;
 
         case STOCK_USB_SLEEP_OFF:
@@ -992,9 +645,14 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
             }
             return false;
 
+        case NK_ON:
+        case NK_OFF:
         case NK_TOGG: {
             if (record->event.pressed) {
-                rgb_matrix_hs_indicator_set(0xFF, (RGB){0x00, 0x6E, 0x00}, 250, 1);
+                // Native magic reloads the saved keymap before clearing it.
+                // A live VIA override can use another outgoing report format.
+                stock_nkro_release_reports();
+                if (keycode == NK_TOGG) rgb_matrix_hs_indicator_set(0xFF, (RGB){0x00, 0x6E, 0x00}, 250, 1);
             }
         } break;
         case RL_MOD: {
@@ -1122,10 +780,12 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
 bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
     // V15's wired key hook suppresses basic keys while the host is suspended.
     // The wired hook already requested remote wake before this gate.
-    if (confinfo.devs == DEVS_USB && USB_DRIVER.state == USB_SUSPENDED && keycode <= 0xFF) return false;
+    bool blocked = confinfo.devs == DEVS_USB && USB_DRIVER.state == USB_SUSPENDED && keycode <= 0xFF;
     // V15 board gate 0x08005420 runs before ordinary key processing. Special
     // controls remain available for reconnecting; report delivery is not gated.
-    if (confinfo.devs != DEVS_USB && *md_getp_state() != MD_STATE_CONNECTED && keycode >= 4 && keycode <= 0xA4) return false;
+    blocked |= confinfo.devs != DEVS_USB && *md_getp_state() != MD_STATE_CONNECTED && keycode >= 4 && keycode <= 0xA4;
+    // A rejected physical release still ends an output already owned by flip.
+    if (!gmk70_flip_gate_record(&stock_flip, keycode, record->event.pressed, blocked)) return false;
     uint16_t translated = gmk70_rgb_keycode(gmk70_platform_keycode(keycode));
     if (!process_gmk70_record(translated, record)) {
         return false;
@@ -1172,8 +832,7 @@ void housekeeping_task_user(void) { // loop
         static uint32_t last_sync = 0;
         if (timer_elapsed32(last_sync) > 2000) {
             last_sync = timer_read32();
-            pov       = *md_getp_bat();
-            master_sync_mms_slave(wireless_get_current_devs(), wireless_get_current_devs(), pov);
+            master_sync_mms_slave(wireless_get_current_devs(), wireless_get_current_devs(), gmk70_stock_battery_percentage());
         }
     }
 }
@@ -1333,6 +992,7 @@ void rgb_matrix_hs_bat(void) {
 bool temp, im_test_rate_flag;
 void bat_indicators(void) {
     static uint32_t battery_process_time = 0;
+    uint8_t         percentage           = gmk70_stock_battery_percentage();
 
     if (!is_keyboard_master()) {
         return;
@@ -1341,10 +1001,10 @@ void bat_indicators(void) {
     if (confinfo.flag) {
         battery_process_time = 0;
         stock_battery_render_charging(true, bat_full_flag);
-    } else if (pov <= BATTERY_CAPACITY_LOW) {
+    } else if (percentage <= BATTERY_CAPACITY_LOW) {
         rgb_matrix_hs_bat_set(HS_MATRIX_BLINK_INDEX_BAT, (RGB){0xFF, 0x00, 0x00}, 250, 1);
 
-        if (pov <= BATTERY_CAPACITY_STOP) {
+        if (percentage <= BATTERY_CAPACITY_STOP) {
             if (!battery_process_time) {
                 battery_process_time = timer_read32();
             }
@@ -1352,7 +1012,7 @@ void bat_indicators(void) {
             if (battery_process_time && timer_elapsed32(battery_process_time) > 60000) {
                 battery_process_time = 0;
                 lower_sleep          = true;
-                split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_LOW_BATTERY, pov, 0);
+                split_diagnostics_event(SPLIT_DIAG_SLEEP_REASON, SPLIT_DIAG_LOW_BATTERY, percentage, 0);
             }
         }
     } else {
@@ -1470,7 +1130,7 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max) {
 
     stock_lighting_render();
     if ((stock_board_flags & 0x10)) rgb_matrix_set_color(32, 80, 80, 80);
-    stock_battery_render(pov);
+    stock_battery_render(gmk70_stock_battery_percentage());
     if (host_keyboard_led_state().caps_lock) rgb_matrix_set_color(HS_RGB_INDEX_CAPS, 80, 80, 80);
 
     if (!keymap_is_mac_system() && keymap_config.no_gui) rgb_matrix_set_color(HS_RGB_INDEX_WIN_LOCK, 80, 80, 80);
@@ -1511,6 +1171,7 @@ void hs_reset_settings(void) {
         }
     }
     enable_bat_indicators = false;
+    stock_nkro_release_reports();
     eeconfig_init();
     eeconfig_update_rgb_matrix_default();
 
@@ -1523,11 +1184,7 @@ void hs_reset_settings(void) {
 #endif
 
     eeconfig_read_keymap(&keymap_config);
-
-#if defined(NKRO_ENABLE) && defined(FORCE_NKRO)
-    keymap_config.nkro = 0;
-    eeconfig_update_keymap(&keymap_config);
-#endif
+    clear_keyboard();
 
     // #if defined(WIRELESS_ENABLE)
     //     wireless_devs_change(wireless_get_current_devs(), DEVS_USB, false);
@@ -1573,7 +1230,7 @@ void user_sync_mms_slave_handler(uint8_t in_buflen, const void *in_data, uint8_t
     switch (m2s->cmd) {
         case 0x55: // sync multimode
             wireless_devs_change(m2s->body[0], m2s->body[1], false);
-            pov       = m2s->body[2];
+            stock_battery_sample(m2s->body[2], timer_read32());
             s2m->resp = 0x00;
             split_diagnostics_reply(s2m->body);
             break;

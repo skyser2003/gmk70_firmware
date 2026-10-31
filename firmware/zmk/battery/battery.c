@@ -252,7 +252,7 @@ static void transmit(uint32_t now) {
         message = state.radio_frame.bytes;
         length  = state.radio_frame.length;
     }
-    /* One immutable frame, at most ten FIFO writes per tick. ACK priority
+    /* One immutable frame, at most sixteen FIFO writes per tick. ACK priority
      * applies only when choosing a new frame, never within a partial frame. */
 #else
     /* At most three FIFO writes per worker tick, with no wait for TX space. */

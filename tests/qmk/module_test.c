@@ -7,11 +7,37 @@
 #include <string.h>
 #include "module.h"
 #include "smsg.h"
+#ifdef PROTOCOL_CHIBIOS
+#    include "hal.h"
+test_serial_driver_t SD3;
+static eventflags_t  serial_errors;
+void                 chEvtRegisterMaskWithFlags(event_source_t *source, event_listener_t *listener, eventmask_t events, eventflags_t flags) {
+    assert(source == &SD3.event && events == 0 && flags != 0);
+    listener->flags = flags;
+}
+eventflags_t chEvtGetAndClearFlags(event_listener_t *listener) {
+    eventflags_t flags = serial_errors & listener->flags;
+    serial_errors      = 0;
+    return flags;
+}
+#endif
 static uint32_t now;
 static unsigned sends, received, cursor;
 static uint8_t  last_packet[50], receive[256];
 static uint32_t last_length;
-uint32_t        sync_timer_read32(void) {
+static unsigned raw_dispatches, host_notifications;
+static uint8_t  raw_received[32];
+
+void md_receive_raw_cb(uint8_t *data, uint8_t length) {
+    assert(length == sizeof(raw_received));
+    memcpy(raw_received, data, length);
+    ++raw_dispatches;
+}
+void md_receive_host_cb(bool resume) {
+    (void)resume;
+    ++host_notifications;
+}
+uint32_t sync_timer_read32(void) {
     return now;
 }
 uint32_t sync_timer_elapsed32(uint32_t stamp) {
@@ -45,6 +71,167 @@ static void ack(void) {
 static void status(uint8_t state) {
     feed((uint8_t[]){MD_REV_CMD_DEVCTRL, state, MD_REV_CMD_DEVCTRL + state}, 3);
 }
+static void notification(uint8_t command, uint8_t value) {
+    feed((uint8_t[]){command, value, (uint8_t)(command + value)}, 3);
+}
+
+static void parser_reset(void) {
+    received = cursor = 0;
+    now               = 1000;
+    md_init();
+    *md_getp_bat()       = 100;
+    *md_getp_state()     = MD_STATE_DISCONNECTED;
+    *md_getp_indicator() = 0;
+    raw_dispatches = host_notifications = 0;
+    sends                               = 0;
+}
+
+static void assert_tail_isolated(void) {
+    assert(*md_getp_bat() == 100);
+    assert(*md_getp_state() == MD_STATE_DISCONNECTED);
+    assert(*md_getp_indicator() == 0);
+    assert(host_notifications == 0 && raw_dispatches == 0 && sends == 0);
+}
+
+static void establish_status_context(void) {
+    md_devs_change(DEVS_BT1, false);
+    md_main_task();
+    ack();
+    sends = 0;
+}
+
+static void test_oversized_raw_tail_quarantine(void) {
+    parser_reset();
+    establish_status_context();
+    feed((uint8_t[]){0xaf, 0x60, 255}, 3);
+    now += 100;
+    md_main_task(); // Empty timeout polls cannot release the raw tail.
+    const uint8_t tail[] = {0x5c, 67, 0x9f, 0x5a, 7, 0x61, 0x60, 1, 0x61, 0x5b, 0x32, 0x8d};
+    feed(tail, sizeof(tail));
+    assert_tail_isolated();
+    uint8_t remainder[244] = {0};
+    feed(remainder, sizeof(remainder));
+    assert_tail_isolated();
+    notification(MD_REV_CMD_BATVOL, 42);
+    assert(*md_getp_bat() == 42 && sends == 1);
+}
+
+static void test_expired_known_raw_tail(void) {
+    parser_reset();
+    feed((uint8_t[]){0xaf, 0x60, 3}, 3);
+    now += 10;
+    md_main_task();
+    now += 100;
+    feed((uint8_t[]){0x5c, 67, 0x9f, 0x50}, 4); // Valid raw checksum, expired frame.
+    assert_tail_isolated();
+    notification(MD_REV_CMD_BATVOL, 42);
+    assert(*md_getp_bat() == 42 && sends == 1);
+}
+
+static void test_expired_partial_raw_header(void) {
+    for (unsigned header_length = 1; header_length <= 2; ++header_length) {
+        parser_reset();
+        feed((uint8_t[]){0xaf, 0x60}, header_length);
+        now += 10;
+        md_main_task();
+        feed((uint8_t[]){0x5c, 67, 0x9f, 0x5c, 67, 0x9f}, 6);
+        assert_tail_isolated();
+        uint8_t remainder[255] = {0};
+        feed(remainder, 259 - header_length - 6);
+        assert_tail_isolated();
+        notification(MD_REV_CMD_BATVOL, 42);
+        assert(*md_getp_bat() == 42 && sends == 1);
+    }
+}
+
+static void test_partial_control_timeout(void) {
+    parser_reset();
+    now = UINT32_MAX - 4;
+    feed((uint8_t[]){0x5c, 99}, 2);
+    now += 10; // Timeout subtraction must survive wraparound.
+    md_main_task();
+    notification(MD_REV_CMD_BATVOL, 42);
+    assert(*md_getp_bat() == 42 && sends == 1);
+}
+
+static void test_battery_range(void) {
+    parser_reset();
+    notification(MD_REV_CMD_BATVOL, 67);
+    notification(MD_REV_CMD_BATVOL, 101);
+    notification(MD_REV_CMD_BATVOL, 255);
+    assert(*md_getp_bat() == 67);
+    notification(MD_REV_CMD_BATVOL, 0);
+    assert(*md_getp_bat() == 0);
+    notification(MD_REV_CMD_BATVOL, 100);
+    assert(*md_getp_bat() == 100);
+}
+
+static void test_battery_freshness(void) {
+    parser_reset();
+    assert(!md_battery_is_fresh());
+    now = UINT32_MAX - 4999;
+    notification(MD_REV_CMD_BATVOL, 67);
+    assert(md_battery_is_fresh());
+    now += 10000;
+    notification(MD_REV_CMD_BATVOL, 255);
+    assert(md_battery_is_fresh() && *md_getp_bat() == 67);
+    ++now;
+    assert(!md_battery_is_fresh());
+    notification(MD_REV_CMD_BATVOL, 0);
+    assert(md_battery_is_fresh());
+    md_init();
+    assert(!md_battery_is_fresh() && *md_getp_bat() == 100);
+}
+
+#ifdef PROTOCOL_CHIBIOS
+static void test_uart_input_flags_are_not_faults(void) {
+    parser_reset();
+    serial_errors = SD_NOISE_ERROR | CHN_INPUT_AVAILABLE;
+    notification(MD_REV_CMD_BATVOL, 42);
+    assert(*md_getp_bat() == 42 && sends == 1);
+}
+static void test_uart_fault_retains_raw_tail(void) {
+    const uint8_t      raw_headers[][3] = {{0xaf, 0x60, 3}, {0xaf, 0x60, 255}};
+    const eventflags_t faults[]         = {SD_OVERRUN_ERROR, SD_PARITY_ERROR, SD_FRAMING_ERROR, SD_BREAK_DETECTED, SD_QUEUE_FULL_ERROR};
+    for (unsigned fault = 0; fault < sizeof(faults) / sizeof(faults[0]); ++fault) {
+        for (unsigned header = 0; header < 2; ++header) {
+            parser_reset();
+            feed(raw_headers[header], 3);
+            serial_errors = faults[fault];
+            feed((uint8_t[]){0x11, 0x22, 0x33, 0x44}, 4); // Drop buffered damage without consuming the tail budget.
+            feed((uint8_t[]){0x5c, 67, 0x9f, 0x50}, 4);
+            assert_tail_isolated();
+            if (header) {
+                uint8_t remainder[252] = {0};
+                feed(remainder, sizeof(remainder));
+            }
+            notification(MD_REV_CMD_BATVOL, 42);
+            assert(*md_getp_bat() == 42 && sends == 1);
+        }
+    }
+}
+#endif
+
+static void test_valid_raw_dispatch_and_status_isolation(void) {
+    parser_reset();
+    establish_status_context();
+    uint8_t packet[36] = {0xaf, 0x60, 32, 0x5c, 67, 0x9f, 0x5a, 7, 0x61, 0x60, 1, 0x61, 0x5b, 0x32, 0x8d};
+    uint8_t sum        = 0;
+    for (unsigned i = 0; i < sizeof(packet) - 1; ++i)
+        sum += packet[i];
+    packet[35] = sum;
+    feed(packet, sizeof(packet));
+    assert(raw_dispatches == 1 && sends == 1);
+    assert(memcmp(raw_received, packet + 3, sizeof(raw_received)) == 0);
+    assert(*md_getp_bat() == 100 && *md_getp_indicator() == 0 && *md_getp_state() == MD_STATE_DISCONNECTED && host_notifications == 0);
+}
+static void test_invalid_raw_subtype_is_not_dispatched(void) {
+    parser_reset();
+    // A checksum-valid three-byte frame must not reuse stale raw payload.
+    feed((uint8_t[]){0xaf, 0x71, 0x20}, 3);
+    assert_tail_isolated();
+}
+
 static void test_direct_reports_and_expiry(void) {
     md_init();
     md_send_devctrl(MD_SND_CMD_DEVCTRL_BT1);
@@ -144,7 +331,30 @@ static void test_stop_command_drain(void) {
     md_wait_for_commands();
     assert(!smsg_is_busy() && cursor == received);
 }
-int main(void) {
+int main(int argc, char **argv) {
+    typedef struct {
+        const char *name;
+        void (*run)(void);
+    } parser_test_t;
+    const parser_test_t parser_tests[] = {
+        {"invalid-raw-subtype", test_invalid_raw_subtype_is_not_dispatched},
+        {"oversized-tail", test_oversized_raw_tail_quarantine},
+        {"expired-tail", test_expired_known_raw_tail},
+        {"expired-header", test_expired_partial_raw_header},
+        {"control-timeout", test_partial_control_timeout},
+        {"battery-range", test_battery_range},
+        {"battery-freshness", test_battery_freshness},
+        {"valid-raw", test_valid_raw_dispatch_and_status_isolation},
+#ifdef PROTOCOL_CHIBIOS
+        {"uart-fault", test_uart_fault_retains_raw_tail},
+        {"uart-input", test_uart_input_flags_are_not_faults},
+#endif
+    };
+    for (unsigned i = 0; i < sizeof(parser_tests) / sizeof(parser_tests[0]); ++i) {
+        if (argc == 1 || strcmp(argv[1], parser_tests[i].name) == 0) parser_tests[i].run();
+    }
+    if (argc > 1) return 0;
+    sends = 0;
     test_direct_reports_and_expiry();
     test_context_and_pairing();
     test_stale_status_and_packet_bounds();
