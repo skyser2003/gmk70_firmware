@@ -3,10 +3,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 struct wb32_gpio_config;
+struct wb32_gpio_data;
 struct device {
     const struct wb32_gpio_config *config;
     const void                    *api;
     bool                           ready;
+    struct wb32_gpio_data         *data;
 };
 #ifdef __cplusplus
 extern "C" {

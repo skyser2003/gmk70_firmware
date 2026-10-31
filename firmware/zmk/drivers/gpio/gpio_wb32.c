@@ -13,7 +13,32 @@ struct wb32_gpio_config {
 };
 struct wb32_gpio_data {
     struct gpio_driver_data common;
+    sys_slist_t             callbacks;
 };
+
+/* WB32 CMSIS EXTI/AFIO layout and IRQ numbers, from the pinned vendor headers.
+ * A numbered EXTI line can belong to only one GPIO port at a time. */
+#define EXTI_IMR 0x40001800U
+#define EXTI_EMR 0x40001804U
+#define EXTI_RTSR 0x40001808U
+#define EXTI_FTSR 0x4000180cU
+#define EXTI_PR 0x40001814U
+#define AFIO_EXTICR(pin) (0x40001408U + ((pin) / 4U) * 4U)
+static const struct device *exti_owner[16];
+static bool                 exti_initialized;
+
+static void wb32_exti_isr(const void *arg) {
+    uint32_t pending = sys_read32(EXTI_PR) & sys_read32(EXTI_IMR) & (uintptr_t)arg;
+    /* W1C only this group's observed GPIO lines, before invoking callbacks. */
+    sys_write32(pending, EXTI_PR);
+    for (unsigned pin = 0; pin < 16; ++pin) {
+        const struct device *dev = exti_owner[pin];
+        if ((pending & BIT(pin)) && dev) {
+            struct wb32_gpio_data *data = dev->data;
+            gpio_fire_callbacks(&data->callbacks, dev, BIT(pin));
+        }
+    }
+}
 
 static int wb32_pin_configure(const struct device *dev, gpio_pin_t pin, gpio_flags_t flags) {
     const struct wb32_gpio_config *config = dev->config;
@@ -70,15 +95,69 @@ static int wb32_port_toggle_bits(const struct device *dev, gpio_port_pins_t pins
 }
 
 static int wb32_interrupt_configure(const struct device *dev, gpio_pin_t pin, enum gpio_int_mode mode, enum gpio_int_trig trigger) {
-    ARG_UNUSED(dev);
-    ARG_UNUSED(pin);
-    ARG_UNUSED(trigger);
-    return mode == GPIO_INT_MODE_DISABLED ? 0 : -ENOTSUP;
+    if (pin >= 16) return -EINVAL;
+    /* EXTI detects edges; do not advertise level-trigger emulation or STOP. */
+    if (mode != GPIO_INT_MODE_DISABLED && (mode != GPIO_INT_MODE_EDGE || (trigger != GPIO_INT_TRIG_LOW && trigger != GPIO_INT_TRIG_HIGH && trigger != GPIO_INT_TRIG_BOTH))) return -ENOTSUP;
+    unsigned key = irq_lock();
+    uint32_t bit = BIT(pin);
+    if (exti_owner[pin] && exti_owner[pin] != dev) {
+        irq_unlock(key);
+        return mode == GPIO_INT_MODE_DISABLED ? 0 : -EBUSY;
+    }
+    sys_clear_bits(EXTI_IMR, bit);
+    sys_clear_bits(EXTI_EMR, bit);
+    sys_clear_bits(EXTI_RTSR, bit);
+    sys_clear_bits(EXTI_FTSR, bit);
+    sys_write32(bit, EXTI_PR);
+    exti_owner[pin] = NULL;
+    if (mode != GPIO_INT_MODE_DISABLED) {
+        const struct wb32_gpio_config *config = dev->config;
+        uint32_t                       port   = ((uintptr_t)config->port - WB32_GPIOA_BASE) / 0x400U;
+        unsigned                       shift  = (pin % 4U) * 4U;
+        uintptr_t                      reg    = AFIO_EXTICR(pin);
+        sys_write32((sys_read32(reg) & ~(0xfU << shift)) | (port << shift), reg);
+        if (trigger & GPIO_INT_TRIG_HIGH) sys_set_bits(EXTI_RTSR, bit);
+        if (trigger & GPIO_INT_TRIG_LOW) sys_set_bits(EXTI_FTSR, bit);
+        exti_owner[pin] = dev;
+        sys_set_bits(EXTI_IMR, bit);
+    }
+    irq_unlock(key);
+    return 0;
+}
+
+static int wb32_manage_callback(const struct device *dev, struct gpio_callback *callback, bool set) {
+    struct wb32_gpio_data *data   = dev->data;
+    unsigned               key    = irq_lock();
+    int                    result = gpio_manage_callback(&data->callbacks, callback, set);
+    irq_unlock(key);
+    return result;
 }
 
 static int wb32_gpio_init(const struct device *dev) {
     const struct wb32_gpio_config *config = dev->config;
-    sys_set_bits(WB32_RCC_BASE + 0x48, BIT(15) | BIT(config->clock_bit));
+    sys_set_bits(WB32_RCC_BASE + 0x48, BIT(15) | BIT(config->clock_bit) | BIT(9) | BIT(10));
+    if (!exti_initialized) {
+        sys_clear_bits(EXTI_IMR, 0xffffU);
+        sys_clear_bits(EXTI_EMR, 0xffffU);
+        sys_clear_bits(EXTI_RTSR, 0xffffU);
+        sys_clear_bits(EXTI_FTSR, 0xffffU);
+        sys_write32(0xffffU, EXTI_PR);
+        IRQ_CONNECT(6, 2, wb32_exti_isr, (const void *)BIT(0), 0);
+        IRQ_CONNECT(7, 2, wb32_exti_isr, (const void *)BIT(1), 0);
+        IRQ_CONNECT(8, 2, wb32_exti_isr, (const void *)BIT(2), 0);
+        IRQ_CONNECT(9, 2, wb32_exti_isr, (const void *)BIT(3), 0);
+        IRQ_CONNECT(10, 2, wb32_exti_isr, (const void *)BIT(4), 0);
+        IRQ_CONNECT(16, 2, wb32_exti_isr, (const void *)0x3e0U, 0);
+        IRQ_CONNECT(33, 2, wb32_exti_isr, (const void *)0xfc00U, 0);
+        irq_enable(6);
+        irq_enable(7);
+        irq_enable(8);
+        irq_enable(9);
+        irq_enable(10);
+        irq_enable(16);
+        irq_enable(33);
+        exti_initialized = true;
+    }
     return 0;
 }
 
@@ -90,6 +169,7 @@ static DEVICE_API(gpio, wb32_gpio_api) = {
     .port_clear_bits_raw     = wb32_port_clear_bits_raw,
     .port_toggle_bits        = wb32_port_toggle_bits,
     .pin_interrupt_configure = wb32_interrupt_configure,
+    .manage_callback         = wb32_manage_callback,
 };
 
 #define WB32_GPIO_DEFINE(n)                                                 \

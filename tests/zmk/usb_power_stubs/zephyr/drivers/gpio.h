@@ -20,8 +20,17 @@ struct gpio_driver_config {
 struct gpio_driver_data {
     uint32_t unused;
 };
-enum gpio_int_mode { GPIO_INT_MODE_DISABLED };
-enum gpio_int_trig { GPIO_INT_TRIG_LOW };
+struct gpio_callback;
+typedef struct {
+    struct gpio_callback *head;
+} sys_slist_t;
+struct gpio_callback {
+    struct gpio_callback *next;
+    void (*handler)(const struct device *, struct gpio_callback *, gpio_port_pins_t);
+    gpio_port_pins_t pin_mask;
+};
+enum gpio_int_mode { GPIO_INT_MODE_DISABLED, GPIO_INT_MODE_LEVEL, GPIO_INT_MODE_EDGE };
+enum gpio_int_trig { GPIO_INT_TRIG_LOW = 1, GPIO_INT_TRIG_HIGH = 2, GPIO_INT_TRIG_BOTH = 3 };
 struct gpio_driver_api {
     int (*pin_configure)(const struct device *, gpio_pin_t, gpio_flags_t);
     int (*port_get_raw)(const struct device *, gpio_port_value_t *);
@@ -30,6 +39,7 @@ struct gpio_driver_api {
     int (*port_clear_bits_raw)(const struct device *, gpio_port_pins_t);
     int (*port_toggle_bits)(const struct device *, gpio_port_pins_t);
     int (*pin_interrupt_configure)(const struct device *, gpio_pin_t, enum gpio_int_mode, enum gpio_int_trig);
+    int (*manage_callback)(const struct device *, struct gpio_callback *, bool);
 };
 /* Native API dispatch boundary; the callback is the actual WB32 driver. */
 static inline int gpio_pin_configure(const struct device *dev, gpio_pin_t pin, gpio_flags_t flags) {

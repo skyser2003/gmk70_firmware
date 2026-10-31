@@ -33,7 +33,7 @@ static void event(const struct device *dev, uint32_t r, uint32_t c, bool pressed
     last_pressed = pressed;
 }
 int main(void) {
-    struct device dev = {&data, &api};
+    struct device dev = {.data = &data, .api = &api};
     assert(init(&dev) == 0);
     assert(api.config(&dev, NULL) == -EINVAL);
     assert(api.config(&dev, event) == 0);

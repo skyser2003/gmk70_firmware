@@ -15,9 +15,10 @@ static_assert(USB_POWER_EN_PIN >> 4U == 1U, "USB pull-up power is GPIOB");
 static uint32_t                   registers[13], initial[13];
 static unsigned                   writes, low_sequence, output_sequence, clocks;
 unsigned                          power_irq_depth;
-static wb32_gpio                  port         = {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}};
-static const wb32_gpio_config     config       = {{0xffff}, &port, 6};
-extern "C" const device           power_gpio_b = {&config, &wb32_gpio_api, true};
+static wb32_gpio                  port   = {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}};
+static const wb32_gpio_config     config = {{0xffff}, &port, 6};
+static wb32_gpio_data             data;
+extern "C" const device           power_gpio_b = {&config, &wb32_gpio_api, true, &data};
 extern "C" const power_init_entry power_registration __attribute__((weak));
 
 power_register::operator uint32_t() const {
@@ -49,9 +50,28 @@ void power_register::operator=(uint32_t value) {
     registers[index] = (registers[index] & ~mask) | (value & mask);
 }
 
+static uint32_t exti_registers[6];
+uint32_t        sys_read32(uintptr_t address) {
+    assert(address >= EXTI_IMR && address <= EXTI_PR);
+    return exti_registers[(address - EXTI_IMR) / 4];
+}
+void sys_write32(uint32_t value, uintptr_t address) {
+    assert(address >= EXTI_IMR && address <= EXTI_PR);
+    uint32_t &reg = exti_registers[(address - EXTI_IMR) / 4];
+    if (address == EXTI_PR)
+        reg &= ~value;
+    else
+        reg = value;
+}
 void sys_set_bits(uintptr_t address, uint32_t bits) {
-    assert(address == WB32_RCC_BASE + 0x48 && bits == (BIT(15) | BIT(6)));
-    ++clocks;
+    if (address == WB32_RCC_BASE + 0x48) {
+        assert(bits == (BIT(15) | BIT(6) | BIT(9) | BIT(10)));
+        ++clocks;
+    } else
+        sys_write32(sys_read32(address) | bits, address);
+}
+void sys_clear_bits(uintptr_t address, uint32_t bits) {
+    sys_write32(sys_read32(address) & ~bits, address);
 }
 
 extern "C" {

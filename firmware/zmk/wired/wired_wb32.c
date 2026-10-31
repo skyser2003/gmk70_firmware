@@ -24,6 +24,7 @@
 #include <zephyr/irq.h>
 #include <zephyr/sys/sys_io.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/drivers/gpio.h>
 #include <string.h>
 
 #define UART_BASE 0x40003800U
@@ -44,6 +45,10 @@ static bool                        have_first;
 static uint8_t                     first;
 static int64_t                     deadline;
 static const struct gmk_wired_pin *row_pins, *col_pins;
+static const struct device *const  gpio_ports[] = {DEVICE_DT_GET(DT_NODELABEL(gpioa)), DEVICE_DT_GET(DT_NODELABEL(gpiob)), DEVICE_DT_GET(DT_NODELABEL(gpioc))};
+static struct gpio_callback        row_callbacks[3];
+static atomic_t                    scan_pending;
+static bool                        scan_idle, scan_irq_ready;
 
 static struct wb32_gpio *port_of(struct gmk_wired_pin pin) {
     return (struct wb32_gpio *)(uintptr_t)(WB32_GPIOA_BASE + 0x400U * pin.port);
@@ -62,6 +67,73 @@ static void pin_mode(struct gmk_wired_pin pin, uint32_t mode, uint32_t pull) {
 }
 static bool pin_read(struct gmk_wired_pin pin) {
     return (port_of(pin)->idr & (1U << pin.pin)) != 0;
+}
+
+static void matrix_wake(const struct device *dev, struct gpio_callback *callback, gpio_port_pins_t pins) {
+    ARG_UNUSED(dev);
+    ARG_UNUSED(callback);
+    ARG_UNUSED(pins);
+    /* IRQs only latch activity; scanning, debounce and reports stay in thread context. */
+    atomic_set(&scan_pending, 1);
+}
+
+static void matrix_irq_disable(void) {
+    for (unsigned r = 0; r < 5; ++r)
+        if (row_pins[r].port < ARRAY_SIZE(gpio_ports)) gpio_pin_interrupt_configure(gpio_ports[row_pins[r].port], row_pins[r].pin, GPIO_INT_DISABLE);
+}
+
+static bool matrix_irq_init(void) {
+    for (unsigned r = 0; r < 5; ++r)
+        if (row_pins[r].port >= ARRAY_SIZE(gpio_ports)) return false;
+    for (unsigned port = 0; port < ARRAY_SIZE(gpio_ports); ++port) {
+        gpio_port_pins_t pins = 0;
+        for (unsigned r = 0; r < 5; ++r)
+            if (row_pins[r].port == port) pins |= BIT(row_pins[r].pin);
+        if (!pins) continue;
+        if (!device_is_ready(gpio_ports[port])) return false;
+        gpio_init_callback(&row_callbacks[port], matrix_wake, pins);
+        if (gpio_add_callback(gpio_ports[port], &row_callbacks[port])) return false;
+    }
+    return true;
+}
+
+static void matrix_idle_end(void) {
+    unsigned key = irq_lock();
+    matrix_irq_disable();
+    for (unsigned c = 0; c < 9; ++c)
+        pin_mode(col_pins[c], 0, 1);
+    scan_idle = false;
+    atomic_set(&scan_pending, 0);
+    irq_unlock(key);
+}
+
+static void matrix_idle_begin(void) {
+    if (!scan_irq_ready) return;
+    unsigned key = irq_lock();
+    atomic_set(&scan_pending, 0);
+    /* Arm before driving columns. Read every row afterwards as well: a key
+     * already down, or pressed across this transition, must not need a new edge. */
+    for (unsigned r = 0; r < 5; ++r)
+        if (gpio_pin_interrupt_configure(gpio_ports[row_pins[r].port], row_pins[r].pin, GPIO_INT_EDGE_FALLING)) {
+            scan_irq_ready = false;
+            matrix_irq_disable();
+            irq_unlock(key);
+            return; /* Preserve ordinary polling if interrupts cannot be armed. */
+        }
+    for (unsigned c = 0; c < 9; ++c) {
+        struct gmk_wired_pin pin = col_pins[c];
+        if (pin.port == 255) continue;
+        struct wb32_gpio *p = port_of(pin);
+        p->bsrr             = BIT(pin.pin + 16);
+        pin_mode(pin, 1, 0);
+        /* All idle outputs sink through open drains, as in the board's QMK wake path. */
+        p->otyper = BIT(pin.pin);
+    }
+    k_busy_wait(5);
+    for (unsigned r = 0; r < 5; ++r)
+        if (!pin_read(row_pins[r])) atomic_set(&scan_pending, 1);
+    scan_idle = true;
+    irq_unlock(key);
 }
 static bool mode_now(void) {
     return gmk_host_switch() == 3;
@@ -156,6 +228,10 @@ void gmk_wired_scan(uint16_t rows[5]) {
         memset(rows, 0, 10);
         return;
     }
+    /* A quiet matrix stays electrically armed for a GPIO edge. Keep split,
+     * host-mode gates and lighting alive without another local GPIO sweep. */
+    if (scan_idle && !atomic_get(&scan_pending)) goto publish;
+    if (scan_idle) matrix_idle_end();
     /* ROW2COL drives each populated column low, reads pulled-up rows. */
     for (unsigned c = 0; c < 9; ++c) {
         if (col_pins[c].port == 255) continue;
@@ -169,6 +245,13 @@ void gmk_wired_scan(uint16_t rows[5]) {
     }
     k_mutex_lock(&wired_lock, K_FOREVER);
     gmk_matrix_debounce(&debounce, raw, k_uptime_get_32());
+    bool active = false;
+    for (unsigned r = 0; r < 5; ++r)
+        active |= (debounce.candidate[r] | debounce.stable[r]) != 0;
+    k_mutex_unlock(&wired_lock);
+    if (!active) matrix_idle_begin();
+publish:
+    k_mutex_lock(&wired_lock, K_FOREVER);
     if (gmk_split_available())
         memcpy(rows, debounce.stable, 10);
     else
@@ -261,6 +344,9 @@ static int wired_init(void) {
             port_of(col_pins[c])->bsrr = 1U << col_pins[c].pin;
             pin_mode(col_pins[c], 0, 1);
         }
+    scan_idle = false;
+    atomic_set(&scan_pending, 0);
+    scan_irq_ready = matrix_irq_init();
     /* UART1 A9/A10 AF7, push-pull, 115200 8N1, FIFO enabled. */
     for (unsigned pin = 9; pin <= 10; ++pin) {
         struct gmk_wired_pin p = {0, pin};

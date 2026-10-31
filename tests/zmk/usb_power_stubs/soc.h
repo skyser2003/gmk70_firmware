@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 #define WB32_RCC_BASE 0x40010c00U
+#define WB32_GPIOA_BASE 0x40000000U
 /* Test-only register wrapper observes the actual C driver's direct MMIO writes.
  * Build that unchanged source as C++ solely for assignment interception. */
 struct power_register {

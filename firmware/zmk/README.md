@@ -1,5 +1,9 @@
 # GMK70 ZMK wired development and staging trials
 
+The [idle matrix scanner](../../docs/ZMK-IDLE-SCANNING.md) uses GPIO interrupts
+to avoid repeated local sweeps when all keys are released. Split/lighting and
+USB/updater maintenance continue; full system deep sleep remains unimplemented.
+
 Current sources include [default-on NKRO](../../docs/NKRO.md), a remappable
 Studio toggle/on/off behavior, and Fn+V on both Windows and Mac defaults.
 Saved layouts are preserved; these additions have not been installed as part
