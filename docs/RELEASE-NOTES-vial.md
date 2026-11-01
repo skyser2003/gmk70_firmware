@@ -1,5 +1,15 @@
 GMK70 Vial firmware, built from the commit selected by this Vial tag.
 
+Shared board idle scanning now uses row interrupts without pausing split
+maintenance. Pairing holds track physical positions and cancel on live matrix
+remapping, while native unlock checks remain intact. See
+[custom feature parity and hardware limits](CUSTOM-FEATURE-PARITY.md).
+
+The same shared radio recovery now discards stale native/flip state on actual
+connection loss and sends empty transport reports past native cache suppression.
+Same-channel wake preserves held input, and invalid both-low selector input is
+rejected. See the fixed [custom behavior checklist](CUSTOM-BEHAVIOR-CHECKLIST.md).
+
 NKRO defaults enabled for new/reset settings; a saved off choice survives
 startup. Both Windows and Mac defaults include Fn+V. Report transitions clear
 held flip contributions and inactive boot-fallback state. See

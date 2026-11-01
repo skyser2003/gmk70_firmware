@@ -32,7 +32,22 @@ release, so changing flip or OS layers while holding a key releases its original
 target. A repeated source press releases its previous target first. Unrelated
 keys, including Enter, Escape, Backspace, Tab and Space, pass through unchanged.
 Arbitrary live binding replacement while a key is held retains upstream ZMK
-semantics. Native handling of overlapping modifiers/usages is unchanged.
+semantics. Custom mapped outputs own their held modifier contributions
+independently: holding Mac 3 then pressing/releasing A keeps GUI held, and
+releasing either Mac 3/4 keeps GUI for the other shortcut. Physical modifiers
+and the native implicit mask are merged with these contributions in report
+copies; native report buffers are not rewritten.
+
+Only custom mapped dispatches bypass the native singleton implicit-modifier
+updates. Unaffected native events retain their pinned semantics. Native HID
+usage overlap remains unchanged. Clear and dispatch coordinate so a canceled
+in-flight press cannot repopulate native HID state. Keyboard clear drops custom
+modifier contributions but preserves a consumer target's balancing release;
+consumer clear cancels those targets. Consumer mappings publish the required
+keyboard modifier report as well. USB boot, six-key projection and NKRO use the
+same contribution mask.
+The report adapter is an explicit configuration dependency; USB-only Studio
+builds retain clear handling when the radio endpoint is disabled.
 
 ## Persistence and integration
 
@@ -56,7 +71,8 @@ QMK settings reset remain unimplemented.
 
 ## Build and verification
 
-Source `e4e9c7bef4af8c1fa28bbe9adf582a88376935a3` builds the normal
+The original function-flip installation record at source
+`e4e9c7bef4af8c1fa28bbe9adf582a88376935a3` built the normal
 `wired-studio-updater` application at 79,612 bytes, CRC32 `799253422`, SHA256
 `e20a01fd51ff53dbf1b7280e050d7b2c571c933308a618a7e14e7865ed5b8fa1`.
 Static RAM is 27,576 of 27,648 bytes with existing thread stacks retained.
@@ -72,6 +88,18 @@ and USB loss between queueing and backend dispatch. Studio metadata tests cover
 the zero-parameter behavior and sparse import preserving the other 287 bindings.
 Linked-image checks verify actual calls from native keycode emission to the
 wrapper and from the existing worker to the persistence poll.
+
+The consistency regression additionally compiles unchanged pinned `hid.c` and
+`hid_listener.c`. It covers both modifier-release-report settings with and
+without the radio endpoint, ordinary/overlapping shortcuts, native explicit and
+implicit modifiers, consumers/brightness, duplicate events, clears, mode changes,
+boot and six-key/NKRO reports. Nested and foreign-thread dispatch checks guard
+the custom-event scope; reentrant/threaded clear regressions also check native
+same-target ownership, explicit/implicit modifiers and duplicate replacements.
+The synchronous adapter uses thread-context recursive
+serialization; it does not introduce an interrupt-context keycode emitter.
+See the fixed [custom behavior checklist](CUSTOM-BEHAVIOR-CHECKLIST.md) for
+current integration evidence and hardware limits.
 
 The canonical central, peripheral and both affected qualification variants
 compile. Build/test/conversion commands do not operate the keyboard. Device

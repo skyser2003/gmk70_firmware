@@ -17,6 +17,13 @@ been sent. There is no automatic bond erase or CLEAN command. The physical LEFT
 host switch selects USB, the last Bluetooth slot selected during this boot, or
 the dongle after a 50 ms debounce. The last-slot preference is currently RAM-only.
 
+Cancellation precedes native binding edits, Studio Discard/Reset and layer
+move/add/remove/restore operations. It invalidates the physical deadline and
+queued/pending pair even if native work blocks, fails or makes no change.
+Commands already transmitted are outside this cancellation boundary. Dedicated
+tests execute the pinned native keymap paths; see the
+[custom behavior checklist](CUSTOM-BEHAVIOR-CHECKLIST.md).
+
 Native USB remains available for Studio and recovery while typing is routed to
 the radio. Firmware/settings writes still require LEFT USB, the physical wired
 position, service readiness and the existing storage gates. Read-only radio

@@ -1,5 +1,16 @@
 GMK70 QMK/VIA firmware, built from the commit selected by this VIA tag.
 
+The shared VIA/Vial board now skips local GPIO sweeps while released and idle,
+retaining native split maintenance and debounce. Pairing holds track physical
+positions and cancel on live matrix remapping. See
+[custom feature parity and hardware limits](CUSTOM-FEATURE-PARITY.md).
+
+Actual radio loss now clears native reports and flip ownership, then forces
+empty transport reports so pairing-suppressed releases cannot leave stuck keys.
+Repeated status and same-channel wake preserve held input. Invalid both-low
+selector input is rejected. See the fixed
+[custom behavior checklist](CUSTOM-BEHAVIOR-CHECKLIST.md).
+
 NKRO now defaults enabled for new/reset settings and remembers native toggle
 choices. Fn+V toggles it in Windows and Mac defaults. Mode changes clear stale
 reports, including held function-flip modifiers and inactive boot-fallback state.

@@ -91,6 +91,15 @@ and pressing that key is the supported manual control path; this task does not
 claim a new Studio menu. The local HSB adapter also schedules native debounced
 persistence after hue/saturation/brightness commands; upstream sources are intact.
 
+RGB runtime persistence retains the native 60-second debounce and opaque saved
+representation. The latest callback snapshot remains pending through wireless
+mode, missing configured USB, storage contention and failed writes. Eligible
+saves use the existing runtime backend and recheck LEFT/wired/USB/service/storage
+gates at execution; retries are bounded to once per second. Startup behavior-ID
+writes keep their pre-enumeration route. Power loss can discard unsaved RAM;
+latched backend faults keep their existing fail-closed policy. See the
+[native-path acceptance checklist](CUSTOM-BEHAVIOR-CHECKLIST.md).
+
 ## Integration and bounds
 
 `lighting/wb32_pixels.c` owns SPIM2/B15 AF5 and DMAC2 channel 0. It uses RGB byte

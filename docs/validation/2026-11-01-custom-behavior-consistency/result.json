@@ -1,0 +1,69 @@
+{
+  "base_commit": "7a8d7da8fa68c4c1b1db9c50a69948c999536363",
+  "branch": "main",
+  "uncommitted": true,
+  "device_operations": false,
+  "private_device_data_included": false,
+  "checks": {
+    "make test": "passed",
+    "make test-zmk": "passed",
+    "make check-tools": "passed",
+    "clang-format": "passed",
+    "shfmt": "passed",
+    "bash syntax": "passed",
+    "optional built-resident integration": "passed with explicit opt-in",
+    "task reviews": "passed after scoped fixes",
+    "whole-batch review": "passed after one minor documentation correction"
+  },
+  "build_targets_passed": [
+    "build-release",
+    "build-debug",
+    "build-qmk-default",
+    "build-updater-release",
+    "build-updater-debug",
+    "build-vial",
+    "build-vial-updater",
+    "build-vial-unlocked-updater",
+    "build-vial-radio-diagnostic",
+    "build-vial-trial-updater",
+    "build-vial-unlocked-trial-updater",
+    "build-vial-watchdog-qualification",
+    "build-zmk-wired-updater",
+    "build-zmk-wired-update-test",
+    "build-zmk-wired-qualification",
+    "build-zmk-wired-studio-updater",
+    "build-zmk-wired-studio-update-test",
+    "build-zmk-wired-studio-radio-qualification",
+    "build-zmk-wired-peripheral"
+  ],
+  "canonical_application": {
+    "bytes": 85456,
+    "sha256": "d19f2d0672e0fb1b9070ef0e1811e39ffacc185472156c74ef139c6b4d93c16d",
+    "ram_capacity": 28544,
+    "ram_used": 28200,
+    "ram_unallocated": 344,
+    "ram_start": "0x20000040",
+    "ram_limit": "0x20006fc0",
+    "retained_regions_excluded": true,
+    "stacks_reduced": false,
+    "threads_added": false
+  },
+  "resident": {
+    "packages_verified": 14,
+    "sha256": "94427de2fad50bb91337ded4341df02cab9070c550042a9832b3e12366791bf8",
+    "padded_sha256": "be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a",
+    "changed": false
+  },
+  "preserved": {
+    "dependency_pins": true,
+    "original_via_definition": true,
+    "board_and_default_keymaps": true,
+    "custom_keycode_values": true,
+    "native_settings_formats_and_partitions": true,
+    "permanent_zmk_no_watchdog": true,
+    "real_git_index": true,
+    "untouched_preexisting_source_test_blobs_verified": 12
+  },
+  "hardware_validated": false,
+  "left_automatic_return_investigation": "deferred"
+}

@@ -24,6 +24,10 @@ integration are selected separately from `firmware/qmk-via/` and
 - Shared board/radio integration targeting stock V15 behavior, including stock
   default keymaps, custom keycodes, RGB lighting and five-minute default idle sleep.
 - Five-millisecond key debounce in both VIA and Vial builds.
+- Shared VIA/Vial idle interrupt scanning and physical pairing-hold guards,
+  plus ZMK LED supply control. See [custom feature parity](docs/CUSTOM-FEATURE-PARITY.md).
+- A fixed [custom behavior checklist](docs/CUSTOM-BEHAVIOR-CHECKLIST.md) records
+  native integration evidence and hardware limits across VIA, Vial and ZMK.
 - Experimental Vial with keymap and knob remapping, macros, tap dances, combos,
   key overrides, live QMK settings and VialRGB. See [Vial features](docs/VIAL-PORT.md).
 - Optional split updater: update both halves through the left half's USB connection.
