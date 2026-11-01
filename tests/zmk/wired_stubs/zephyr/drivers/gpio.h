@@ -36,6 +36,7 @@ enum gpio_int_trig { GPIO_INT_TRIG_LOW = 1, GPIO_INT_TRIG_HIGH = 2, GPIO_INT_TRI
 #define GPIO_PULL_DOWN BIT(6)
 #define GPIO_INT_DISABLE 0
 #define GPIO_INT_EDGE_FALLING 1
+#define GPIO_INT_EDGE_BOTH 3
 struct gpio_driver_api {
     int (*pin_configure)(const struct device *, gpio_pin_t, gpio_flags_t);
     int (*port_get_raw)(const struct device *, gpio_port_value_t *);

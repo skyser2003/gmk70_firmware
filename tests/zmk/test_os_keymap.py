@@ -43,7 +43,11 @@ class OsKeymapTests(unittest.TestCase):
         layers = [re.findall(r"&\w+(?:\s+[^&\n]+)?", layer) for layer in native_layers]
         layers = [[b.strip() for b in layer] for layer in layers]
         for layer in layers:
-            self.assertEqual(len(layer), 72)
+            self.assertEqual(len(layer), 74)
+        self.assertEqual(layers[0][-2:], ["&kp C_VOL_DN", "&kp C_VOL_UP"])
+        self.assertEqual(layers[2][-2:], layers[0][-2:])
+        self.assertEqual(layers[1][-2:], ["&trans", "&trans"])
+        self.assertEqual(layers[3][-2:], ["&trans", "&trans"])
         # The stock base maps differ only at Fn and the three Alt/GUI positions.
         self.assertIn("MO(_MFL), KC_LGUI", stock)
         self.assertEqual(

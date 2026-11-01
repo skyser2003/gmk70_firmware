@@ -265,6 +265,21 @@ static void four_layers(void) {
     assert(!gmk_settings_store_save(&s, "rgb/underglow/state", rgb, sizeof(rgb)));
     mount(&s, &f);
     assert(s.count == 310);
+    /* Append encoder positions without renumbering/reformatting old bindings.
+     * These names deliberately use the legacy-compatible literal encoding. */
+    for (unsigned l = 0; l < 4; ++l)
+        for (unsigned k = 72; k < 74; ++k) {
+            char name[32];
+            snprintf(name, sizeof(name), "keymap/l/%u/%u", l, k);
+            assert(!gmk_settings_store_save(&s, name, binding, sizeof(binding)));
+            mount(&s, &f);
+            expect(&s, name, binding, sizeof(binding));
+        }
+    uint8_t enabled = 1;
+    assert(!gmk_settings_store_save(&s, "gmk70/nkro", &enabled, 1));
+    assert(!gmk_settings_store_save(&s, "gmk70/function_flip", &enabled, 1));
+    mount(&s, &f);
+    assert(s.count == 320);
     for (unsigned l = 0; l < 4; ++l)
         for (unsigned k = 0; k < 72; ++k) {
             char name[32];

@@ -19,6 +19,9 @@ bool gmk_wired_remote_matrix(uint16_t rows[5]);
 /* Scanner-facing APIs; local rows use 0..4 on either physical half. */
 void gmk_wired_scan(uint16_t rows[5]);
 void gmk_wired_poll(void);
+/* LEFT encoder detents only; thread context. Clear discards pending motion. */
+int  gmk_wired_encoder_next(void);
+void gmk_wired_encoder_clear(void);
 struct gmk_wired_stats {
     uint32_t polls, failures, transactions, rx_errors, uptime_ms;
     bool     peer;

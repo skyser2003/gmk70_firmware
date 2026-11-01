@@ -83,7 +83,9 @@ static void invalid_inputs_never_truncate_channels_or_positions(void) {
     uint8_t                   output   = 77;
     assert(gmk_radio_selector_press(&selector, 7, 0, 0) == -EINVAL);
     assert(gmk_radio_selector_press(&selector, 255, 0, 0) == -EINVAL);
-    assert(gmk_radio_selector_press(&selector, 1, 72, 0) == -EINVAL);
+    assert(gmk_radio_selector_press(&selector, 1, 73, 0) == 0);
+    gmk_radio_selector_release(&selector, 73);
+    assert(gmk_radio_selector_press(&selector, 1, 74, 0) == -EINVAL);
     assert(gmk_radio_selector_press(&selector, 1, UINT32_MAX, 0) == -EINVAL);
     assert(!gmk_radio_selector_pair(&selector, 3000, &output) && output == 77);
     assert(!gmk_radio_selector_switch(&selector, 4, 0, 1, &output));

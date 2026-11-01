@@ -24,9 +24,11 @@ int main(void) {
     assert(gmk_battery_view_release(&view, 12)); /* A live-remapped release clears the original kind. */
     assert(!gmk_battery_view_active(&view));
     assert(!gmk_battery_view_release(&view, 12));
-    assert(!gmk_battery_view_release(&view, 72));
+    assert(!gmk_battery_view_release(&view, 74));
+    assert(!gmk_battery_view_set(&view, GMK_BATTERY_LEVEL, 73, true));
+    assert(gmk_battery_view_release(&view, 73));
     assert(gmk_battery_view_set(&view, 2, 0, true) == -EINVAL);
-    assert(gmk_battery_view_set(&view, GMK_BATTERY_LEVEL, 72, true) == -EINVAL);
+    assert(gmk_battery_view_set(&view, GMK_BATTERY_LEVEL, 74, true) == -EINVAL);
     assert(!gmk_battery_view_set(&view, GMK_BATTERY_LEVEL, 55, true));
     assert(gmk_battery_view_active(&view));
     gmk_battery_view_overlay(&view, &status, rgb);

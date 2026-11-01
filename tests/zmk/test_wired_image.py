@@ -103,16 +103,17 @@ class WiredImageTests(unittest.TestCase):
                 r"RC\((\d+),(\d+)\)", (board / "gmk70_wired.dts").read_text()
             )
         ]
-        self.assertEqual(mapped, coords)
+        self.assertEqual(mapped, coords + [(10, 0), (10, 1)])
         bindings = re.findall(
             r"&(?:kp\s+\w+|(?:mo|to|gmk_nkro)\s+\d+|rgb_ug\s+\w+|none|trans)",
             (board / "gmk70_wired.keymap").read_text(),
         )
-        self.assertEqual(len(bindings), 4 * len(coords))
+        self.assertEqual(len(bindings), 4 * (len(coords) + 2))
         self.assertEqual(bindings[coords.index((4, 2))], "&mo 1")
         for layer in (1, 3):
             self.assertEqual(
-                bindings[layer * len(coords) + coords.index((3, 5))], "&gmk_nkro 0"
+                bindings[layer * (len(coords) + 2) + coords.index((3, 5))],
+                "&gmk_nkro 0",
             )
 
 

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
+#include "../wired/virtual_keys.h"
 #include "selection.h"
 #include "core.h"
 #include <errno.h>
@@ -37,7 +38,7 @@ bool gmk_radio_selector_switch(struct gmk_radio_selector *selector, uint8_t raw,
     return true;
 }
 int gmk_radio_selector_press(struct gmk_radio_selector *selector, uint8_t channel, uint32_t position, uint32_t now) {
-    if (channel > GMK_HOST_DONGLE || position >= 72) return -EINVAL;
+    if (channel > GMK_HOST_DONGLE || position >= GMK_KEY_POSITIONS) return -EINVAL;
     selector->holding       = channel != GMK_HOST_USB;
     selector->held_channel  = channel;
     selector->held_position = (uint8_t)position;

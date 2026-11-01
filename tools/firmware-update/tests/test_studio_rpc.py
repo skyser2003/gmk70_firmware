@@ -275,7 +275,72 @@ class MemoryStudio:
         return Protobuf.blob(1, Protobuf.uint(1, request_id) + subsystem)
 
 
+class KnobMemoryStudio(MemoryStudio):
+    def __init__(self) -> None:
+        super().__init__()
+        self.original = RpcKeymap(
+            tuple(
+                RpcLayer(
+                    layer.layer_id,
+                    layer.name,
+                    layer.bindings
+                    + (
+                        RpcBinding(11, 0x70050 + index, 0),
+                        RpcBinding(11, 0x7004F + index, 0),
+                    ),
+                )
+                for index, layer in enumerate(self.original.layers)
+            ),
+            self.original.available_layers,
+            self.original.max_layer_name_length,
+        )
+        self.current = self.saved = self.original
+
+    @staticmethod
+    def geometry() -> ExpectedLayout:
+        old = MemoryStudio.geometry()
+        return ExpectedLayout(
+            old.positions,
+            old.keys
+            + (
+                PhysicalKey(100, 100, 0, 100, 0, 0, 0),
+                PhysicalKey(100, 100, 100, 100, 0, 0, 0),
+            ),
+        )
+
+
 class StudioRpcTests(unittest.TestCase):
+    def test_physical_migration_preserves_knob_bindings(self) -> None:
+        for selective in (None, "gmk_battery"):
+            peer = KnobMemoryStudio()
+            original = tuple(layer.bindings[72:] for layer in peer.original.layers)
+            with (
+                self.subTest(selective=selective),
+                tempfile.TemporaryDirectory() as folder,
+            ):
+                result = StudioClient(peer).apply(
+                    MemoryStudio.plan(),
+                    peer.geometry(),
+                    Path(folder) / "before.json",
+                    only_behavior=selective,
+                )
+                self.assertEqual(result.bindings_written, 296)
+                self.assertEqual(
+                    tuple(layer.bindings[72:] for layer in peer.saved.layers), original
+                )
+
+    def test_failed_migration_restores_full_map_with_knob(self) -> None:
+        peer = KnobMemoryStudio()
+        peer.fail_binding_number = 200
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            self.assertRaises(StudioApplyError),
+        ):
+            StudioClient(peer).apply(
+                MemoryStudio.plan(), peer.geometry(), Path(folder) / "before.json"
+            )
+        self.assertEqual(peer.saved, peer.original)
+
     def test_flip_sparse_import_changes_one_binding_and_preserves_287(self) -> None:
         peer = self.freshly_edited_peer()
         peer.include_flip = True

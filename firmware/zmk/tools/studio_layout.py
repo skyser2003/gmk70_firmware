@@ -94,10 +94,20 @@ def generate(keyboard: Path, via: Path) -> str:
         "        kscan = <&kscan0>;",
         "        keys =",
     ]
-    for i, coord in enumerate(order):
+    for coord in order:
         w, h, x, y = positions[coord]
-        end = ";" if i == len(order) - 1 else ","
-        lines.append(f"            <&key_physical_attrs {w} {h} {x} {y} 0 0 0>{end}")
+        lines.append(f"            <&key_physical_attrs {w} {h} {x} {y} 0 0 0>,")
+    # Preserve all existing geometry and indices. Two ordinary editable slots
+    # below the knob column represent CCW (left) and CW (right).
+    y = max(p[3] + p[1] for p in positions.values())
+    if y > 32667:
+        raise ValueError("no room for encoder virtual-key geometry")
+    lines.extend(
+        [
+            f"            <&key_physical_attrs 100 100 0 {y} 0 0 0>,",
+            f"            <&key_physical_attrs 100 100 100 {y} 0 0 0>;",
+        ]
+    )
     return "\n".join([*lines, "    };", "};", ""])
 
 

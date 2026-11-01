@@ -20,7 +20,7 @@ static bool     emulate_peer;
 static unsigned uart_transmissions;
 static bool     arm_race;
 int             gpio_pin_interrupt_configure(const struct device *dev, gpio_pin_t pin, gpio_flags_t flags) {
-    int result = wb32_interrupt_configure(dev, pin, flags ? GPIO_INT_MODE_EDGE : GPIO_INT_MODE_DISABLED, GPIO_INT_TRIG_LOW);
+    int result = wb32_interrupt_configure(dev, pin, flags ? GPIO_INT_MODE_EDGE : GPIO_INT_MODE_DISABLED, flags == GPIO_INT_EDGE_BOTH ? GPIO_INT_TRIG_BOTH : GPIO_INT_TRIG_LOW);
     if (flags && arm_race && pin == 13) {
         /* A press arrives while the final row is being armed, before any callback. */
         ((struct wb32_gpio *)WB32_GPIOA_BASE)->idr &= ~BIT(1);
@@ -226,6 +226,46 @@ static void test_idle_matrix(bool central) {
     gmk_wired_scan(rows);
     assert(!scan_idle);
 }
+static void test_encoder_irq(void) {
+    struct wb32_gpio *b = (void *)WB32_GPIOB_BASE, *c = (void *)WB32_GPIOC_BASE;
+    b->idr                                     = BIT(9) | BIT(6) | BIT(7);
+    c->idr                                     = 0xffff;
+    ((struct wb32_gpio *)WB32_GPIOA_BASE)->idr = 0xffff;
+    assert(wired_init() == 0 && encoder_irq_ready);
+    assert((sys_read32(EXTI_RTSR) & (BIT(6) | BIT(7))) == (BIT(6) | BIT(7)));
+    uint16_t rows[5];
+    gmk_wired_scan(rows);
+    assert(scan_idle);
+    const uint8_t cw[4] = {2, 0, 1, 3}, ccw[4] = {1, 0, 2, 3};
+    for (unsigned direction = 0; direction < 2; ++direction) {
+        for (unsigned i = 0; i < 4; ++i) {
+            uint8_t  next    = direction ? ccw[i] : cw[i];
+            unsigned changed = (encoder.state ^ next) == 1 ? 7 : 6;
+            b->idr           = (b->idr & ~(BIT(6) | BIT(7))) | ((next & 1) ? BIT(7) : 0) | ((next & 2) ? BIT(6) : 0);
+            wake_pin(changed);
+        }
+    }
+    assert(gmk_wired_encoder_next() == 1 && gmk_wired_encoder_next() == -1 && gmk_wired_encoder_next() == 0);
+    assert(scan_idle);
+    c->idr &= ~(BIT(14) | BIT(15));
+    for (unsigned i = 0; i < 4; ++i) {
+        b->idr = (b->idr & ~(BIT(6) | BIT(7))) | ((cw[i] & 1) ? BIT(7) : 0) | ((cw[i] & 2) ? BIT(6) : 0);
+        wake_pin(6);
+        wake_pin(7);
+    }
+    c->idr |= BIT(14) | BIT(15);
+    assert(gmk_wired_encoder_next() == 0);
+    /* A conflicting EXTI line preserves its owner and enables sampled fallback. */
+    assert(!wb32_interrupt_configure(&fake_gpio_ports[1], 7, GPIO_INT_MODE_DISABLED, GPIO_INT_TRIG_LOW));
+    assert(!wb32_interrupt_configure(&fake_gpio_ports[0], 7, GPIO_INT_MODE_EDGE, GPIO_INT_TRIG_LOW));
+    encoder_init();
+    assert(!encoder_irq_ready && exti_owner[7] == &fake_gpio_ports[0]);
+    for (unsigned i = 0; i < 4; ++i) {
+        b->idr = (b->idr & ~(BIT(6) | BIT(7))) | ((cw[i] & 1) ? BIT(7) : 0) | ((cw[i] & 2) ? BIT(6) : 0);
+        assert(gmk_wired_encoder_next() == (i == 3 ? 1 : 0));
+    }
+    assert(!wb32_interrupt_configure(&fake_gpio_ports[0], 7, GPIO_INT_MODE_DISABLED, GPIO_INT_TRIG_LOW));
+}
 int main(void) {
     assert(gmk_host_switch() == 0 && !gmk_split_available() && !gmk_wired_mode());
     /* Fake MMIO is anonymous process RAM at the vendor register addresses. */
@@ -366,6 +406,7 @@ int main(void) {
         assert(rows[i] == 0);
     test_idle_matrix(true);
     test_idle_matrix(false);
+    test_encoder_irq();
     assert(munmap((void *)0x40000000, 0x20000) == 0);
     puts("native WB32 UART/GPIO EXTI/idle matrix/arm race/held key/fallback/both-role tests passed");
 }

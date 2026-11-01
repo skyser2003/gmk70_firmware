@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #define DT_DRV_COMPAT zuoya_gmk70_rgb
+#include "../wired/virtual_keys.h"
 #include "lighting.h"
 #include "lighting_frame.h"
 #include "wb32_pixels.h"
@@ -53,7 +54,7 @@ int gmk_lighting_battery_set(enum gmk_battery_indicator kind, uint32_t position,
 }
 
 int gmk_lighting_battery_release(uint32_t position) {
-    if (position >= 72) return -EINVAL;
+    if (position >= GMK_KEY_POSITIONS) return -EINVAL;
     if (k_is_in_isr()) return -EWOULDBLOCK;
     k_mutex_lock(&render_lock, K_FOREVER);
     if (gmk_battery_view_release(&battery_view, position)) display_dirty = true;

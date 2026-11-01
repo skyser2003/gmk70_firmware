@@ -122,7 +122,8 @@ class StudioLayoutTests(unittest.TestCase):
                 result.stdout,
             )
         ]
-        self.assertEqual(len(attrs), 72)
+        self.assertEqual(len(attrs), 74)
+        self.assertEqual(attrs[-2:], [(100, 100, 0, 500), (100, 100, 100, 500)])
         self.assertEqual(
             attrs[:3], [(100, 100, 0, 0), (100, 100, 125, 0), (100, 100, 225, 0)]
         )

@@ -5,12 +5,17 @@
 #include <zephyr/kernel.h>
 #include <zephyr/irq.h>
 #include "wired.h"
+#include "virtual_keys.h"
 #include "../../lighting/lighting.h"
 
 struct gmk_kscan_data {
     kscan_callback_t callback;
     bool             enabled;
     uint16_t         previous[10];
+    kscan_callback_t encoder_release;
+    uint32_t         encoder_at;
+    uint8_t          encoder_key;
+    bool             encoder_gap;
 };
 static const struct device *scanner;
 static int                  configure(const struct device *dev, kscan_callback_t callback) {
@@ -34,6 +39,29 @@ static int disable(const struct device *dev) {
     data->enabled               = false;
     irq_unlock(key);
     return 0;
+}
+static void encoder_step(struct gmk_kscan_data *data, kscan_callback_t callback, bool enabled) {
+    uint32_t now     = k_uptime_get_32();
+    bool     allowed = enabled && callback && gmk_wired_is_left() && gmk_split_available();
+    if (!allowed) gmk_wired_encoder_clear();
+    if (data->encoder_key) {
+        if (!allowed || (uint32_t)(now - data->encoder_at) >= 5) {
+            /* Pair with the original callback even across disable/remapping. */
+            data->encoder_release(scanner, GMK_ENCODER_ROW, data->encoder_key - 1, false);
+            data->encoder_key = 0;
+            data->encoder_at  = now;
+            data->encoder_gap = true;
+        }
+        return;
+    }
+    if (!allowed || (data->encoder_gap && (uint32_t)(now - data->encoder_at) < 5)) return;
+    int direction = gmk_wired_encoder_next();
+    if (!direction) return;
+    data->encoder_key     = (direction < 0 ? GMK_ENCODER_CCW_COL : GMK_ENCODER_CW_COL) + 1;
+    data->encoder_release = callback;
+    data->encoder_at      = now;
+    data->encoder_gap     = false;
+    callback(scanner, GMK_ENCODER_ROW, data->encoder_key - 1, true);
 }
 static void scan_once(void) {
     uint16_t rows[10] = {0};
@@ -59,6 +87,7 @@ static void scan_once(void) {
         if (enabled && callback)
             for (unsigned r = 0; r < 10; ++r)
                 data->previous[r] = rows[r];
+        encoder_step(data, callback, enabled);
     }
 }
 static void scan_thread(void *a, void *b, void *c) {

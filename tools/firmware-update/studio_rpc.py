@@ -565,8 +565,10 @@ class ExpectedLayout:
             overlay,
         ):
             keys.append(PhysicalKey(*(int(match[index]) for index in range(1, 8))))
-        if len(keys) != 72:
-            raise ValueError("The exact generated Studio geometry must have 72 keys")
+        if len(keys) not in (72, 74):
+            raise ValueError(
+                "Studio geometry requires 72 physical keys and optional two knob keys"
+            )
         return cls(positions, tuple(keys))
 
     def validate(self, physical: PhysicalLayouts) -> None:
@@ -802,7 +804,7 @@ class StudioClient:
     def set_layer_binding(
         self, layer_id: int, position: int, binding: RpcBinding
     ) -> None:
-        if not 0 <= position < 72:
+        if not 0 <= position < 74:
             raise ValueError("GMK70 key position is out of bounds")
         body = (
             Protobuf.uint(1, layer_id)
@@ -839,11 +841,10 @@ class StudioClient:
         return keymap
 
     def _resolve(self, plan: StudioPlan, before: RpcKeymap) -> RpcKeymap:
-        if len(before.layers) != 4 or any(
-            len(layer.bindings) != 72 for layer in before.layers
-        ):
+        counts = {len(layer.bindings) for layer in before.layers}
+        if len(before.layers) != 4 or counts not in ({72}, {74}):
             raise ValueError(
-                "Runtime Studio map must have exactly four layers of 72 keys"
+                "Runtime Studio map must have four equal layers of 72 or 74 keys"
             )
         if len(plan.layers) != 4 or any(
             len(layer.bindings) != 72 for layer in plan.layers
@@ -899,6 +900,7 @@ class StudioClient:
                         "A resolved binding does not match runtime behavior metadata"
                     )
                 bindings.append(binding)
+            bindings.extend(old_layer.bindings[72:])
             layers.append(RpcLayer(old_layer.layer_id, old_layer.name, tuple(bindings)))
         return RpcKeymap(
             tuple(layers), before.available_layers, before.max_layer_name_length
@@ -937,7 +939,7 @@ class StudioClient:
         if (
             plan.positions != geometry.positions
             or len(set(plan.positions)) != 72
-            or len(geometry.keys) != 72
+            or len(geometry.keys) not in (72, 74)
         ):
             raise ValueError(
                 "Migration and maintained physical positions do not match one-to-one"
@@ -945,6 +947,8 @@ class StudioClient:
         if self.check_unsaved_changes():
             raise ValueError("Studio has unsaved changes; apply is forbidden")
         before = self.read_keymap()
+        if any(len(layer.bindings) != len(geometry.keys) for layer in before.layers):
+            raise ValueError("Runtime map and physical geometry have different sizes")
         geometry.validate(self.get_physical_layouts())
         target = self._resolve(plan, before)
         if only_behavior is not None:
@@ -957,11 +961,12 @@ class StudioClient:
                             resolved if symbolic.behavior == only_behavior else current
                             for symbolic, resolved, current in zip(
                                 source.bindings,
-                                proposed.bindings,
-                                old.bindings,
+                                proposed.bindings[:72],
+                                old.bindings[:72],
                                 strict=True,
                             )
-                        ),
+                        )
+                        + old.bindings[72:],
                     )
                     for source, proposed, old in zip(
                         plan.layers, target.layers, before.layers, strict=True
@@ -995,7 +1000,7 @@ class StudioClient:
             except (OSError, TimeoutError, ProtocolError, ValueError) as restoration:
                 raise StudioApplyError(False) from restoration
             raise StudioApplyError(True) from failure
-        return ApplyResult(288, True)
+        return ApplyResult(sum(len(layer.bindings) for layer in target.layers), True)
 
     @classmethod
     def main(cls) -> None:

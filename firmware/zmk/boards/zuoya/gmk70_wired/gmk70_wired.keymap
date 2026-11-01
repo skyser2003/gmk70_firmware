@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Stock physical layout: Copyright 2024 yangzheng20003 (@yangzheng20003). */
 /* Physical order: maintained stock_keymap.h and keyboard.json LAYOUT.
- * Radio, encoder rotation and stock macro keys are intentionally inactive. */
+ * Knob CCW/CW are appended after the 72 physical positions. */
 #include <behaviors.dtsi>
 #include <dt-bindings/zmk/keys.h>
 #include <dt-bindings/zmk/rgb.h>
@@ -16,6 +16,7 @@
                 &none &kp CAPS &kp A &kp S &kp D &kp F &kp G &kp H &kp J &kp K &kp L &kp SEMI &kp SQT &kp RET
                 &none &kp LSHFT &kp Z &kp X &kp C &kp V &kp B &kp B &kp N &kp M &kp COMMA &kp DOT &kp FSLH &kp RSHFT &kp UP &kp DEL
                 &none &kp LCTRL &mo 1 &kp LALT &kp SPACE &kp SPACE &kp RALT &kp RGUI &kp LEFT &kp DOWN &kp RIGHT
+                &kp C_VOL_DN &kp C_VOL_UP
             >;
         };
         function_layer {
@@ -26,6 +27,7 @@
                 &trans &trans &none &to 2 &trans &trans &trans &kp HOME &kp END &kp PG_UP &kp PG_DN &rgb_ug RGB_SAD &rgb_ug RGB_SAI &kp END
                 &trans &trans &trans &rgb_ug RGB_TOG &trans &gmk_nkro 0 &trans &trans &trans &trans &trans &trans &trans &trans &rgb_ug RGB_BRI &kp INS
                 &trans &trans &trans &kp LALT &trans &trans &kp RALT &trans &rgb_ug RGB_SPD &rgb_ug RGB_BRD &rgb_ug RGB_SPI
+                &trans &trans
             >;
         };
         mac_base_layer {
@@ -36,6 +38,7 @@
                 &none &kp CAPS &kp A &kp S &kp D &kp F &kp G &kp H &kp J &kp K &kp L &kp SEMI &kp SQT &kp RET
                 &none &kp LSHFT &kp Z &kp X &kp C &kp V &kp B &kp B &kp N &kp M &kp COMMA &kp DOT &kp FSLH &kp RSHFT &kp UP &kp DEL
                 &none &kp LCTRL &mo 3 &kp LGUI &kp SPACE &kp SPACE &kp RGUI &kp RALT &kp LEFT &kp DOWN &kp RIGHT
+                &kp C_VOL_DN &kp C_VOL_UP
             >;
         };
         mac_function_layer {
@@ -46,6 +49,7 @@
                 &trans &trans &to 0 &none &trans &trans &trans &kp HOME &kp END &kp PG_UP &kp PG_DN &rgb_ug RGB_SAD &rgb_ug RGB_SAI &kp END
                 &trans &trans &trans &rgb_ug RGB_TOG &trans &gmk_nkro 0 &trans &trans &trans &trans &trans &trans &trans &trans &rgb_ug RGB_BRI &kp INS
                 &trans &trans &trans &kp LGUI &trans &trans &kp RGUI &kp RALT &rgb_ug RGB_SPD &rgb_ug RGB_BRD &rgb_ug RGB_SPI
+                &trans &trans
             >;
         };
     };

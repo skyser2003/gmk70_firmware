@@ -115,7 +115,8 @@ fi
             fi
         fi
         printf 'Four Windows/Mac layers; native local RGB and wired peer lighting.\n'
-        printf 'No native BLE, wireless Studio, encoder rotation, external Vial EEPROM or device operations.\n'
+        printf 'Knob CCW/CW are two appended editable key positions; press remains unchanged.\n'
+        printf 'No native BLE, wireless Studio, external Vial EEPROM or device operations.\n'
     else
         printf 'EXPERIMENTAL actual ZMK %s staging trial; not a normal updater image.\n' "$variant"
         printf 'Source: dependencies/zmk/app\nBoard: %s\nFlash: 0x08020000, maximum 120 KiB\n' "$board"

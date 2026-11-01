@@ -1,5 +1,9 @@
 # GMK70 ZMK wired development and staging trials
 
+The [knob rotation keys](../../docs/ZMK-KNOB-KEYS.md) add two ordinary Studio
+positions for counterclockwise and clockwise turns, preserving the original
+72 bindings per layer. They default to volume down/up.
+
 The [idle matrix scanner](../../docs/ZMK-IDLE-SCANNING.md) uses GPIO interrupts
 to avoid repeated local sweeps when all keys are released. Split/lighting and
 USB/updater maintenance continue; full system deep sleep remains unimplemented.

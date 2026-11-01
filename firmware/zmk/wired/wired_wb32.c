@@ -16,6 +16,7 @@
  */
 #include "wired.h"
 #include "wired_protocol.h"
+#include "encoder.h"
 #include "../lighting/lighting.h"
 #include "gmk70_wired_pins.h"
 #include <soc.h>
@@ -49,6 +50,9 @@ static const struct device *const  gpio_ports[] = {DEVICE_DT_GET(DT_NODELABEL(gp
 static struct gpio_callback        row_callbacks[3];
 static atomic_t                    scan_pending;
 static bool                        scan_idle, scan_irq_ready;
+static struct gmk_encoder          encoder;
+static struct gpio_callback        encoder_callback;
+static bool                        encoder_irq_ready;
 
 static struct wb32_gpio *port_of(struct gmk_wired_pin pin) {
     return (struct wb32_gpio *)(uintptr_t)(WB32_GPIOA_BASE + 0x400U * pin.port);
@@ -67,6 +71,56 @@ static void pin_mode(struct gmk_wired_pin pin, uint32_t mode, uint32_t pull) {
 }
 static bool pin_read(struct gmk_wired_pin pin) {
     return (port_of(pin)->idr & (1U << pin.pin)) != 0;
+}
+static uint8_t encoder_pins(void) {
+    if (gmk_encoder_a.port == gmk_encoder_b.port) {
+        uint32_t pins = port_of(gmk_encoder_a)->idr;
+        return ((pins >> gmk_encoder_a.pin) & 1U) | (((pins >> gmk_encoder_b.pin) & 1U) << 1);
+    }
+    return pin_read(gmk_encoder_a) | ((uint8_t)pin_read(gmk_encoder_b) << 1);
+}
+static void encoder_wake(const struct device *dev, struct gpio_callback *cb, gpio_port_pins_t pins) {
+    ARG_UNUSED(dev);
+    ARG_UNUSED(cb);
+    ARG_UNUSED(pins);
+    gmk_encoder_sample(&encoder, encoder_pins());
+    if (!initialized || !left || !gmk_split_available()) gmk_encoder_clear(&encoder);
+}
+static void encoder_init(void) {
+    encoder_irq_ready = false;
+    if (!left) return; /* B6/B7 are a left-only device. */
+    pin_mode(gmk_encoder_a, 0, 1);
+    pin_mode(gmk_encoder_b, 0, 1);
+    k_busy_wait(100);
+    gmk_encoder_init(&encoder, encoder_pins(), GMK_ENCODER_RESOLUTION);
+    if (gmk_encoder_a.port >= ARRAY_SIZE(gpio_ports) || gmk_encoder_a.port != gmk_encoder_b.port) return;
+    const struct device *dev = gpio_ports[gmk_encoder_a.port];
+    gpio_init_callback(&encoder_callback, encoder_wake, BIT(gmk_encoder_a.pin) | BIT(gmk_encoder_b.pin));
+    if (gpio_add_callback(dev, &encoder_callback)) return;
+    if (!gpio_pin_interrupt_configure(dev, gmk_encoder_a.pin, GPIO_INT_EDGE_BOTH) && !gpio_pin_interrupt_configure(dev, gmk_encoder_b.pin, GPIO_INT_EDGE_BOTH)) {
+        encoder_irq_ready = true;
+    } else {
+        gpio_pin_interrupt_configure(dev, gmk_encoder_a.pin, GPIO_INT_DISABLE);
+        gpio_pin_interrupt_configure(dev, gmk_encoder_b.pin, GPIO_INT_DISABLE);
+    }
+}
+int gmk_wired_encoder_next(void) {
+    unsigned key       = irq_lock();
+    int      direction = 0;
+    if (initialized && left) {
+        if (!encoder_irq_ready) gmk_encoder_sample(&encoder, encoder_pins());
+        if (gmk_split_available())
+            direction = gmk_encoder_take(&encoder);
+        else
+            gmk_encoder_clear(&encoder);
+    }
+    irq_unlock(key);
+    return direction;
+}
+void gmk_wired_encoder_clear(void) {
+    unsigned key = irq_lock();
+    gmk_encoder_clear(&encoder);
+    irq_unlock(key);
 }
 
 static void matrix_wake(const struct device *dev, struct gpio_callback *callback, gpio_port_pins_t pins) {
@@ -347,6 +401,7 @@ static int wired_init(void) {
     scan_idle = false;
     atomic_set(&scan_pending, 0);
     scan_irq_ready = matrix_irq_init();
+    encoder_init();
     /* UART1 A9/A10 AF7, push-pull, 115200 8N1, FIFO enabled. */
     for (unsigned pin = 9; pin <= 10; ++pin) {
         struct gmk_wired_pin p = {0, pin};

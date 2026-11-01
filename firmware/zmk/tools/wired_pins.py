@@ -45,6 +45,19 @@ def generate(source: Path) -> str:
         '#include "wired_pin.h"',
         f"static const struct gmk_wired_pin gmk_role_pin = {role};",
     ]
+    rotary = _mapping(keyboard.get("encoder")).get("rotary")
+    if not isinstance(rotary, list) or len(rotary) != 1:
+        raise ValueError("native encoder requires exactly one left rotary")
+    encoder = _mapping(rotary[0])
+    if encoder.get("pin_a") == encoder.get("pin_b"):
+        raise ValueError("encoder pins must be distinct")
+    for axis in ("a", "b"):
+        pin = _pins([encoder.get(f"pin_{axis}")], 1)[0]
+        parts.append(f"static const struct gmk_wired_pin gmk_encoder_{axis} = {pin};")
+    resolution = encoder.get("resolution", 4)
+    if type(resolution) is not int or not 1 <= resolution <= 32:
+        raise ValueError("encoder resolution must be 1..32")
+    parts.append(f"#define GMK_ENCODER_RESOLUTION {resolution}")
     for side, matrix in (("left", left), ("right", right)):
         for axis, count in (("rows", 5), ("cols", 9)):
             entries = ", ".join(_pins(matrix.get(axis), count, nullable=axis == "cols"))

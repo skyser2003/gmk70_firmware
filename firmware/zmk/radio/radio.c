@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
+#include "../wired/virtual_keys.h"
 #include "radio.h"
 #include "selection.h"
 #include "../wired/wired.h"
@@ -137,7 +138,7 @@ int gmk_radio_select(uint8_t channel, bool pair) {
     return result;
 }
 int gmk_radio_hold(uint8_t channel, uint32_t position) {
-    if (channel > GMK_HOST_DONGLE || position >= 72) return -EINVAL;
+    if (channel > GMK_HOST_DONGLE || position >= GMK_KEY_POSITIONS) return -EINVAL;
     uint8_t          raw    = gmk_host_switch();
     k_spinlock_key_t key    = k_spin_lock(&lock);
     int              result = admission_locked(raw);

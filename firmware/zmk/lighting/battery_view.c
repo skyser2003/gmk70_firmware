@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
+#include "../wired/virtual_keys.h"
 #include "battery_view.h"
 #include "../battery/battery.h"
 #include <errno.h>
@@ -9,7 +10,7 @@ static bool held(const struct gmk_battery_view *view, enum gmk_battery_indicator
 }
 
 int gmk_battery_view_set(struct gmk_battery_view *view, enum gmk_battery_indicator kind, uint32_t position, bool pressed) {
-    if ((unsigned)kind > GMK_BATTERY_CHARGING || position >= 72) return -EINVAL;
+    if ((unsigned)kind > GMK_BATTERY_CHARGING || position >= GMK_KEY_POSITIONS) return -EINVAL;
     (void)gmk_battery_holds_set(&view->holds, kind == GMK_BATTERY_LEVEL ? GMK_BATTERY_ACTION_LEVEL : GMK_BATTERY_ACTION_CHARGING, position, pressed);
     return 0;
 }
@@ -19,7 +20,7 @@ bool gmk_battery_view_active(const struct gmk_battery_view *view) {
 }
 
 bool gmk_battery_view_release(struct gmk_battery_view *view, uint32_t position) {
-    if (position >= 72) return false;
+    if (position >= GMK_KEY_POSITIONS) return false;
     return gmk_battery_holds_release(&view->holds, position);
 }
 

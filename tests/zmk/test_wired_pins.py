@@ -24,6 +24,9 @@ class WiredPinsTest(unittest.TestCase):
         self.assertIn("{255, 0}", header)
         self.assertIn("gmk_role_pin = {1, 9}", header)
         self.assertIn("gmk_right_rows[5]", header)
+        self.assertIn("gmk_encoder_a = {1, 7}", header)
+        self.assertIn("gmk_encoder_b = {1, 6}", header)
+        self.assertIn("GMK_ENCODER_RESOLUTION 4", header)
 
     def test_mutation_and_bounds(self) -> None:
         keyboard = json.loads(
@@ -44,6 +47,26 @@ class WiredPinsTest(unittest.TestCase):
             source.write_text(json.dumps(keyboard))
             with self.assertRaises(ValueError):
                 MODULE.generate(source)
+
+    def test_encoder_configuration_is_validated(self) -> None:
+        original = json.loads(
+            (
+                ROOT / "firmware/qmk-common/keyboards/zuoya/gmk70/keyboard.json"
+            ).read_text()
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "keyboard.json"
+            for change in (
+                {"pin_a": "B16"},
+                {"pin_a": "B6"},
+                {"resolution": 0},
+                {"resolution": 33},
+            ):
+                board = json.loads(json.dumps(original))
+                board["encoder"]["rotary"][0].update(change)
+                source.write_text(json.dumps(board))
+                with self.subTest(change=change), self.assertRaises(ValueError):
+                    MODULE.generate(source)
 
 
 if __name__ == "__main__":
