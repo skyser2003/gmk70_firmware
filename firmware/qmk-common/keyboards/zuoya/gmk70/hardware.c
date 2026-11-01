@@ -5,6 +5,7 @@
 #include "stock_battery.h"
 #include "stock_power.h"
 #include "wireless.h"
+#include "pairing_hold.h"
 
 extern bool bat_full_flag;
 bool        gmk70_stock_cable_flag(void);
@@ -37,7 +38,10 @@ bool pre_process_record_kb(uint16_t keycode, keyrecord_t *record) {
         if (record->event.pressed) lpwr_activity_trigger();
         if (IS_KEYEVENT(record->event) && record->event.key.row < MATRIX_ROWS && record->event.key.col < MATRIX_COLS) {
             stock_power_key(record->event.pressed);
-            if (!record->event.pressed) stock_battery_release_position((uint8_t)(record->event.key.row * MATRIX_COLS + record->event.key.col));
+            if (!record->event.pressed) {
+                gmk70_pairing_release_position(record->event.key.row, record->event.key.col);
+                stock_battery_release_position((uint8_t)(record->event.key.row * MATRIX_COLS + record->event.key.col));
+            }
         }
     }
     return pre_process_record_user(keycode, record);

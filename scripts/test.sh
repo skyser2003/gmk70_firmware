@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "$0")/project.sh"
+bash tests/qmk/run_matrix_idle_tests.sh
 mkdir -p artifacts/tests/qmk
 common_flags=(
     -std=gnu11 -O1 -g -Wall -Wextra -Werror -Wno-unused-parameter
@@ -131,8 +132,12 @@ for framework in qmk vial-qmk; do
             -DMATRIX_ROWS=10 -DMATRIX_COLS=9 -Idependencies/qmk/platforms \
             -ffunction-sections -fdata-sections -Wl,--gc-sections \
             -include firmware/qmk-common/keyboards/zuoya/gmk70/config.h \
+            -include "dependencies/$framework/platforms/timer.h" \
+            -Wno-old-style-declaration -Wno-sign-compare -D'QMK_KEYBOARD_H="quantum.h"' \
             "tests/qmk/hardware_${fixture}_test.c" \
             firmware/qmk-common/keyboards/zuoya/gmk70/hardware.c \
+            firmware/qmk-common/keyboards/zuoya/gmk70/pairing_hold.c \
+            "dependencies/$framework/quantum/deferred_exec.c" \
             firmware/qmk-common/keyboards/zuoya/gmk70/stock_battery.c \
             firmware/qmk-common/keyboards/zuoya/gmk70/battery_holds.c \
             firmware/qmk-common/keyboards/zuoya/gmk70/stock_power.c \
@@ -183,19 +188,19 @@ artifacts/tests/qmk/vial-updater
 for trial_profile in early runtime; do
     trial_flags=()
     if [[ "$trial_profile" == runtime ]]; then trial_flags+=(-DGMK70_TRIAL_RUNTIME); fi
-cc -Itests/qmk/vial_stubs -Itests/qmk/update_stubs "${common_flags[@]}" \
-    -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs -Idependencies/qmk/platforms \
-    -DRAW_ENABLE -DGMK70_SPLIT_UPDATE -DGMK70_VIAL_UPDATE -DGMK70_VIAL_TRIAL "${trial_flags[@]}" -DEEPROM_TEST_HARNESS \
-    -DCOMBO_ENABLE -DREPEAT_KEY_ENABLE -DMATRIX_ROWS=10 -DMATRIX_COLS=9 \
-    -ffunction-sections -fdata-sections -Wl,--gc-sections \
-    tests/qmk/update_adapter_test.c tests/qmk/stock_v15_fixture.c \
-    firmware/qmk-vial/compat/vial_adapter.c firmware/qmk-common/drivers/wireless/md_raw.c \
-    firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
-    firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
-    firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
-    firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
-    -Wl,--wrap=raw_hid_send -Wl,--wrap=gmk_trial_process -o "artifacts/tests/qmk/vial-trial-$trial_profile"
-"artifacts/tests/qmk/vial-trial-$trial_profile"
+    cc -Itests/qmk/vial_stubs -Itests/qmk/update_stubs "${common_flags[@]}" \
+        -Itests/qmk/bootloader_stubs -Itests/qmk/lowpower_stubs -Idependencies/qmk/platforms \
+        -DRAW_ENABLE -DGMK70_SPLIT_UPDATE -DGMK70_VIAL_UPDATE -DGMK70_VIAL_TRIAL "${trial_flags[@]}" -DEEPROM_TEST_HARNESS \
+        -DCOMBO_ENABLE -DREPEAT_KEY_ENABLE -DMATRIX_ROWS=10 -DMATRIX_COLS=9 \
+        -ffunction-sections -fdata-sections -Wl,--gc-sections \
+        tests/qmk/update_adapter_test.c tests/qmk/stock_v15_fixture.c \
+        firmware/qmk-vial/compat/vial_adapter.c firmware/qmk-common/drivers/wireless/md_raw.c \
+        firmware/qmk-common/keyboards/zuoya/gmk70/update/image.c \
+        firmware/qmk-common/keyboards/zuoya/gmk70/update/protocol.c \
+        firmware/qmk-common/keyboards/zuoya/gmk70/update/qmk_update.c \
+        firmware/qmk-common/keyboards/zuoya/gmk70/update/trial.c \
+        -Wl,--wrap=raw_hid_send -Wl,--wrap=gmk_trial_process -o "artifacts/tests/qmk/vial-trial-$trial_profile"
+    "artifacts/tests/qmk/vial-trial-$trial_profile"
 done
 cc "${common_flags[@]}" -DGMK70_TRIAL_RUNTIME -DGMK_TRIAL_RUNTIME_TEST \
     tests/qmk/trial_runtime_test.c \

@@ -114,11 +114,26 @@ void wireless_devs_change_user(uint8_t old_devs, uint8_t new_devs, bool reset) {
 void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) __attribute__((weak));
 void wireless_devs_change_kb(uint8_t old_devs, uint8_t new_devs, bool reset) {}
 
+void wireless_reports_reset_kb(void) __attribute__((weak));
+void wireless_reports_reset_kb(void) {}
+
+void wireless_process_connection_changes(void) {
+    if (md_take_report_reset() && is_keyboard_master() && wls_devs != DEVS_USB) {
+        wireless_reports_reset_kb();
+        // Pairing can suppress releases after native caches already remember
+        // them. Force empty wire reports when delivery becomes available again.
+        wls_transport_enable(false);
+    }
+}
+
 void wireless_devs_change(uint8_t old_devs, uint8_t new_devs, bool reset) {
     if (old_devs != new_devs || reset) split_diagnostics_event(SPLIT_DIAG_DEVICE, old_devs, new_devs, reset);
     // Select the host driver before the asynchronous radio connection completes.
     // Otherwise the first connection leaves reports routed to USB indefinitely.
     if (is_keyboard_master()) {
+        // Discard native and custom ownership before selecting a new host.
+        // Same-channel wake keeps its held inputs and driver unchanged.
+        if (wls_devs != new_devs || reset) wireless_reports_reset_kb();
         // Wireless channel changes keep the same driver, so set_transport()
         // cannot release their outgoing host. Preserve same-channel wake keys.
         if (get_transport() == TRANSPORT_WLS && new_devs != DEVS_USB && (wls_devs != new_devs || reset)) {
@@ -164,6 +179,7 @@ void wireless_task(void) {
 #ifndef GMK70_RADIO_THREAD
     md_main_task();
 #endif
+    wireless_process_connection_changes();
     wireless_post_task();
 
     /* usb_remote_wakeup() should be invoked last so that we have chance

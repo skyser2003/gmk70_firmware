@@ -29,6 +29,7 @@ typedef struct {
     bool            early_wake;
     bool            early_resume;
     uint32_t        stop_prepare_calls;
+    uint32_t        idle_stop_calls;
     lpwr_wakeupcd_t wake_source;
     uint8_t         requested_class;
     unsigned        assignments;
@@ -76,7 +77,11 @@ void chSysUnlock(void) {
 void chSysDisable(void) {}
 void chSysEnable(void) {}
 void matrix_init_pins(void) {}
+void lpwr_matrix_idle_stop(void) {
+    ++fixture.idle_stop_calls;
+}
 void lpwr_stop_prepare(void) {
+    assert(fixture.idle_stop_calls == fixture.stop_prepare_calls + 1);
     assert(!fixture.exti_armed);
     ++fixture.stop_prepare_calls;
 }

@@ -270,6 +270,8 @@ static void test_context_and_pairing(void) {
     md_main_task();
     ack();
     status(MD_REV_CMD_DEVCTRL_CONNECTED);
+    assert(md_reports_inhibited() && md_take_report_reset());
+    assert(!md_take_report_reset());
     assert(*md_getp_state() == MD_STATE_CONNECTED && !md_reports_inhibited());
     md_devs_change(DEVS_BT2, false);         // Context still BT1 before dispatch.
     status(MD_REV_CMD_DEVCTRL_DISCONNECTED); // Task dispatches BT2 first.
@@ -284,6 +286,7 @@ static void test_context_and_pairing(void) {
     assert(sends == before);
     ack();
     status(MD_REV_CMD_DEVCTRL_CONNECTED);
+    assert(md_reports_inhibited() && md_take_report_reset());
     md_send_kb(keys);
     assert(!md_reports_inhibited() && last_packet[0] == MD_SND_CMD_SEND_KB);
 }

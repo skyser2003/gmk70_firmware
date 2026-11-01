@@ -6,6 +6,9 @@ SRC += battery_holds.c
 SRC += stock_power.c
 SRC += stock_lighting.c
 SRC += hardware.c
+SRC += matrix_idle.c pairing_hold.c
+LDFLAGS += -Wl,--wrap=matrix_scan -Wl,--wrap=matrix_init
+LDFLAGS += -Wl,--wrap=nvm_dynamic_keymap_update_keycode -Wl,--wrap=nvm_dynamic_keymap_update_buffer -Wl,--wrap=nvm_dynamic_keymap_erase
 SRC += function_flip.c function_flip_qmk.c
 LDFLAGS += -Wl,--wrap=housekeeping_task -Wl,--wrap=rgb_matrix_task
 LDFLAGS += -Wl,--wrap=host_keyboard_send -Wl,--wrap=host_nkro_send

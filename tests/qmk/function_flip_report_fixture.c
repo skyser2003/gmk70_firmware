@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include <string.h>
 #include "function_flip_report_fixture.h"
+
+// Pairing itself is covered by test_pairing.py with native timers/storage.
+// This fixture owns only the report boundary used by function/media tests.
+void gmk70_pairing_release_position(uint8_t row, uint8_t col) {
+    (void)row;
+    (void)col;
+}
 #include "action_util.h"
 #include "host.h"
 #include "keycode_config.h"

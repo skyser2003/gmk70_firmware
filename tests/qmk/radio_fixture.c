@@ -16,6 +16,9 @@ uint8_t *md_getp_indicator(void) {
 bool md_reports_inhibited(void) {
     return radio_fixture.state == MD_STATE_PAIRING;
 }
+bool md_take_report_reset(void) {
+    return false;
+}
 void set_transport(transport_t transport) {
     radio_fixture.transport = transport;
 }

@@ -132,10 +132,14 @@ bool lpwr_stop_pending(void) {
     return lpwr_get_sleep_wakeupcd() != LPWR_WAKEUP_NONE;
 }
 
+void lpwr_matrix_idle_stop(void) __attribute__((weak));
+void lpwr_matrix_idle_stop(void) {}
+
 void lpwr_enter_stop(void) {
     split_diagnostics_event(SPLIT_DIAG_STOP_ENTER, lpwr_state, manual_timeout, lpwr_wakeupcd);
     split_diagnostics_checkpoint(1); // Persist before clocks/wake IRQs change.
     chSysLock();
+    lpwr_matrix_idle_stop();
     // Clear stale IRQs before arming wake sources, never after a new edge.
     lpwr_stop_prepare();
     lpwr_exti_init();

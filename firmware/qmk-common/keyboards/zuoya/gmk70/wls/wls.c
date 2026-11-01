@@ -37,7 +37,10 @@ bool hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev) {
 
             break;
         default:
-            break;
+            // Both pins low is invalid, distinct from boards without a selector.
+            // Never let the old logical device masquerade as a decoded mode.
+            *mode = hs_invalid;
+            return false;
     }
 
     if (sw_mode) {

@@ -23,6 +23,7 @@ void last_matrix_activity_trigger(void);
 #include "smsg.h"
 #include "update/qmk_update.h"
 #ifdef WIRELESS_ENABLE
+#    include "pairing_hold.h"
 #    include "wireless.h"
 #    include "usb_main.h"
 #    include "lowpower.h"
@@ -198,7 +199,7 @@ void gmk70_stock_sleep_set(uint8_t selector) {
 
 static void stock_nkro_release_reports(void) {
     const bool held_flip_modifiers = gmk70_stock_flip_modifiers() != 0;
-    // NKRO transitions discard held inputs, including flip's independent mask.
+    // Host and NKRO transitions discard held inputs, including flip's mask.
     // Preserve the configured flip flag; only its current held context resets.
     stock_flip = (gmk70_flip_state_t){0};
     clear_keyboard();
@@ -218,6 +219,10 @@ static void stock_nkro_release_reports(void) {
 #ifdef NKRO_ENABLE
     memset(nkro_report->bits, 0, sizeof(nkro_report->bits));
 #endif
+}
+
+void wireless_reports_reset_kb(void) {
+    stock_nkro_release_reports();
 }
 
 uint8_t gmk70_stock_nkro_get(void) {
@@ -519,54 +524,14 @@ void wireless_post_task(void) {
 #    endif
 }
 
-static uint16_t       pairing_keycode;
-static deferred_token pairing_token = INVALID_DEFERRED_TOKEN;
-
 static bool selected_device_allowed(uint8_t device) {
     uint8_t mode = confinfo.devs;
     hs_modeio_detection(true, &mode, confinfo.last_btdevs);
     return gmk70_device_allowed(device, mode);
 }
 
-static uint32_t wls_process_long_press(uint32_t trigger_time, void *cb_arg) {
-    (void)trigger_time;
-    const uint16_t keycode = *(const uint16_t *)cb_arg;
-    const uint8_t  device  = gmk70_wireless_device(keycode);
-    pairing_token          = INVALID_DEFERRED_TOKEN;
-    if (device != DEVS_USB && selected_device_allowed(device)) {
-        wireless_devs_change(wireless_get_current_devs(), device, true);
-    }
-    return 0;
-}
-
 bool process_record_wls(uint16_t keycode, keyrecord_t *record) {
-    const uint8_t device = gmk70_wireless_device(keycode);
-    if (device == UINT8_MAX) {
-        return true;
-    }
-    if (!record->event.pressed) {
-        if (keycode == pairing_keycode && pairing_token != INVALID_DEFERRED_TOKEN) {
-            cancel_deferred_exec(pairing_token);
-            pairing_token = INVALID_DEFERRED_TOKEN;
-        }
-        return false;
-    }
-    if (!selected_device_allowed(device)) {
-        return false;
-    }
-    if (pairing_token != INVALID_DEFERRED_TOKEN) {
-        cancel_deferred_exec(pairing_token);
-        pairing_token = INVALID_DEFERRED_TOKEN;
-    }
-    if (wireless_get_current_devs() != device) {
-        wireless_devs_change(wireless_get_current_devs(), device, false);
-    }
-    if (device != DEVS_USB) {
-        pairing_keycode = keycode;
-        pairing_token   = defer_exec(3000, wls_process_long_press, &pairing_keycode);
-    }
-    hs_rgb_blink_set_timer(timer_read32());
-    return false;
+    return gmk70_pairing_process_record(keycode, record, selected_device_allowed);
 }
 #endif
 
@@ -778,15 +743,22 @@ static bool process_gmk70_record(uint16_t keycode, keyrecord_t *record) {
 // Saved maps from pre-0.28 QMK used underglow codes for matrix lighting.
 // Pass their translated value through both the board hooks and upstream handler.
 bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+    // Radio RX may run on its own thread. Consume its transition latch only
+    // here or in wireless_task(), before this main-context native action.
+    wireless_process_connection_changes();
     // V15's wired key hook suppresses basic keys while the host is suspended.
     // The wired hook already requested remote wake before this gate.
     bool blocked = confinfo.devs == DEVS_USB && USB_DRIVER.state == USB_SUSPENDED && keycode <= 0xFF;
     // V15 board gate 0x08005420 runs before ordinary key processing. Special
-    // controls remain available for reconnecting; report delivery is not gated.
-    blocked |= confinfo.devs != DEVS_USB && *md_getp_state() != MD_STATE_CONNECTED && keycode >= 4 && keycode <= 0xA4;
+    // controls remain available for reconnecting; native releases still drain.
+    uint16_t translated     = gmk70_platform_keycode(keycode);
+    uint16_t report_keycode = translated;
+    uint16_t shortcut       = gmk70_shortcut_keycode(report_keycode);
+    if (shortcut != KC_NO) report_keycode = shortcut;
+    blocked |= confinfo.devs != DEVS_USB && *md_getp_state() != MD_STATE_CONNECTED && record->event.pressed && report_keycode >= KC_A && report_keycode <= QK_MODS_MAX;
     // A rejected physical release still ends an output already owned by flip.
     if (!gmk70_flip_gate_record(&stock_flip, keycode, record->event.pressed, blocked)) return false;
-    uint16_t translated = gmk70_rgb_keycode(gmk70_platform_keycode(keycode));
+    translated = gmk70_rgb_keycode(translated);
     if (!process_gmk70_record(translated, record)) {
         return false;
     }

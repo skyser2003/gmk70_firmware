@@ -17,7 +17,7 @@
 #define HS_MODEIO_DETECTION_TIME 50
 #define HS_LBACK_TIMEOUT (30 * 1000)
 
-enum modeio_mode { hs_none = 0, hs_usb, hs_bt, hs_2g4, hs_wireless };
+enum modeio_mode { hs_none = 0, hs_usb, hs_bt, hs_2g4, hs_wireless, hs_invalid };
 
 extern bool lower_sleep;
 bool        hs_rgb_blink_hook(void);

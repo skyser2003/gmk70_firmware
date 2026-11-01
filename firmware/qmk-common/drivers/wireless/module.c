@@ -105,6 +105,21 @@ static uint8_t  status_context;
 static uint32_t smsg_timer;
 static uint8_t  smsg_retry;
 static uint8_t  smsg_limit;
+static bool     report_reset_pending;
+
+static void md_set_connection_state(uint8_t state, bool inhibit_reports) {
+#ifdef GMK70_RADIO_THREAD
+    chSysLock();
+#endif
+    // Latch transitions so a loss followed by reconnect between main-loop
+    // passes cannot hide stale native input. Never call report APIs here.
+    if (md_info.state != state) report_reset_pending = true;
+    md_info.state           = state;
+    md_info.inhibit_reports = inhibit_reports;
+#ifdef GMK70_RADIO_THREAD
+    chSysUnlock();
+#endif
+}
 
 static void md_send_ack(void) {
     uint8_t sdata[0x03] = {0x61, 0x0D, 0x0A};
@@ -293,20 +308,16 @@ static void md_receive_msg_task(void) {
                     if (!status_context || status_context != selected_device) break;
                     switch (md_rev_payload[1]) {
                         case MD_REV_CMD_DEVCTRL_PAIRING: {
-                            md_info.state           = MD_STATE_PAIRING;
-                            md_info.inhibit_reports = true;
+                            md_set_connection_state(MD_STATE_PAIRING, true);
                         } break;
                         case MD_REV_CMD_DEVCTRL_CONNECTED: {
-                            md_info.state           = MD_STATE_CONNECTED;
-                            md_info.inhibit_reports = false;
+                            md_set_connection_state(MD_STATE_CONNECTED, false);
                         } break;
                         case MD_REV_CMD_DEVCTRL_DISCONNECTED: {
-                            md_info.state           = MD_STATE_DISCONNECTED;
-                            md_info.inhibit_reports = false;
+                            md_set_connection_state(MD_STATE_DISCONNECTED, false);
                         } break;
                         case MD_REV_CMD_DEVCTRL_REJECT: {
-                            md_info.state           = MD_STATE_REJECT;
-                            md_info.inhibit_reports = false;
+                            md_set_connection_state(MD_STATE_REJECT, false);
                         } break;
                         default:
                             break;
@@ -403,10 +414,11 @@ void md_init(void) {
     (void)chEvtGetAndClearFlags(&md_uart_errors);
 #endif
     smsg_init();
-    md_receive      = (md_receive_t){0};
-    md_info         = (md_info_t){.bat = 100, .state = MD_STATE_NONE};
-    smsg_timer      = 0;
-    smsg_retry      = 0;
+    md_receive           = (md_receive_t){0};
+    md_info              = (md_info_t){.bat = 100, .state = MD_STATE_NONE};
+    smsg_timer           = 0;
+    smsg_retry           = 0;
+    report_reset_pending = false;
     selected_device = status_context = 0;
 
     memset(md_pkt_payload, 0, sizeof(md_pkt_payload));
@@ -456,7 +468,26 @@ uint8_t md_get_version(void) {
 }
 
 bool md_reports_inhibited(void) {
-    return md_info.inhibit_reports;
+#ifdef GMK70_RADIO_THREAD
+    chSysLock();
+#endif
+    bool inhibited = md_info.inhibit_reports || report_reset_pending;
+#ifdef GMK70_RADIO_THREAD
+    chSysUnlock();
+#endif
+    return inhibited;
+}
+
+bool md_take_report_reset(void) {
+#ifdef GMK70_RADIO_THREAD
+    chSysLock();
+#endif
+    bool pending         = report_reset_pending;
+    report_reset_pending = false;
+#ifdef GMK70_RADIO_THREAD
+    chSysUnlock();
+#endif
+    return pending;
 }
 
 void md_send_pkt(uint8_t *data, uint32_t len) {

@@ -107,6 +107,8 @@ class ExternalGeneratorTests(unittest.TestCase):
                 ).split()
                 for source in (
                     "hardware.c",
+                    "matrix_idle.c",
+                    "pairing_hold.c",
                     "battery_holds.c",
                     "function_flip.c",
                     "function_flip_qmk.c",
@@ -118,6 +120,11 @@ class ExternalGeneratorTests(unittest.TestCase):
                     "rgb_matrix_task",
                     "host_keyboard_send",
                     "host_nkro_send",
+                    "matrix_scan",
+                    "matrix_init",
+                    "nvm_dynamic_keymap_update_keycode",
+                    "nvm_dynamic_keymap_update_buffer",
+                    "nvm_dynamic_keymap_erase",
                 ):
                     self.assertIn(f"-Wl,--wrap={task}", result)
 
