@@ -242,13 +242,47 @@ void gmk_radio_get(struct gmk_radio_status *out) {
     *out                 = (struct gmk_radio_status){.errors = core.errors, .selections = core.selections, .reports = core.reports, .selected = core.selected, .active = core.active, .connection = core.connection, .queued = core.count, .waiting = available && (control_busy_locked() || mailbox.pending), .available = available};
     k_spin_unlock(&lock, key);
 }
-int __real_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint16_t binding_idx, const struct zmk_behavior_binding binding);
-int __wrap_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint16_t binding_idx, const struct zmk_behavior_binding binding) {
-    int              result = __real_zmk_keymap_set_layer_binding_at_idx(layer, binding_idx, binding);
-    k_spinlock_key_t key    = k_spin_lock(&lock);
+static void cancel_pair_for_keymap_change(void) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
     cancel_pair_locked();
     k_spin_unlock(&lock, key);
-    return result;
+}
+/* Native replacements bypass the individual setter and can block on settings.
+ * Invalidate the held deadline, mailbox and pending pair before entering them. */
+int __real_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint16_t binding_idx, const struct zmk_behavior_binding binding);
+int __wrap_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint16_t binding_idx, const struct zmk_behavior_binding binding) {
+    cancel_pair_for_keymap_change();
+    return __real_zmk_keymap_set_layer_binding_at_idx(layer, binding_idx, binding);
+}
+int __real_zmk_keymap_discard_changes(void);
+int __wrap_zmk_keymap_discard_changes(void) {
+    cancel_pair_for_keymap_change();
+    return __real_zmk_keymap_discard_changes();
+}
+int __real_zmk_keymap_reset_settings(void);
+int __wrap_zmk_keymap_reset_settings(void) {
+    cancel_pair_for_keymap_change();
+    return __real_zmk_keymap_reset_settings();
+}
+int __real_zmk_keymap_move_layer(zmk_keymap_layer_index_t start_idx, zmk_keymap_layer_index_t dest_idx);
+int __wrap_zmk_keymap_move_layer(zmk_keymap_layer_index_t start_idx, zmk_keymap_layer_index_t dest_idx) {
+    cancel_pair_for_keymap_change();
+    return __real_zmk_keymap_move_layer(start_idx, dest_idx);
+}
+int __real_zmk_keymap_add_layer(void);
+int __wrap_zmk_keymap_add_layer(void) {
+    cancel_pair_for_keymap_change();
+    return __real_zmk_keymap_add_layer();
+}
+int __real_zmk_keymap_remove_layer(zmk_keymap_layer_index_t index);
+int __wrap_zmk_keymap_remove_layer(zmk_keymap_layer_index_t index) {
+    cancel_pair_for_keymap_change();
+    return __real_zmk_keymap_remove_layer(index);
+}
+int __real_zmk_keymap_restore_layer(zmk_keymap_layer_id_t id, zmk_keymap_layer_index_t at_index);
+int __wrap_zmk_keymap_restore_layer(zmk_keymap_layer_id_t id, zmk_keymap_layer_index_t at_index) {
+    cancel_pair_for_keymap_change();
+    return __real_zmk_keymap_restore_layer(id, at_index);
 }
 static int radio_init(void) {
     gmk_radio_core_init(&core);

@@ -47,6 +47,7 @@ void gmk_radio_clear_hid(void) {
         assert(gmk_radio_select(5, false) == 0);
     }
 }
+#ifndef CONFIG_GMK70_NATIVE_KEYMAP_TEST
 int __real_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint16_t index, const struct zmk_behavior_binding binding) {
     (void)layer;
     (void)index;
@@ -54,6 +55,13 @@ int __real_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint
     assert(!radio_test_locked);
     return 17;
 }
+#endif
+#ifdef CONFIG_GMK70_NATIVE_KEYMAP_TEST
+int              keymap_init(void);
+static const int binding_result = 0;
+#else
+static const int binding_result = 17;
+#endif
 int raise_zmk_keycode_state_changed(struct zmk_keycode_state_changed event) {
     assert(in_work && !radio_test_locked && event.usage_page == 7 && event.keycode == 0x73);
     assert(!event.implicit_modifiers && !event.explicit_modifiers);
@@ -149,7 +157,7 @@ static void mode_and_hold_work_remain_deferred(void) {
     assert(gmk_radio_hold(3, 1) == 0);
     run_work();
     const struct zmk_behavior_binding binding = {.behavior_dev = "replacement"};
-    assert(__wrap_zmk_keymap_set_layer_binding_at_idx(0, 1, binding) == 17);
+    assert(__wrap_zmk_keymap_set_layer_binding_at_idx(0, 1, binding) == binding_result);
     radio_test_time += 3000;
     gmk_radio_poll();
     run_work();
@@ -263,7 +271,7 @@ static void canceled_pair_after_syswork_preserves_connected_typing(void) {
         assert(core.pending_pair);
         if (reassign) {
             const struct zmk_behavior_binding replacement = {0};
-            assert(__wrap_zmk_keymap_set_layer_binding_at_idx(1, 9, replacement) == 17);
+            assert(__wrap_zmk_keymap_set_layer_binding_at_idx(1, 9, replacement) == binding_result);
         } else
             gmk_radio_unhold(9);
         settle();
@@ -316,7 +324,13 @@ static void qualification_marker_is_only_fixed_f24_and_respects_held_input(void)
     assert(events == 2);
 }
 #endif
+#ifdef CONFIG_GMK70_NATIVE_KEYMAP_TEST
+#    include "radio_native_keymap_fixture.h"
+#endif
 int main(void) {
+#ifdef CONFIG_GMK70_NATIVE_KEYMAP_TEST
+    native_keymap_remapping_tests();
+#endif
     nkro_submission_preserves_both_reports_and_role_gates();
     canceled_pair_after_syswork_preserves_connected_typing();
     async_selection_and_latest_request();
