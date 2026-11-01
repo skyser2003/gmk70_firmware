@@ -42,6 +42,32 @@ int __real_raise_zmk_keycode_state_changed(struct zmk_keycode_state_changed ev) 
     seen[raised++] = ev;
     return 17;
 }
+int __real_zmk_hid_implicit_modifiers_press(uint8_t modifiers) {
+    (void)modifiers;
+    assert(false && "This fixture records events; native HID is tested separately");
+    return -EINVAL;
+}
+int __real_zmk_hid_implicit_modifiers_release(void) {
+    assert(false && "This fixture records events; native HID is tested separately");
+    return -EINVAL;
+}
+void __real_zmk_hid_keyboard_clear(void) {}
+void __real_zmk_hid_consumer_clear(void) {}
+int  __real_zmk_hid_press(uint32_t usage) {
+    (void)usage;
+    assert(false && "Native HID is tested separately");
+    return -EINVAL;
+}
+int __real_zmk_hid_release(uint32_t usage) {
+    (void)usage;
+    assert(false && "Native HID is tested separately");
+    return -EINVAL;
+}
+int zmk_hid_unregister_mods(uint8_t modifiers) {
+    (void)modifiers;
+    assert(false && "Native HID is tested separately");
+    return -EINVAL;
+}
 static void start(void) {
     usb_ready       = true;
     radio_test_time = 0;

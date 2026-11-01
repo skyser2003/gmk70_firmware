@@ -19,3 +19,4 @@ for metadata in 0 1; do
         tests/zmk/function_flip_behavior_test.c -o ".work/zmk/tests/function-flip-behavior-$metadata"
     ".work/zmk/tests/function-flip-behavior-$metadata"
 done
+bash tests/zmk/run_function_flip_native_tests.sh

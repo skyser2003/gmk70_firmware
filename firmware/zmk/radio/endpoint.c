@@ -6,6 +6,9 @@
 #include <dt-bindings/zmk/hid_usage_pages.h>
 #include <zmk/endpoints.h>
 #include <zmk/hid.h>
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+#    include "../function_flip/flip.h"
+#endif
 
 #if defined(CONFIG_ZMK_HID_REPORT_TYPE_NKRO) && CONFIG_ZMK_HID_REPORT_TYPE_NKRO == 1
 #    include "nkro.h"
@@ -50,15 +53,33 @@ int __wrap_zmk_endpoint_send_report(uint16_t usage_page) {
     }
 }
 void __wrap_zmk_hid_keyboard_clear(void) {
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+    gmk_flip_clear_begin();
+#endif
     __real_zmk_hid_keyboard_clear();
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+    gmk_flip_clear(HID_USAGE_KEY);
+#endif
 #if defined(CONFIG_ZMK_HID_REPORT_TYPE_NKRO) && CONFIG_ZMK_HID_REPORT_TYPE_NKRO == 1
     memset(&keys, 0, sizeof(keys));
 #endif
     gmk_radio_release(false);
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+    gmk_flip_clear_end();
+#endif
 }
 void __wrap_zmk_hid_consumer_clear(void) {
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+    gmk_flip_clear_begin();
+#endif
     __real_zmk_hid_consumer_clear();
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+    gmk_flip_clear(HID_USAGE_CONSUMER);
+#endif
     gmk_radio_release(true);
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+    gmk_flip_clear_end();
+#endif
 }
 void gmk_radio_clear_hid(void) {
     zmk_endpoint_clear_reports();

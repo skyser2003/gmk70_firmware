@@ -12,6 +12,9 @@
 #include <zephyr/kernel.h>
 #include <zmk/endpoints.h>
 #include <zmk/hid.h>
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+#    include "../function_flip/flip.h"
+#endif
 
 #if !defined(CONFIG_ZMK_HID_REPORT_TYPE_NKRO) || CONFIG_ZMK_HID_REPORT_TYPE_NKRO != 1
 #    error "GMK70 NKRO requires the native NKRO keyboard report"
@@ -24,16 +27,26 @@ static struct zmk_hid_keyboard_report limited;
 
 struct zmk_hid_keyboard_report *__real_zmk_hid_get_keyboard_report(void);
 struct zmk_hid_keyboard_report *__wrap_zmk_hid_get_keyboard_report(void) {
-    struct zmk_hid_keyboard_report *native = __real_zmk_hid_get_keyboard_report();
-    if (gmk_nkro_enabled()) return native;
+    struct zmk_hid_keyboard_report *native  = __real_zmk_hid_get_keyboard_report();
+    bool                            enabled = gmk_nkro_enabled();
+#ifndef CONFIG_GMK70_FUNCTION_FLIP
+    if (enabled) return native;
+#else
+    uint8_t modifiers = gmk_flip_modifiers();
+#endif
     k_spinlock_key_t key = k_spin_lock(&projection_lock);
     limited              = *native;
-    uint8_t keyboard[8], overflow[14];
-    gmk70_radio_keys_encode(&slots, native->body.modifiers, native->body.keys, sizeof(native->body.keys), keyboard, overflow);
-    memset(limited.body.keys, 0, sizeof(limited.body.keys));
-    for (unsigned i = 2; i < sizeof(keyboard); ++i) {
-        unsigned usage = keyboard[i];
-        if (usage && usage / 8 < sizeof(limited.body.keys)) limited.body.keys[usage / 8] |= (uint8_t)(1U << (usage % 8));
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
+    limited.body.modifiers |= modifiers;
+#endif
+    if (!enabled) {
+        uint8_t keyboard[8], overflow[14];
+        gmk70_radio_keys_encode(&slots, native->body.modifiers, native->body.keys, sizeof(native->body.keys), keyboard, overflow);
+        memset(limited.body.keys, 0, sizeof(limited.body.keys));
+        for (unsigned i = 2; i < sizeof(keyboard); ++i) {
+            unsigned usage = keyboard[i];
+            if (usage && usage / 8 < sizeof(limited.body.keys)) limited.body.keys[usage / 8] |= (uint8_t)(1U << (usage % 8));
+        }
     }
     k_spin_unlock(&projection_lock, key);
     return &limited;
@@ -46,7 +59,10 @@ zmk_hid_boot_report_t       *__wrap_zmk_hid_get_boot_report(void) {
     // duplicate bindings. Derive boot output from its authoritative bitmap.
     const struct zmk_hid_keyboard_report *report = __real_zmk_hid_get_keyboard_report();
     boot                                         = (zmk_hid_boot_report_t){.modifiers = report->body.modifiers};
-    unsigned count                               = 0;
+#    ifdef CONFIG_GMK70_FUNCTION_FLIP
+    boot.modifiers |= gmk_flip_modifiers();
+#    endif
+    unsigned count = 0;
     for (unsigned usage = 1; usage < sizeof(report->body.keys) * 8; ++usage) {
         if (!(report->body.keys[usage / 8] & (1U << (usage % 8)))) continue;
         if (count == HID_BOOT_KEY_LEN) {
