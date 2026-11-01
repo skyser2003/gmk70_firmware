@@ -25,6 +25,7 @@
 #define BIT32(n) (1U << (n))
 #define MAX_PIXELS 41U
 #define RESET_US 280U
+#define POWER_ON_US 1000U
 #define TIMEOUT_MS 5U
 #define POLL_LIMIT 100000U
 
@@ -33,7 +34,14 @@
  * the vendor helper's stricter 511-transfer block bound. Reset is GPIO-low. */
 static uint8_t encoded[MAX_PIXELS * 12U];
 static bool    ready;
+static bool    powered;
 K_MUTEX_DEFINE(pixels_lock);
+
+static void led_power(bool enabled) {
+    uint32_t rails = BIT32(5) | BIT32(8);
+    sys_write32(enabled ? rails : rails << 16, GPIOA + 0x18);
+    powered = enabled;
+}
 
 static bool expired(uint32_t started) {
     return (uint32_t)(k_uptime_get_32() - started) >= TIMEOUT_MS;
@@ -113,11 +121,10 @@ int gmk_pixels_init(void) {
     sys_write32(0, SPIM2 + 0x2c);
     sys_write32(0x100, DMAC2 + 0x3a0);
     clear_dma();
-    if (!stop_hardware()) {
-        k_sched_unlock();
-        k_mutex_unlock(&pixels_lock);
-        return -EIO;
-    }
+    bool stopped = stop_hardware();
+    /* Even a failed DMA stop leaves SPI disabled and PB15 GPIO-low. Keep an
+     * unsuccessful initialization physically dark as well as unavailable. */
+    k_busy_wait(RESET_US);
     key = irq_lock();
     sys_write32((BIT32(5) | BIT32(8)) << 16, GPIOA + 0x18);
     sys_write32((uint16_t)~(BIT32(5) | BIT32(8)), GPIOA + 0x30);
@@ -126,13 +133,12 @@ int gmk_pixels_init(void) {
     sys_write32(0, GPIOA + 0x0c);
     sys_write32(0, GPIOA + 0x2c);
     sys_write32(BIT32(10) | BIT32(16), GPIOA);
-    sys_write32(BIT32(5) | BIT32(8), GPIOA + 0x18); /* Both LED rails active high. */
+    powered = false; /* Both active-high LED rails remain off until a lit frame. */
     irq_unlock(key);
-    data_pin(true);
-    ready = true;
+    ready = stopped;
     k_sched_unlock();
     k_mutex_unlock(&pixels_lock);
-    return 0;
+    return stopped ? 0 : -EIO;
 }
 
 static int wait_dma(uint32_t started) {
@@ -156,22 +162,31 @@ int gmk_pixels_write(const uint8_t *rgb, size_t count) {
         k_mutex_unlock(&pixels_lock);
         return -ENODEV;
     }
+    bool lit = false;
     for (size_t byte = 0; byte < count * 3U; ++byte) {
+        lit |= rgb[byte] != 0;
         for (unsigned pair = 0; pair < 4; ++pair) {
             uint8_t source            = rgb[byte] >> (6U - pair * 2U);
             encoded[byte * 4U + pair] = (source & 2 ? 0xe0 : 0x80) | (source & 1 ? 0x0e : 0x08);
         }
     }
-    /* Low time is uncritical to scheduling and may safely grow while another
-     * worker runs. All subsequent transfer work keeps IRQ service available. */
-    data_pin(false);
-    k_busy_wait(RESET_US);
     k_sched_lock();
     int result = 0;
     if (!stop_hardware()) {
         result = -EIO;
         goto out;
     }
+    if (!lit && !powered) goto out;
+    bool powering_on = !powered;
+    if (powering_on) led_power(true);
+    /* Stop has made PB15 GPIO-low: never drive an unpowered LED data input.
+     * A restored supply needs its own settling guard, beyond the data reset.
+     * The central may submit just one battery frame with normal RGB off;
+     * it cannot depend on a later animation frame to repair an early transfer.
+     * The mutex owns both rails and waveform while this low time can schedule. */
+    k_sched_unlock();
+    k_busy_wait(powering_on ? POWER_ON_US : RESET_US);
+    k_sched_lock();
     data_pin(true);
     sys_write32(0x107, SPIM2); /* 8-bit, mode0, TX-only: do not accumulate RX. */
     sys_write32(0, SPIM2 + 0x04);
@@ -203,6 +218,14 @@ int gmk_pixels_write(const uint8_t *rgb, size_t count) {
     result = wait_dma(started);
     if (!result && !wait_mask(SPIM2 + 0x28, 5, 4, started)) result = -ETIMEDOUT;
     if (!stop_hardware()) result = -EIO;
+    if (!result && !lit) {
+        /* SPI is idle and DMA stopped. Latch black before removing power;
+         * leave PB15 push-pull low to avoid feeding the disabled LED rails. */
+        k_sched_unlock();
+        k_busy_wait(RESET_US);
+        k_sched_lock();
+        led_power(false);
+    }
 out:
     k_sched_unlock();
     k_mutex_unlock(&pixels_lock);

@@ -11,6 +11,7 @@
 static unsigned sched_depth, irq_depth, sched_locks, writes, reads;
 static unsigned reset_waits;
 static uint32_t now_ms;
+static uint64_t now_us;
 static bool     clock_stopped;
 int64_t         fake_ms;
 void            k_sched_lock(void) {
@@ -35,6 +36,7 @@ uint32_t test_uptime(void) {
 }
 void test_busy_wait(unsigned us) {
     assert(us >= 280 && !irq_depth);
+    now_us += us;
     ++reset_waits;
 }
 #define irq_lock test_irq_lock
@@ -42,6 +44,9 @@ void test_busy_wait(unsigned us) {
 #define k_uptime_get_32 test_uptime
 #define k_busy_wait test_busy_wait
 #include "../../firmware/zmk/lighting/wb32_pixels.c"
+#ifdef TEST_PIXELS_LIGHTING
+#    include "../../firmware/zmk/lighting/lighting.c"
+#endif
 
 #define HW_SPI 0x40009000U
 #define HW_DMA 0x4000fc00U
@@ -57,6 +62,9 @@ static bool       publish_ready, needs_acquire;
 static unsigned   barriers;
 static unsigned   dma_resets;
 static unsigned   progress_reads, busy_reads;
+static uint64_t   data_low_since, powered_since;
+static unsigned   transfers, rail_disables;
+static bool       observe_rails;
 static size_t     captured_size;
 static struct {
     uint8_t before[32], bytes[492], after[32];
@@ -114,7 +122,19 @@ void sys_write32(uint32_t value, uintptr_t address) {
         unsigned p      = address >= HW_B;
         unsigned offset = (unsigned)(address - (p ? HW_B : HW_A));
         if (offset == 0x18) {
+            uint32_t previous = gpio[p][0x14 / 4];
             gpio[p][0x14 / 4] = (gpio[p][0x14 / 4] | (value & 0xffff)) & ~(value >> 16);
+            if (observe_rails && p == 0 && ((previous ^ gpio[p][0x14 / 4]) & 0x120)) {
+                assert(pixels_lock.locked == 1);
+                assert((gpio[1][0] >> 30) == 1 && !(gpio[1][0x14 / 4] & (1U << 15)));
+                assert(!active && spi[0x08 / 4] == 0 && spi[0x4c / 4] == 0);
+                if (gpio[p][0x14 / 4] & 0x120) {
+                    powered_since = now_us;
+                } else {
+                    assert(now_us - data_low_since >= 280);
+                    ++rail_disables;
+                }
+            }
         } else if (offset == 0x30) {
             assert(irq_depth == 1);
             gpio[p][offset / 4] = value;
@@ -129,6 +149,7 @@ void sys_write32(uint32_t value, uintptr_t address) {
                 uint32_t mask  = ((1U << width) - 1) << shift;
                 result         = (result & ~mask) | (value & mask);
             }
+            if (p == 1 && offset == 0 && (result >> 30) == 1 && (gpio[p][offset / 4] >> 30) != 1) data_low_since = now_us;
             gpio[p][offset / 4] = result;
         }
         return;
@@ -146,6 +167,15 @@ void sys_write32(uint32_t value, uintptr_t address) {
         assert(sched_depth == 1);
         if (value & 1) {
             assert(publish_ready);
+            if (observe_rails) {
+                assert(pixels_lock.locked == 1);
+                assert((gpio[0][0x14 / 4] & 0x120) == 0x120);
+                /* A data reset does not cover LED supply startup. A single
+                 * indicator frame must wait for the restored rail, rather
+                 * than relying on a later animation/peer replay to be seen. */
+                assert(now_us - powered_since >= 1000 && now_us - data_low_since >= 280);
+            }
+            ++transfers;
             needs_acquire  = true;
             dma[0x3a0 / 4] = value & 1;
             active         = true;
@@ -174,7 +204,10 @@ static void clear_model(void) {
     dma_resets = barriers = 0;
     publish_ready = needs_acquire = false;
     progress_reads = busy_reads = 0;
-    fault                       = NO_FAULT;
+    now_us = data_low_since = powered_since = 0;
+    transfers = rail_disables = 0;
+    observe_rails             = false;
+    fault                     = NO_FAULT;
 }
 static void assert_clean(void) {
     assert(spi[0x08 / 4] == 0 && spi[0x4c / 4] == 0);
@@ -193,12 +226,80 @@ static void test_init_clocks_and_pins(void) {
     assert((rcc[0x4c / 4] & 0x10000011) == 0x10000011);
     assert(!(rcc[0x94 / 4] & 0x11));
     assert(((gpio[0][0] >> 10) & 3) == 1 && ((gpio[0][0] >> 16) & 3) == 1);
-    assert((gpio[0][0x14 / 4] & 0x120) == 0x120);
-    assert((gpio[1][0] >> 30) == 2 && (gpio[1][0x24 / 4] >> 28) == 5);
+    assert((gpio[0][0x14 / 4] & 0x120) == 0);
+    assert((gpio[1][0] >> 30) == 1 && (gpio[1][0x24 / 4] >> 28) == 5);
     assert(!(gpio[1][0x04 / 4] & (1U << 15)) && !(gpio[1][0x0c / 4] >> 30));
     /* A maintained matrix pin on the same port remains untouched. */
     assert(((gpio[1][0] >> 24) & 3) == ((0xa5a5a5a5U >> 24) & 3));
     assert(!sched_depth && !irq_depth);
+}
+static void test_black_frame_cuts_physical_power_after_latch(void) {
+    uint8_t lit[123]   = {0};
+    uint8_t black[123] = {0};
+    for (size_t count = 36; count <= 41; count += 5) {
+        clear_model();
+        assert(gmk_pixels_init() == 0);
+        memset(lit, 0, sizeof(lit));
+        lit[count * 3 - 1] = 1; /* A single blue bit in the final local LED needs power. */
+        observe_rails      = true;
+        assert(gmk_pixels_write(lit, count) == 0);
+        assert((gpio[0][0x14 / 4] & 0x120) == 0x120);
+        unsigned before = transfers;
+        assert(gmk_pixels_write(black, count) == 0);
+        assert(transfers == before + 1 && rail_disables == 1);
+        assert((gpio[0][0x14 / 4] & 0x120) == 0);
+        assert_clean();
+        assert(gmk_pixels_write(black, count) == 0);
+        assert((gpio[0][0x14 / 4] & 0x120) == 0);
+        assert(gmk_pixels_write(lit, count) == 0);
+        assert((gpio[0][0x14 / 4] & 0x120) == 0x120);
+        assert_clean();
+    }
+}
+static void test_led_power_preserves_encoder_pin_configuration(void) {
+    clear_model();
+    uint32_t before[sizeof(gpio[1]) / sizeof(*gpio[1])];
+    memcpy(before, gpio[1], sizeof(before));
+    assert(gmk_pixels_init() == 0);
+    uint8_t lit[3] = {1, 2, 3}, black[3] = {0};
+    assert(gmk_pixels_write(lit, 1) == 0);
+    assert(gmk_pixels_write(black, 1) == 0);
+    assert(gmk_pixels_write(lit, 1) == 0);
+    // B6/B7 retain their GPIO modes, pulls, output type, speed and alternate
+    // configuration while the pixel driver changes B15 and the LED supplies.
+    for (unsigned pin = 6; pin <= 7; ++pin) {
+        const unsigned offsets[] = {0, 0x04, 0x08, 0x0c, 0x20, 0x2c};
+        for (unsigned i = 0; i < sizeof(offsets) / sizeof(*offsets); ++i) {
+            unsigned offset = offsets[i];
+            unsigned width  = offset == 0x04 ? 1 : offset == 0x20 ? 4 : 2;
+            uint32_t mask   = ((1U << width) - 1) << (width * pin);
+            assert((gpio[1][offset / 4] & mask) == (before[offset / 4] & mask));
+        }
+    }
+    assert_clean();
+}
+static void test_failed_black_frame_retries_before_power_off(enum fault failure) {
+    uint8_t lit[3]   = {0, 0, 1};
+    uint8_t black[3] = {0};
+    clear_model();
+    assert(gmk_pixels_init() == 0);
+    observe_rails = true;
+    assert(gmk_pixels_write(lit, 1) == 0);
+    fault = failure;
+    assert(gmk_pixels_write(black, 1) == (failure == DMA_ERROR ? -EIO : -ETIMEDOUT));
+    assert((gpio[0][0x14 / 4] & 0x120) == 0x120 && rail_disables == 0);
+    assert_clean();
+    fault      = NO_FAULT;
+    busy_reads = 0;
+    assert(gmk_pixels_write(black, 1) == 0);
+    assert((gpio[0][0x14 / 4] & 0x120) == 0 && rail_disables == 1);
+    assert_clean();
+    fault = DMA_ERROR;
+    assert(gmk_pixels_write(lit, 1) == -EIO);
+    assert((gpio[0][0x14 / 4] & 0x120) == 0x120);
+    fault = NO_FAULT;
+    assert(gmk_pixels_write(lit, 1) == 0);
+    assert_clean();
 }
 static void test_rgb_encoding_and_guards(void) {
     uint8_t              values[12] = {0xff, 0, 0, 0, 0xff, 0, 0, 0, 0xff, 0x80, 0x01, 0x55};
@@ -253,6 +354,7 @@ static void test_initial_dma_failure_is_closed(void) {
     assert(!sched_depth && !irq_depth);
     assert(spi[0x08 / 4] == 0 && spi[0x4c / 4] == 0 && dma[0x398 / 4] == 0);
     assert((gpio[1][0] >> 30) == 1 && !(gpio[1][0x14 / 4] & (1U << 15)));
+    assert((gpio[0][0x14 / 4] & 0x120) == 0);
     uint8_t  rgb[3] = {1, 2, 3};
     unsigned before = writes;
     assert(gmk_pixels_write(rgb, 1) == -ENODEV && writes == before);
@@ -280,10 +382,92 @@ static void test_failure_cleanup(enum fault failure) {
     assert(captured_size == 12);
     assert_clean();
 }
+#ifdef TEST_PIXELS_LIGHTING
+static bool     left_role = true;
+static uint8_t  peer_packets[GMK_LIGHT_CHUNKS][16];
+static unsigned peer_packets_count;
+bool            gmk_wired_is_left(void) {
+    return left_role;
+}
+bool gmk_split_available(void) {
+    return true;
+}
+void gmk_battery_get(struct gmk_battery_status *status) {
+    *status = (struct gmk_battery_status){.valid = true, .percentage = 100, .cable = true};
+}
+bool __wrap_gmk_protocol_lighting(const struct gmk_wire_io *io, const uint8_t packet[16]) {
+    (void)io;
+    assert(peer_packets_count < GMK_LIGHT_CHUNKS);
+    memcpy(peer_packets[peer_packets_count++], packet, 16);
+    return true;
+}
+static void collect_peer_frame(uint8_t packets[GMK_LIGHT_CHUNKS][16]) {
+    peer_packets_count = 0;
+    for (unsigned i = 0; i < GMK_LIGHT_CHUNKS; ++i)
+        gmk_lighting_wire_poll(NULL);
+    assert(peer_packets_count == GMK_LIGHT_CHUNKS);
+    memcpy(packets, peer_packets, sizeof(peer_packets));
+}
+static void test_battery_overlay_releases_physical_power_on_both_roles(uint32_t position, enum gmk_battery_indicator kind) {
+    uint8_t        overlay[GMK_LIGHT_CHUNKS][16], released[GMK_LIGHT_CHUNKS][16];
+    struct led_rgb colors[GMK_LIGHT_PIXELS] = {0};
+    clear_model();
+    assert(init(NULL) == 0);
+    observe_rails = true;
+    assert(update_rgb(NULL, colors, GMK_LIGHT_PIXELS) == 0);
+    assert((gpio[0][0x14 / 4] & 0x120) == 0);
+    assert(gmk_lighting_battery_set(kind, position, true) == 0);
+    gmk_lighting_poll();
+    assert((gpio[0][0x14 / 4] & 0x120) == 0x120);
+    /* The first waveform after supply-off can be lost even though DMA succeeds.
+     * An unchanged held indicator must receive another local frame, without
+     * needing a second battery key or a normal upstream animation tick. */
+    unsigned first_frame_transfers = transfers;
+    now_ms += 50;
+    gmk_lighting_poll();
+    assert(transfers == first_frame_transfers + 1);
+    collect_peer_frame(overlay);
+    assert(gmk_lighting_battery_release(position) == 0);
+    gmk_lighting_poll();
+    assert((gpio[0][0x14 / 4] & 0x120) == 0);
+    collect_peer_frame(released);
+    unsigned released_transfers = transfers;
+    now_ms += 250;
+    gmk_lighting_poll();
+    assert(transfers == released_transfers && (gpio[0][0x14 / 4] & 0x120) == 0);
+    for (unsigned i = 0; i < sizeof(normal_pixels); ++i)
+        assert(normal_pixels[i] == 0);
+    left_role = false;
+    memset(&frame, 0, sizeof(frame));
+    for (unsigned i = 0; i < GMK_LIGHT_CHUNKS; ++i)
+        gmk_lighting_receive(overlay[i]);
+    gmk_lighting_poll();
+    if (kind == GMK_BATTERY_LEVEL) assert(captured_size == 492);
+    assert((gpio[0][0x14 / 4] & 0x120) == (kind == GMK_BATTERY_LEVEL ? 0x120U : 0U));
+    for (unsigned i = 0; i < GMK_LIGHT_CHUNKS; ++i)
+        gmk_lighting_receive(released[i]);
+    gmk_lighting_poll();
+    assert((gpio[0][0x14 / 4] & 0x120) == 0);
+    assert_clean();
+    left_role = true;
+}
+#endif
 int main(void) {
     uint8_t initial[3] = {1, 2, 3};
     assert(gmk_pixels_write(initial, 1) == -ENODEV && writes == 0);
+#ifdef TEST_PIXELS_LIGHTING
+    const uint32_t positions[] = {55, GMK_PHYSICAL_KEYS, GMK_KEY_POSITIONS - 1};
+    for (unsigned i = 0; i < sizeof(positions) / sizeof(*positions); ++i) {
+        test_battery_overlay_releases_physical_power_on_both_roles(positions[i], GMK_BATTERY_LEVEL);
+        test_battery_overlay_releases_physical_power_on_both_roles(positions[i], GMK_BATTERY_CHARGING);
+    }
+#endif
+    test_black_frame_cuts_physical_power_after_latch();
+    test_led_power_preserves_encoder_pin_configuration();
     test_init_clocks_and_pins();
+    test_failed_black_frame_retries_before_power_off(DMA_ERROR);
+    test_failed_black_frame_retries_before_power_off(DMA_TIMEOUT);
+    test_failed_black_frame_retries_before_power_off(SPI_BUSY_TIMEOUT);
     test_rgb_encoding_and_guards();
     test_invalid_requests_are_quiet();
     test_failure_cleanup(DMA_ERROR);

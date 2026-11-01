@@ -22,6 +22,7 @@ K_MUTEX_DEFINE(render_lock);
 static uint8_t                 normal_pixels[3 * GMK_LIGHT_PIXELS];
 static struct gmk_battery_view battery_view;
 static uint16_t                displayed_status;
+static uint32_t                displayed_at;
 static bool                    display_dirty;
 static bool                    last_split;
 
@@ -41,6 +42,7 @@ static int render_battery_locked(const struct gmk_battery_status *status) {
     }
     display_dirty    = result != 0;
     displayed_status = status_key(status);
+    displayed_at     = k_uptime_get_32();
     return result;
 }
 
@@ -74,7 +76,12 @@ static void battery_refresh(void) {
         memset(&battery_view, 0, sizeof(battery_view));
         display_dirty = true;
     }
-    if (display_dirty || (gmk_battery_view_active(&battery_view) && displayed_status != status_key(&status))) render_battery_locked(&status);
+    /* A successful DMA transfer does not acknowledge reception by the LEDs.
+     * Keep held indicators alive at the native animation cadence, including
+     * while upstream RGB is off. One early frame after rail restoration must
+     * not leave LEFT dark until another key/status change; peer frames already
+     * have periodic replay. Releasing the last hold stops this local replay. */
+    if (display_dirty || (gmk_battery_view_active(&battery_view) && (displayed_status != status_key(&status) || (uint32_t)(k_uptime_get_32() - displayed_at) >= 50U))) render_battery_locked(&status);
     k_mutex_unlock(&render_lock);
 }
 #endif

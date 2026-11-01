@@ -2,6 +2,9 @@
 #include "raw_hid.h"
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 #    include "../studio/settings_backend.h"
+#    ifdef CONFIG_GMK70_WB32_RGB
+#        include "../lighting/rgb_settings.h"
+#    endif
 #endif
 #include "wired.h"
 #ifdef CONFIG_GMK70_FUNCTION_FLIP
@@ -69,6 +72,9 @@ static void worker(void *a, void *b, void *c) {
 #endif
 #ifdef CONFIG_GMK70_NKRO
         gmk_nkro_poll(env.left && env.wired && env.usb_configured && env.writes_ready);
+#endif
+#if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) && defined(CONFIG_GMK70_WB32_RGB)
+        gmk_rgb_settings_poll(env.left && env.wired && env.usb_configured && env.writes_ready);
 #endif
         gmk_zmk_raw_hid_poll(&env);
         /* Admission and execution are distinct boundaries: resample physical
