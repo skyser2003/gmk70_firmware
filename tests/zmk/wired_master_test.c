@@ -50,6 +50,9 @@ int main(void) {
     assert(f.written[5] == 14 && f.written[6] == 42 && f.written[38] == 15 && f.written[39] == 18 && f.written[40] == 16);
     for (unsigned i = 0; i < 32; ++i)
         assert(out[i] == 0x5a);
+    f.pos = f.sent = f.clears = 0;
+    assert(gmk_protocol_split_command(&io, in, out));
+    assert(f.written[2] == 17 && f.written[39] == 17 && f.clears == 4 && f.sent == 41);
     for (size_t cut = 0; cut < 36; ++cut) {
         f.len = cut;
         f.pos = f.sent = f.clears = 0;

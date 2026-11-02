@@ -176,6 +176,10 @@ class RadioImageTests(unittest.TestCase):
             "__wrap_zmk_studio_core_get_lock_state",
             "uart_rpc_interface_init",
             "gmk_radio_test_marker",
+            "gmk_native_update_exchange",
+            "gmk_native_update_serve",
+            "zmk_split_wired_get_item",
+            "crc32_ieee",
         } | set(RADIO_SYMBOLS)
         symbols: dict[str, int] = {name: 0x08002200 for name in required}
         symbols.update(

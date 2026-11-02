@@ -7,6 +7,9 @@
 #    endif
 #endif
 #include "wired.h"
+#ifdef CONFIG_GMK70_NATIVE_SPLIT
+#    include "split.h"
+#endif
 #ifdef CONFIG_GMK70_FUNCTION_FLIP
 #    include "../function_flip/flip.h"
 #endif
@@ -59,6 +62,9 @@ static void worker(void *a, void *b, void *c) {
         gmk_radio_poll();
 #endif
         gmk_battery_poll();
+#ifdef CONFIG_GMK70_NATIVE_SPLIT
+        gmk_native_split_poll();
+#endif
         struct gmk_wired_stats stats;
         /* Never enqueue this worker behind the responder/scanner mutex.
          * Contention means unknown peer state, represented by a cleared flag;

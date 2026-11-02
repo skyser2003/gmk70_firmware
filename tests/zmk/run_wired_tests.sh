@@ -7,27 +7,27 @@ cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-sanitize-rec
     -Ifirmware/zmk/wired tests/zmk/encoder_test.c firmware/zmk/wired/encoder.c \
     -o artifacts/tests/zmk/encoder
 artifacts/tests/zmk/encoder
-cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
+cc -DCONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE=1 -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
     -Ifirmware/zmk/wired -Idependencies/vial-qmk/quantum \
     tests/zmk/wired_test.c firmware/zmk/wired/wired_protocol.c dependencies/vial-qmk/quantum/crc.c \
     -o artifacts/tests/zmk/wired
 artifacts/tests/zmk/wired
-cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
+cc -DCONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE=1 -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
     -Ifirmware/zmk/wired tests/zmk/wired_master_test.c firmware/zmk/wired/wired_protocol.c \
     -o artifacts/tests/zmk/wired-master
 artifacts/tests/zmk/wired-master
 firmware/zmk/tools/.venv/bin/python firmware/zmk/tools/wired_pins.py \
     --keyboard firmware/qmk-common/keyboards/zuoya/gmk70/keyboard.json \
     --output .work/zmk/wired-native/normal/gmk70_wired_pins.h
-cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
-    -Itests/zmk/wired_stubs -Itests/zmk/clock_stubs \
+cc -DCONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE=1 -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
+    -Itests/zmk/native_encoder_stubs -Itests/zmk/wired_stubs -Itests/zmk/clock_stubs -Itests/zmk/radio_native_stubs \
     -Ifirmware/zmk/wired -Ifirmware/zmk/soc/westberry/wb32fq95 \
     -I.work/zmk/wired-native/normal \
     tests/zmk/wired_wb32_test.c firmware/zmk/wired/wired_protocol.c firmware/zmk/wired/encoder.c \
     -o artifacts/tests/zmk/wired-wb32
 artifacts/tests/zmk/wired-wb32
-cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
-    -DCONFIG_GMK70_RADIO=1 -Itests/zmk/wired_stubs -Itests/zmk/clock_stubs \
+cc -DCONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE=1 -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all \
+    -DCONFIG_GMK70_RADIO=1 -Itests/zmk/native_encoder_stubs -Itests/zmk/wired_stubs -Itests/zmk/clock_stubs -Itests/zmk/radio_native_stubs \
     -Ifirmware/zmk/wired -Ifirmware/zmk/soc/westberry/wb32fq95 \
     -I.work/zmk/wired-native/normal \
     tests/zmk/wired_wb32_test.c firmware/zmk/wired/wired_protocol.c firmware/zmk/wired/encoder.c \

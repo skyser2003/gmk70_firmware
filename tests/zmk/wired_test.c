@@ -31,6 +31,7 @@ static void clear(void *ctx) {
 }
 static unsigned calls;
 static unsigned light_calls;
+static unsigned split_calls;
 static uint8_t  last_light[16];
 static void     lighting(const uint8_t packet[16]) {
     ++light_calls;
@@ -39,6 +40,10 @@ static void     lighting(const uint8_t packet[16]) {
 static void update(const uint8_t in[32], uint8_t out[32]) {
     ++calls;
     out[0] = in[0] + 1;
+}
+static void split_command(const uint8_t in[32], uint8_t out[32]) {
+    ++split_calls;
+    out[0] = in[0] ^ 0xff;
 }
 static bool server(struct gmk_protocol *p, struct fixture *f, const uint8_t *data, size_t n) {
     memcpy(f->rx, data, n);
@@ -126,16 +131,25 @@ int main(void) {
     assert(!server(&p, &f, exec, 2));
     assert(calls == 1);
     /* USER_SYNC runtime lengths are accepted, ignored, and get zero responses. */
-    info[2] = 17;
-    info[3] = 7;
-    info[4] = 3;
-    info[1] = gmk_wire_crc8(info + 2, 3);
+    p.split_command = split_command;
+    info[2]         = 17;
+    info[3]         = 7;
+    info[4]         = 3;
+    info[1]         = gmk_wire_crc8(info + 2, 3);
     assert(server(&p, &f, info, 5));
     assert(server(&p, &f, request, 8));
     exec[1] = 17;
     assert(server(&p, &f, exec, 2));
     assert(server(&p, &f, &id, 1));
     assert(f.sent == 4 && f.tx[1] == 0 && f.tx[3] == 0);
+    assert(split_calls == 0 && calls == 1);
+    info[3] = info[4] = 32;
+    info[1]           = gmk_wire_crc8(info + 2, 3);
+    assert(server(&p, &f, info, 5));
+    assert(server(&p, &f, request, 33));
+    assert(server(&p, &f, exec, 2));
+    assert(server(&p, &f, &id, 1));
+    assert(split_calls == 1 && calls == 1 && f.sent == 33 && f.tx[1] == (42 ^ 0xff));
     struct gmk_debounce d      = {0};
     uint16_t            raw[5] = {1};
     gmk_matrix_debounce(&d, raw, 100);

@@ -10,6 +10,33 @@ static struct wb32_gpio_data         gpio_data[3];
 static const struct wb32_gpio_config gpio_config[3]     = {{{0xffff}, (void *)WB32_GPIOA_BASE, 5}, {{0xffff}, (void *)WB32_GPIOB_BASE, 6}, {{0xffff}, (void *)WB32_GPIOC_BASE, 7}};
 const struct device                  fake_gpio_ports[3] = {{&gpio_data[0], &wb32_gpio_api, &gpio_config[0]}, {&gpio_data[1], &wb32_gpio_api, &gpio_config[1]}, {&gpio_data[2], &wb32_gpio_api, &gpio_config[2]}};
 #include "../../firmware/zmk/wired/wired_wb32.c"
+#undef DT_DRV_COMPAT
+#include "../../dependencies/zmk/app/module/drivers/sensor/ec11/ec11.c"
+static struct ec11_data         native_encoder_data;
+static const struct ec11_config native_encoder_config = {
+    .a          = {.port = &fake_gpio_ports[1], .pin = 7},
+    .b          = {.port = &fake_gpio_ports[1], .pin = 6},
+    .resolution = 1,
+};
+static const struct device native_encoder_device = {.data = &native_encoder_data, .config = &native_encoder_config, .api = &ec11_driver_api};
+int                        gpio_pin_get_dt(const struct gpio_dt_spec *pin) {
+    gpio_port_value_t value;
+    assert(wb32_port_get_raw(pin->port, &value) == 0);
+    return (value >> pin->pin) & 1U;
+}
+int gpio_pin_configure_dt(const struct gpio_dt_spec *pin, gpio_flags_t flags) {
+    return wb32_pin_configure(pin->port, pin->pin, flags | pin->dt_flags);
+}
+bool gmk_native_encoder_init(void) {
+    assert(left);
+    return ec11_init(&native_encoder_device) == 0;
+}
+int32_t gmk_native_encoder_sample(void) {
+    struct sensor_value value;
+    assert(ec11_sample_fetch(&native_encoder_device, SENSOR_CHAN_ALL) == 0);
+    assert(ec11_channel_get(&native_encoder_device, SENSOR_CHAN_ROTATION, &value) == 0);
+    return value.val1;
+}
 int64_t fake_ms;
 void (*fake_uart_isr)(const void *);
 static uint8_t  hw_rx[64];
@@ -19,7 +46,12 @@ static bool     saw_divider;
 static bool     emulate_peer;
 static unsigned uart_transmissions;
 static bool     arm_race;
-int             gpio_pin_interrupt_configure(const struct device *dev, gpio_pin_t pin, gpio_flags_t flags) {
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
+static bool    capture_native;
+static uint8_t native_tx[64];
+static size_t  native_tx_size;
+#endif
+int gpio_pin_interrupt_configure(const struct device *dev, gpio_pin_t pin, gpio_flags_t flags) {
     int result = wb32_interrupt_configure(dev, pin, flags ? GPIO_INT_MODE_EDGE : GPIO_INT_MODE_DISABLED, flags == GPIO_INT_EDGE_BOTH ? GPIO_INT_TRIG_BOTH : GPIO_INT_TRIG_LOW);
     if (flags && arm_race && pin == 13) {
         /* A press arrives while the final row is being armed, before any callback. */
@@ -43,6 +75,12 @@ void sys_write32(uint32_t value, uintptr_t address) {
         return;
     }
     if (address == REG(0) && *(uint32_t *)REG(0xc) != 0x80) ++uart_transmissions;
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
+    if (capture_native && address == REG(0)) {
+        assert(native_tx_size < sizeof(native_tx));
+        native_tx[native_tx_size++] = (uint8_t)value;
+    }
+#endif
     if (address == REG(0) && *(uint32_t *)REG(0xc) == 0x80) {
         assert(value == 52);
         saw_divider = true;
@@ -239,9 +277,10 @@ static void test_encoder_irq(void) {
     const uint8_t cw[4] = {2, 0, 1, 3}, ccw[4] = {1, 0, 2, 3};
     for (unsigned direction = 0; direction < 2; ++direction) {
         for (unsigned i = 0; i < 4; ++i) {
-            uint8_t  next    = direction ? ccw[i] : cw[i];
-            unsigned changed = (encoder.state ^ next) == 1 ? 7 : 6;
-            b->idr           = (b->idr & ~(BIT(6) | BIT(7))) | ((next & 1) ? BIT(7) : 0) | ((next & 2) ? BIT(6) : 0);
+            uint8_t  next     = direction ? ccw[i] : cw[i];
+            unsigned previous = ((b->idr >> 7) & 1U) | (((b->idr >> 6) & 1U) << 1);
+            unsigned changed  = (previous ^ next) == 1 ? 7 : 6;
+            b->idr            = (b->idr & ~(BIT(6) | BIT(7))) | ((next & 1) ? BIT(7) : 0) | ((next & 2) ? BIT(6) : 0);
             wake_pin(changed);
         }
     }
@@ -266,6 +305,84 @@ static void test_encoder_irq(void) {
     }
     assert(!wb32_interrupt_configure(&fake_gpio_ports[0], 7, GPIO_INT_MODE_DISABLED, GPIO_INT_TRIG_LOW));
 }
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
+struct native_frame_fixture {
+    uint8_t bytes[64];
+    size_t  size;
+};
+static unsigned native_handler_calls;
+static void     native_handler(const uint8_t request[32], uint8_t response[32]) {
+    assert(wired_lock.locked && !gmk_wired_is_left() && gmk_wired_mode());
+    ++native_handler_calls;
+    for (unsigned i = 0; i < 32; ++i)
+        response[i] = request[i] ^ 0xa5;
+}
+static bool native_frame_write(void *ctx, const uint8_t *bytes, size_t size) {
+    struct native_frame_fixture *fixture = ctx;
+    assert(size <= sizeof(fixture->bytes));
+    memcpy(fixture->bytes, bytes, size);
+    fixture->size = size;
+    return true;
+}
+static bool native_frame_read(void *ctx, uint8_t *bytes, size_t size) {
+    (void)ctx;
+    if (native_tx_size != size) return false;
+    memcpy(bytes, native_tx, size);
+    return true;
+}
+static void native_frame_clear(void *ctx) {
+    (void)ctx;
+}
+static void test_native_dispatch(void) {
+    struct wb32_gpio *b = (void *)WB32_GPIOB_BASE, *c = (void *)WB32_GPIOC_BASE;
+    b->idr = 0;
+    c->idr = 0xffff;
+    assert(wired_init() == 0);
+    *(uint32_t *)REG(0x7c) = 2;
+    uint8_t request[32], response[32];
+    for (unsigned i = 0; i < 32; ++i)
+        request[i] = (uint8_t)i;
+    struct native_frame_fixture fixture = {0};
+    const struct gmk_wire_io    client  = {&fixture, native_frame_read, native_frame_write, native_frame_clear};
+    assert(!gmk_native_update_exchange(&client, request, response));
+    assert(fixture.size == 43);
+    gmk_wired_set_update_handler(native_handler);
+    for (unsigned corrupt = 0; corrupt < 2; ++corrupt) {
+        clear_rx(NULL);
+        first      = fixture.bytes[0];
+        have_first = true;
+        deadline   = fake_ms + 20;
+        for (size_t i = 1; i < fixture.size; ++i) {
+            uint8_t byte = fixture.bytes[i] ^ ((corrupt && i == 17) ? 1U : 0U);
+            assert(k_msgq_put(&uart_rx, &byte, K_NO_WAIT) == 0);
+        }
+        native_tx_size = 0;
+        capture_native = true;
+        k_mutex_lock(&wired_lock, K_FOREVER);
+        assert(serve_one() == !corrupt);
+        k_mutex_unlock(&wired_lock);
+        capture_native = false;
+        assert(native_handler_calls == 1);
+        if (!corrupt) {
+            assert(gmk_native_update_exchange(&client, request, response));
+            for (unsigned i = 0; i < 32; ++i)
+                assert(response[i] == (request[i] ^ 0xa5));
+        } else
+            assert(native_tx_size == 0);
+    }
+    /* Canonical legacy setup must reject updater RPC18 before its callback. */
+    uint8_t info[] = {13, 0, 18, 32, 32};
+    info[1]        = gmk_wire_crc8(info + 2, 3);
+    clear_rx(NULL);
+    first      = info[0];
+    have_first = true;
+    deadline   = fake_ms + 20;
+    for (unsigned i = 1; i < sizeof(info); ++i)
+        assert(k_msgq_put(&uart_rx, &info[i], K_NO_WAIT) == 0);
+    assert(!serve_one() && native_handler_calls == 1);
+    have_first = false;
+}
+#endif
 int main(void) {
     assert(gmk_host_switch() == 0 && !gmk_split_available() && !gmk_wired_mode());
     /* Fake MMIO is anonymous process RAM at the vendor register addresses. */
@@ -407,6 +524,9 @@ int main(void) {
     test_idle_matrix(true);
     test_idle_matrix(false);
     test_encoder_irq();
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
+    test_native_dispatch();
+#endif
     assert(munmap((void *)0x40000000, 0x20000) == 0);
     puts("native WB32 UART/GPIO EXTI/idle matrix/arm race/held key/fallback/both-role tests passed");
 }

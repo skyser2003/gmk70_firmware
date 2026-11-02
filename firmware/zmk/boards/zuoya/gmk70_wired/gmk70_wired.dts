@@ -29,6 +29,12 @@
     kscan0: kscan {
         compatible = "zuoya,gmk70-wired";
     };
+    gmk_knob: rotary_encoder {
+        compatible = "zuoya,gmk70-ec11", "alps,ec11";
+        a-gpios = <&gpiob 7 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+        b-gpios = <&gpiob 6 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+        zephyr,deferred-init;
+    };
     default_transform: keymap_transform {
         compatible = "zmk,matrix-transform";
         rows = <11>;

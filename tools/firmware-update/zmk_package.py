@@ -18,6 +18,8 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
     checked = JsonSchema.mapping(document)
     variant = JsonSchema.text(checked.get("variant"))
     roles = checked.get("runtime_roles")
+    if variant == "wired-studio-native-bridge" and roles != ["left", "right"]:
+        raise ValueError("Migration bridge requires both validated runtime roles")
     if roles is not None and (
         not variant.startswith("wired-studio-") or roles != ["left", "right"]
     ):
@@ -34,6 +36,7 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
             "wired-studio-updater",
             "wired-studio-update-test",
             "wired-studio-radio-qualification",
+            "wired-studio-native-bridge",
             "wired-studio-handoff",
             "wired-studio-handoff-test",
             "wired-studio-watchdog-rollback",

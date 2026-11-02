@@ -38,6 +38,23 @@ def validate_ram_symbols(symbols: dict[str, int]) -> dict[str, int]:
     }
 
 
+def validate_native_update_linking(symbols: set[str], variant: str) -> None:
+    required = {
+        "gmk_native_update_exchange",
+        "gmk_native_update_serve",
+        "zmk_split_wired_get_item",
+        "crc32_ieee",
+    }
+    if missing := required - symbols:
+        raise ValueError(f"Missing native updater transport: {sorted(missing)}")
+    legacy = {"gmk_protocol_update", "gmk_native_update_bridge_exchange"}
+    if variant == "wired-studio-native-bridge":
+        if not legacy <= symbols:
+            raise ValueError("Explicit migration bridge requires both carriers")
+    elif legacy & symbols:
+        raise ValueError("Canonical updater retained legacy relay")
+
+
 def validate_radio_linking(
     symbols: set[str], disassembly: str, variant: str | None
 ) -> None:
@@ -442,6 +459,7 @@ def check_wired(
         "wired-studio-updater",
         "wired-studio-update-test",
         "wired-studio-radio-qualification",
+        "wired-studio-native-bridge",
         "wired-studio-handoff",
         "wired-studio-handoff-test",
         "wired-studio-watchdog-rollback",
@@ -514,6 +532,7 @@ def check_wired(
             ["arm-none-eabi-objdump", "-d", str(elf)], text=True
         )
     validate_radio_linking(set(symbols), disassembly, variant)
+    validate_native_update_linking(set(symbols), variant)
     validate_flip_linking(set(symbols), disassembly)
     if variant.startswith("wired-studio-"):
         validate_studio_roles(disassembly)
@@ -579,6 +598,7 @@ def main() -> None:
             "wired-studio-updater",
             "wired-studio-update-test",
             "wired-studio-radio-qualification",
+            "wired-studio-native-bridge",
             "wired-studio-handoff",
             "wired-studio-handoff-test",
             "wired-studio-watchdog-rollback",

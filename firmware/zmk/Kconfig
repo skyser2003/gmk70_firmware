@@ -3,6 +3,13 @@ rsource "drivers/gpio/Kconfig"
 rsource "drivers/usb/device/Kconfig"
 
 if BOARD_GMK70_WIRED
+config GMK70_NATIVE_SPLIT
+	bool "Native ZMK split cores with GMK70 runtime roles and board transport"
+	depends on ZMK_SPLIT && ZMK_SPLIT_ROLE_CENTRAL
+	help
+	  Keep the legacy board UART framing for updater/RGB and snapshot recovery.
+	  Reuse upstream central event and peripheral behavior-command processing.
+
 rsource "drivers/kscan/Kconfig"
 rsource "update/Kconfig"
 rsource "studio/Kconfig"

@@ -18,13 +18,16 @@ case "$variant" in
     wired-updater) ;;
     wired-peripheral) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/peripheral.conf") ;;
     wired-update-test) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/update-test.conf") ;;
-    wired-studio-updater|wired-studio-update-test|wired-studio-radio-qualification) extra+=(-DGMK70_STUDIO=ON
+    wired-studio-updater|wired-studio-update-test|wired-studio-radio-qualification|wired-studio-native-bridge) extra+=(-DGMK70_STUDIO=ON
         -DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.overlay") ;;
     wired-qualification) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.overlay") ;;
     *) printf 'Unsupported experimental ZMK target: %s\n' "$variant" >&2; exit 2 ;;
 esac
+if [[ "$variant" == wired-studio-native-bridge ]]; then
+    extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/native-update-bridge.conf")
+fi
 if [[ "$variant" == wired-studio-update-test ]]; then
     extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio-update-test.conf")
 fi

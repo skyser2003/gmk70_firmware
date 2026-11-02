@@ -32,6 +32,14 @@ static void invalidate(struct gmk_protocol *p) {
     memset(p->request, 0, 32);
     memset(p->response, 0, 32);
 }
+static bool supported_rpc(uint8_t id) {
+    if (id == 17) return true;
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE
+    return id == 18;
+#else
+    return false;
+#endif
+}
 bool gmk_protocol_serve(struct gmk_protocol *p, const struct gmk_wire_io *io) {
     uint8_t id, in[32] = {0}, out[32] = {0};
     if (!io->read(io->ctx, &id, 1) || id >= 19) goto fail;
@@ -64,7 +72,7 @@ bool gmk_protocol_serve(struct gmk_protocol *p, const struct gmk_wire_io *io) {
             break;
         case 13:
             invalidate(p);
-            if (in[0] != gmk_wire_crc8(in + 1, 3) || in[1] < 17 || in[1] >= 19 || in[2] > 32 || in[3] > 32) goto fail;
+            if (in[0] != gmk_wire_crc8(in + 1, 3) || !supported_rpc(in[1]) || in[2] > 32 || in[3] > 32) goto fail;
             p->rpc_id        = in[1];
             p->request_size  = in[2];
             p->response_size = in[3];
@@ -78,12 +86,17 @@ bool gmk_protocol_serve(struct gmk_protocol *p, const struct gmk_wire_io *io) {
             break;
         case 15:
             if (!p->info_valid || !p->request_valid || in[0] != p->rpc_id) goto fail;
+            if (p->rpc_id == 17 && p->split_command && p->request_size == 32 && p->response_size == 32) {
+                p->split_command(p->request, p->response);
+            }
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE
             if (p->rpc_id == 18) {
                 if (p->request_size != 32 || p->response_size != 32 || !p->update) goto fail;
                 /* The registered callback only queues work / reads its cached
                  * response. Flash operations MUST execute outside this thread. */
                 p->update(p->request, p->response);
             }
+#endif
             p->request_valid  = false;
             p->response_valid = true;
             break;
@@ -106,8 +119,8 @@ static bool transaction(const struct gmk_wire_io *io, uint8_t id, const uint8_t 
     io->clear(io->ctx);
     return io->write(io->ctx, &id, 1) && io->read(io->ctx, &ack, 1) && ack == (id ^ 19) && (!ni || io->write(io->ctx, in, ni)) && (!no || io->read(io->ctx, out, no));
 }
-bool gmk_protocol_update(const struct gmk_wire_io *io, const uint8_t in[32], uint8_t out[32]) {
-    uint8_t info[4] = {0, 18, 32, 32}, id = 18, response[32] = {0};
+static bool rpc(const struct gmk_wire_io *io, uint8_t id, const uint8_t in[32], uint8_t out[32]) {
+    uint8_t info[4] = {0, id, 32, 32}, response[32] = {0};
     memset(out, 0, 32);
     info[0] = gmk_wire_crc8(info + 1, 3);
     if (!transaction(io, 13, info, 4, NULL, 0) || !transaction(io, 14, in, 32, NULL, 0) || !transaction(io, 15, &id, 1, NULL, 0) || !transaction(io, 16, NULL, 0, response, 32)) {
@@ -116,6 +129,14 @@ bool gmk_protocol_update(const struct gmk_wire_io *io, const uint8_t in[32], uin
     }
     memcpy(out, response, 32);
     return true;
+}
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE
+bool gmk_protocol_update(const struct gmk_wire_io *io, const uint8_t in[32], uint8_t out[32]) {
+    return rpc(io, 18, in, out);
+}
+#endif
+bool gmk_protocol_split_command(const struct gmk_wire_io *io, const uint8_t in[32], uint8_t out[32]) {
+    return rpc(io, 17, in, out);
 }
 bool gmk_protocol_lighting(const struct gmk_wire_io *io, const uint8_t packet[16]) {
     return transaction(io, 11, packet, 16, NULL, 0);

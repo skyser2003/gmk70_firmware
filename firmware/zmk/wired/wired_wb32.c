@@ -17,6 +17,16 @@
 #include "wired.h"
 #include "wired_protocol.h"
 #include "encoder.h"
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
+#    include "native_update_wire.h"
+#endif
+#if defined(CONFIG_GMK70_NATIVE_UPDATE_WIRE) && defined(CONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE)
+#    include "native_update_bridge.h"
+static struct gmk_update_route update_route;
+#endif
+#ifdef CONFIG_GMK70_NATIVE_SPLIT
+#    include "split.h"
+#endif
 #include "../lighting/lighting.h"
 #include "gmk70_wired_pins.h"
 #include <soc.h>
@@ -53,6 +63,7 @@ static bool                        scan_idle, scan_irq_ready;
 static struct gmk_encoder          encoder;
 static struct gpio_callback        encoder_callback;
 static bool                        encoder_irq_ready;
+static bool                        encoder_ready;
 
 static struct wb32_gpio *port_of(struct gmk_wired_pin pin) {
     return (struct wb32_gpio *)(uintptr_t)(WB32_GPIOA_BASE + 0x400U * pin.port);
@@ -72,27 +83,20 @@ static void pin_mode(struct gmk_wired_pin pin, uint32_t mode, uint32_t pull) {
 static bool pin_read(struct gmk_wired_pin pin) {
     return (port_of(pin)->idr & (1U << pin.pin)) != 0;
 }
-static uint8_t encoder_pins(void) {
-    if (gmk_encoder_a.port == gmk_encoder_b.port) {
-        uint32_t pins = port_of(gmk_encoder_a)->idr;
-        return ((pins >> gmk_encoder_a.pin) & 1U) | (((pins >> gmk_encoder_b.pin) & 1U) << 1);
-    }
-    return pin_read(gmk_encoder_a) | ((uint8_t)pin_read(gmk_encoder_b) << 1);
-}
 static void encoder_wake(const struct device *dev, struct gpio_callback *cb, gpio_port_pins_t pins) {
     ARG_UNUSED(dev);
     ARG_UNUSED(cb);
     ARG_UNUSED(pins);
-    gmk_encoder_sample(&encoder, encoder_pins());
+    gmk_encoder_sample(&encoder, gmk_native_encoder_sample());
     if (!initialized || !left || !gmk_split_available()) gmk_encoder_clear(&encoder);
 }
 static void encoder_init(void) {
     encoder_irq_ready = false;
+    encoder_ready     = false;
     if (!left) return; /* B6/B7 are a left-only device. */
-    pin_mode(gmk_encoder_a, 0, 1);
-    pin_mode(gmk_encoder_b, 0, 1);
-    k_busy_wait(100);
-    gmk_encoder_init(&encoder, encoder_pins(), GMK_ENCODER_RESOLUTION);
+    if (!gmk_native_encoder_init()) return;
+    encoder_ready = true;
+    gmk_encoder_init(&encoder, GMK_ENCODER_RESOLUTION);
     if (gmk_encoder_a.port >= ARRAY_SIZE(gpio_ports) || gmk_encoder_a.port != gmk_encoder_b.port) return;
     const struct device *dev = gpio_ports[gmk_encoder_a.port];
     gpio_init_callback(&encoder_callback, encoder_wake, BIT(gmk_encoder_a.pin) | BIT(gmk_encoder_b.pin));
@@ -107,8 +111,8 @@ static void encoder_init(void) {
 int gmk_wired_encoder_next(void) {
     unsigned key       = irq_lock();
     int      direction = 0;
-    if (initialized && left) {
-        if (!encoder_irq_ready) gmk_encoder_sample(&encoder, encoder_pins());
+    if (initialized && left && encoder_ready) {
+        if (!encoder_irq_ready) gmk_encoder_sample(&encoder, gmk_native_encoder_sample());
         if (gmk_split_available())
             direction = gmk_encoder_take(&encoder);
         else
@@ -271,7 +275,22 @@ bool gmk_wired_update(const uint8_t request[32], uint8_t response[32]) {
     memset(response, 0, 32);
     if (!gmk_wired_is_left() || !gmk_wired_mode() || k_is_in_isr()) return false;
     k_mutex_lock(&wired_lock, K_FOREVER);
+#if defined(CONFIG_GMK70_NATIVE_UPDATE_WIRE) && defined(CONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE)
+    bool ok = gmk_native_update_bridge_exchange(&master_wire, &update_route, request, response);
+#elif defined(CONFIG_GMK70_NATIVE_UPDATE_WIRE)
+    bool ok = gmk_native_update_exchange(&master_wire, request, response);
+#else
     bool ok = gmk_protocol_update(&master_wire, request, response);
+#endif
+    if (!ok) ++counters.failures;
+    k_mutex_unlock(&wired_lock);
+    return ok;
+}
+bool gmk_wired_split_command(const uint8_t request[32], uint8_t response[32]) {
+    memset(response, 0, 32);
+    if (!gmk_wired_is_left() || !gmk_split_available() || k_is_in_isr()) return false;
+    k_mutex_lock(&wired_lock, K_FOREVER);
+    bool ok = gmk_protocol_split_command(&master_wire, request, response);
     if (!ok) ++counters.failures;
     k_mutex_unlock(&wired_lock);
     return ok;
@@ -354,6 +373,12 @@ bool gmk_wired_try_get_stats(struct gmk_wired_stats *stats) {
     k_mutex_unlock(&wired_lock);
     return true;
 }
+static bool serve_one(void) {
+#ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
+    if (first == 'Z') return gmk_native_update_serve(&wire, protocol.update);
+#endif
+    return gmk_protocol_serve(&protocol, &wire);
+}
 static void serial_thread(void *a, void *b, void *c) {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
@@ -369,7 +394,7 @@ static void serial_thread(void *a, void *b, void *c) {
         deadline            = k_uptime_get() + GMK_WIRE_TIMEOUT_MS;
         have_first          = true;
         atomic_val_t errors = atomic_get(&rx_errors);
-        if (gmk_protocol_serve(&protocol, &wire) && errors == atomic_get(&rx_errors)) {
+        if (serve_one() && errors == atomic_get(&rx_errors)) {
             ++counters.transactions;
             have_last_rx = true;
             last_rx_seen = k_uptime_get_32();
@@ -384,6 +409,9 @@ static void serial_thread(void *a, void *b, void *c) {
 K_THREAD_DEFINE(gmk_serial_thread, 1536, serial_thread, NULL, NULL, NULL, 4, 0, 0);
 static int wired_init(void) {
     protocol.lighting = gmk_lighting_receive;
+#ifdef CONFIG_GMK70_NATIVE_SPLIT
+    protocol.split_command = gmk_native_split_receive;
+#endif
     sys_set_bits(WB32_RCC_BASE + 0x48, (1U << 15) | (1U << 14) | (1U << 7) | (1U << 6) | (1U << 5));
     pin_mode(gmk_role_pin, 0, 0);
     left = pin_read(gmk_role_pin);

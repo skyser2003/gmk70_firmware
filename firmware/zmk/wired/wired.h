@@ -15,6 +15,7 @@ bool gmk_split_available(void);
 void gmk_wired_set_update_handler(void (*handler)(const uint8_t[32], uint8_t[32]));
 /* Blocking worker-thread API. Never call in USB/IRQ callbacks or system workq. */
 bool gmk_wired_update(const uint8_t request[32], uint8_t response[32]);
+bool gmk_wired_split_command(const uint8_t request[32], uint8_t response[32]);
 bool gmk_wired_remote_matrix(uint16_t rows[5]);
 /* Scanner-facing APIs; local rows use 0..4 on either physical half. */
 void gmk_wired_scan(uint16_t rows[5]);

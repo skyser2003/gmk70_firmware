@@ -1,0 +1,24 @@
+{
+  "stack": "0x20006630",
+  "reset": "0x080078b1",
+  "bytes": 89308,
+  "ram_start": 536870976,
+  "ram_limit": 536899520,
+  "ram_capacity": 28544,
+  "ram_used": 28322,
+  "ram_unallocated": 222,
+  "application": "dependencies/zmk/app",
+  "board": "gmk70_wired",
+  "variant": "wired-studio-updater",
+  "load_address": 134225920,
+  "sha256": "50e1b919bccd6a9680f410f43f9125cc67541ba9061034722146d19eb745b3d5",
+  "image_end": 134315228,
+  "ram_end": 536899298,
+  "development": "EXPERIMENTAL unlocked",
+  "trial_backend": "absent",
+  "main_wrapper": "absent",
+  "runtime_roles": [
+    "left",
+    "right"
+  ]
+}

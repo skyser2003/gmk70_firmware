@@ -1,0 +1,3 @@
+description: GMK70 EC11 with runtime handedness and deferred LEFT-only startup
+compatible: "zuoya,gmk70-ec11"
+include: ["alps,ec11.yaml", "base.yaml"]

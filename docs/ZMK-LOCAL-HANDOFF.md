@@ -1,5 +1,56 @@
 # Local continuation: updater-preserving ZMK development
 
+## Native updater framing — 2026-11-02
+
+[Native ZMK updater frames](ZMK-NATIVE-UPDATER-WIRE.md) now carry the relay.
+Both halves run the same canonical 89,308-byte application, CRC32 599821369;
+both residents remain 1770733249. The final RIGHT firmware transfer was sent by
+native-only LEFT, whose ELF excludes legacy updater RPC18. Matrix/RGB and
+behavior RPC17 retain their board transport. One explicit bridge artifact remains
+available for migrations to older applications.
+
+Four distinct image/target INSTALLs migrated LEFT bridge, RIGHT bridge, LEFT
+canonical, RIGHT canonical. Both halves stayed joined to LEFT USB; no manual
+cycle, right-only USB or pads were needed. All four layers and 296 saved Studio
+bindings were independently preserved after each step. RAM remains 28,322 /
+28,544 bytes, with 14,336 reserved stack bytes and 222 bytes unallocated.
+
+The first post-RIGHT-bridge health window was rejected; fresh diagnostic and
+strict checks passed. The final RIGHT INSTALL acknowledgement also failed strict
+validation, but **was not resent**. Independent INFO, a 70.203-second diagnostic,
+final 70.171-second both-half qualification and Studio verification proved that
+both canonical images run correctly. Exact cause of the acknowledgement mismatch
+is unresolved; see the [validation record](validation/2026-11-02-native-updater-wire/README.md).
+Source and sanitized validation are published together in a signed commit on
+`codex/zmk-native-integrations`. The exact reviewed predeployment tree/archive
+remains recorded there. The following checkpoints are historical.
+
+## Native encoder and split cores — 2026-11-02
+
+[Native ZMK integrations](ZMK-NATIVE-INTEGRATIONS.md) are installed on both joined
+halves: the same 88,424-byte application, CRC32 192780560. Each half received one
+INSTALL through LEFT USB and returned automatically, without cable reconnect or
+right-only recovery. Both resident CRCs remain 1770733249. All four saved Studio
+layers and 296 bindings are preserved; geometry and runtime metadata verify.
+
+The pre-flash Studio ELF reserves 28,322 / 28,544 RAM bytes, including unchanged
+14,336-byte stack reservations; 222 bytes remain unallocated. The native generic
+cores use the retained GMK70 wire framing for updater/RGB/legacy compatibility;
+this is not upstream UART transport or general GLOBAL behavior fan-out.
+
+The first post-RIGHT strict health window was rejected for an unrecorded
+counter/threshold condition. No flash/reset was repeated. An independent fresh
+70.203-second diagnostic and final 70.172-second strict both-half qualification
+then passed with exact identities and zero retries/reconnects/feeds. Hardware
+stack peaks and physical knob/key/RGB actuation remain unmeasured. See the
+[validation record](validation/2026-11-02-native-zmk/README.md).
+
+At this checkpoint, source changes were uncommitted because noninteractive
+signing could not use the user's key. The exact reviewed source tree and archive
+are recorded in validation; publication now includes the subsequent native
+updater framing in the signed branch commit described above.
+The following checkpoints are historical.
+
 ## Universal full-featured ZMK — 2026-10-30
 
 [One common application](ZMK-UNIVERSAL.md) is installed on both halves:

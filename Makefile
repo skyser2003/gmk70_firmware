@@ -64,6 +64,10 @@ test-zmk:
 	bash ./tests/zmk/run_usb_dc_tests.sh
 	bash ./tests/zmk/run_soc_clock_tests.sh
 	bash ./tests/zmk/run_wired_tests.sh
+	bash ./tests/zmk/run_native_encoder_tests.sh
+	bash ./tests/zmk/run_native_split_tests.sh
+	bash ./tests/zmk/run_native_update_wire_tests.sh
+	bash ./tests/zmk/run_native_update_wb32_tests.sh
 	bash ./tests/zmk/run_update_platform_tests.sh
 	bash ./tests/zmk/run_receiver_tests.sh
 	bash ./tests/zmk/run_studio_settings_tests.sh
@@ -99,6 +103,9 @@ build-zmk-wired-qualification:
 
 build-zmk-wired-studio-updater:
 	bash ./scripts/build_zmk.sh wired-studio-updater
+build-zmk-wired-studio-native-bridge:
+	bash ./scripts/build_zmk.sh wired-studio-native-bridge
+.PHONY: build-zmk-wired-studio-native-bridge
 build-zmk-wired-studio-update-test:
 	bash ./scripts/build_zmk.sh wired-studio-update-test
 build-zmk-wired-studio-radio-qualification:

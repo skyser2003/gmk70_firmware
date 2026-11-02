@@ -139,6 +139,22 @@ class ZmkPackageTests(unittest.TestCase):
             }
             report.write_text(json.dumps(checked))
             build(image, resident, report, root / "universal")
+            report.write_text(
+                json.dumps(checked | {"variant": "wired-studio-native-bridge"})
+            )
+            build(image, resident, report, root / "native-bridge")
+            self.assertEqual(
+                Package.load(root / "native-bridge").manifest["profile"],
+                "zmk-studio-universal",
+            )
+            report.write_text(
+                json.dumps(
+                    checked
+                    | {"variant": "wired-studio-native-bridge", "runtime_roles": None}
+                )
+            )
+            with self.assertRaises(ValueError):
+                build(image, resident, report, root / "invalid-bridge")
             self.assertEqual(
                 Package.load(root / "universal").manifest["profile"],
                 "zmk-studio-universal",
