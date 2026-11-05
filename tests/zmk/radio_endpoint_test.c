@@ -158,7 +158,21 @@ static void internal_endpoint_clear_releases_radio_through_hid_wrappers(void) {
     assert(!reports[0].consumer && memcmp(reports[0].keyboard, zero, sizeof(zero)) == 0);
     assert(reports[1].consumer && reports[1].usage == 0);
     gmk_radio_clear_hid();
-    assert(report_count == 4 && endpoint_fixture_native_calls() == 4);
+    assert(report_count == 4 && endpoint_fixture_native_calls() == 2);
+}
+static void radio_profile_clear_does_not_send_to_usb(void) {
+    reset(true);
+    zmk_hid_get_keyboard_report()->body.modifiers = 3;
+    zmk_hid_get_keyboard_report()->body.keys[0]   = 4;
+    zmk_hid_get_consumer_report()->body.keys[0]   = 0x234;
+    /* Native USB can have a pending transfer or a sleeping host while the
+     * radio carries typing. It must not delay a radio-to-radio clear. */
+    endpoint_fixture_set_result(-EAGAIN);
+    gmk_radio_clear_hid();
+    const uint8_t zero[8] = {0};
+    assert(endpoint_fixture_native_calls() == 0 && report_count == 2);
+    assert(!reports[0].consumer && memcmp(reports[0].keyboard, zero, sizeof(zero)) == 0);
+    assert(reports[1].consumer && reports[1].usage == 0);
 }
 static void usb_clear_keeps_native_dispatch_and_releases_radio(void) {
     reset(false);
@@ -178,6 +192,7 @@ int main(void) {
     keyboard_fast_tap_is_snapshotted_before_release();
     consumer_selects_first_held_usage_and_restores_next();
     internal_endpoint_clear_releases_radio_through_hid_wrappers();
+    radio_profile_clear_does_not_send_to_usb();
     usb_clear_keeps_native_dispatch_and_releases_radio();
     puts("Radio endpoint: native USB, immutable fast taps, consumer arbitration and internal clear boundaries passed");
     return 0;

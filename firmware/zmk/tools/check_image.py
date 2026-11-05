@@ -448,6 +448,36 @@ def validate_permanent_symbols(symbols: set[str]) -> None:
         )
 
 
+def validate_basic_parity_linking(symbols: set[str]) -> None:
+    if "gmk_controls_poll" not in symbols:
+        return
+    required = {
+        "gmk_controls_project_modifiers",
+        "gmk_power_poll",
+        "gmk_power_receive",
+        "gmk_power_core_decide",
+        "gmk_power_coordinator_step",
+        "__wrap_zmk_pm_suspend_devices",
+        "__wrap_zmk_pm_resume_devices",
+        "__wrap_zmk_pm_soft_off",
+        "__wrap_zmk_usb_get_conn_state",
+        "zmk_pm_suspend_devices",
+        "z_sys_poweroff",
+        "wb32_stop_hardware",
+        "gmk_wired_power_prepare",
+        "gmk_lighting_power_quiesce",
+        "usb_dc_wakeup_request",
+        "__wrap_zmk_endpoint_send_mouse_report",
+        "gmk_recovery_startup_poll",
+        "__wrap_zmk_settings_erase",
+        "__wrap_raise_zmk_activity_state_changed",
+    }
+    if missing := required - symbols:
+        raise ValueError(f"Missing native basic-feature integration: {sorted(missing)}")
+    if "input_thread_id" in symbols:
+        raise ValueError("Pointing must use synchronous input without another stack")
+
+
 def check_wired(
     elf: Path, image: Path, variant: str | None
 ) -> dict[str, str | int | list[str]]:
@@ -503,6 +533,7 @@ def check_wired(
         if name not in symbols:
             raise ValueError(f"Missing native ZMK wired symbol {name}")
     validate_permanent_symbols(set(symbols))
+    validate_basic_parity_linking(set(symbols))
     if "__wrap_main" in symbols:
         raise ValueError("Permanent/qualification wired target must not wrap main")
     if not qualification and "gmk_trial_packet_valid" not in symbols:

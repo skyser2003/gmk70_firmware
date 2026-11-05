@@ -18,10 +18,13 @@ struct k_msgq {
 #define K_MUTEX_DEFINE(name) struct k_mutex name
 #define K_MSGQ_DEFINE(name, size, count, align) struct k_msgq name
 #define K_THREAD_DEFINE(name, stack, fn, a, b, c, prio, opts, delay) static void *const name __attribute__((used)) = (void *)&fn
-extern int64_t    fake_ms;
-int               k_msgq_get(struct k_msgq *, void *, int);
-int               k_msgq_put(struct k_msgq *, const void *, int);
-void              k_msgq_purge(struct k_msgq *);
+extern int64_t         fake_ms;
+int                    k_msgq_get(struct k_msgq *, void *, int);
+int                    k_msgq_put(struct k_msgq *, const void *, int);
+void                   k_msgq_purge(struct k_msgq *);
+static inline uint32_t k_msgq_num_used_get(struct k_msgq *queue) {
+    return queue->count;
+}
 static inline int k_mutex_lock(struct k_mutex *m, int timeout) {
     if (timeout == K_NO_WAIT && m->locked) return -EBUSY;
     ++m->locked;

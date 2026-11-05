@@ -6,6 +6,11 @@ if(CONFIG_GMK70_WB32_RGB)
   zephyr_library_sources_ifdef(CONFIG_GMK70_BATTERY battery_view.c behavior_battery.c)
   zephyr_library_sources_ifdef(CONFIG_GMK70_BATTERY ../../qmk-common/keyboards/zuoya/gmk70/battery_holds.c)
   zephyr_ld_options(-Wl,--wrap=zmk_rgb_underglow_set_hsb)
+  if(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE)
+    zephyr_ld_options(-Wl,--wrap=raise_zmk_activity_state_changed
+      -Wl,--wrap=zmk_rgb_underglow_on -Wl,--wrap=zmk_rgb_underglow_off
+      -Wl,--wrap=zmk_rgb_underglow_toggle)
+  endif()
   if(CONFIG_GMK70_ZMK_STUDIO_SETTINGS)
     zephyr_library_include_directories(../update ../../qmk-common/keyboards/zuoya/gmk70/update)
     zephyr_ld_options(-Wl,--wrap=settings_save_one)

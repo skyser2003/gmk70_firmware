@@ -3,6 +3,9 @@
 #include "battery_fixture.h"
 
 static struct gmk_radio_core radio;
+void                         gmk_radio_charger_state(bool cable, bool full) {
+    gmk_radio_core_charger(&radio, cable, full);
+}
 
 void gmk_radio_notification(uint8_t command, uint8_t value) {
     gmk_radio_core_notification(&radio, command, value);
@@ -17,7 +20,7 @@ void gmk_radio_sent(uint32_t now, bool success) {
     gmk_radio_core_sent(&radio, now, success);
 }
 bool gmk_radio_control_busy(void) {
-    return radio.waiting || radio.pending_select || radio.pending_pair || radio.inflight == GMK_RADIO_TX_SELECT || radio.inflight == GMK_RADIO_TX_PAIR;
+    return gmk_radio_core_control_busy(&radio);
 }
 static void reset_radio(void) {
     reset_model(true);
@@ -26,6 +29,49 @@ static void reset_radio(void) {
 static void ack(void) {
     const uint8_t bytes[] = {0x61, 0x0d, 0x0a};
     feed(bytes, sizeof(bytes));
+}
+static void test_charging_updates_the_module_without_restarting(void) {
+    reset_radio();
+    gpio_registers[0][0x10 / 4] = 1U << 7;
+    gmk_battery_poll();
+    const uint8_t usb[] = {0xa6, 0x11, 0xb7};
+    assert(tx_count == 3 && !memcmp(tx, usb, sizeof(usb)));
+    ack();
+    battery_test_time = 5500;
+    gmk_battery_poll();
+    const uint8_t charging[] = {0xa6, 0x64, 0x0a};
+    assert(tx_count == 6 && !memcmp(tx + 3, charging, sizeof(charging)));
+    ack(); /* The charge control owns its ACK before a battery query starts. */
+    const uint8_t query[] = {0xa6, 0x53, 0xf9};
+    assert(tx_count == 9 && !memcmp(tx + 6, query, sizeof(query)));
+    ack();
+    ack(); /* Drain the query cycle that became overdue during USB quiet time. */
+    const uint8_t low[] = {0x5c, 3, 0x5f};
+    feed(low, sizeof(low));
+    assert(snapshot().valid && snapshot().percentage == 3);
+    battery_test_time = 6500;
+    size_t before     = tx_count;
+    gmk_battery_poll();
+    assert(tx_count == before + 3 && !memcmp(tx + before, charging, sizeof(charging)));
+    ack();
+    const uint8_t increased[] = {0x5c, 67, 0x9f};
+    feed(increased, sizeof(increased));
+    struct sensor_value value;
+    assert(snapshot().percentage == 67 && !battery_channel_get(NULL, SENSOR_CHAN_GAUGE_STATE_OF_CHARGE, &value));
+    assert(value.val1 == 67 && value.val2 == 0);
+    gpio_registers[0][0x10 / 4] |= 1U << 15;
+    before = tx_count;
+    gmk_battery_poll();
+    const uint8_t full[] = {0xa6, 0x66, 0x0c};
+    assert(tx_count == before + 3 && !memcmp(tx + before, full, sizeof(full)));
+    ack();
+    gpio_registers[0][0x10 / 4] = 0;
+    before                      = tx_count;
+    gmk_battery_poll();
+    const uint8_t stopped[] = {0xa6, 0x65, 0x0b};
+    assert(tx_count == before + 3 && !memcmp(tx + before, stopped, sizeof(stopped)));
+    ack();
+    assert(!snapshot().cable && !snapshot().full && snapshot().percentage == 67);
 }
 static void expect_bytes(size_t offset, const uint8_t *expected, size_t length) {
     if (tx_count < offset + length) fprintf(stderr, "UART fixture is short at offset %zu: expected %zu bytes, have %zu\n", offset, length, tx_count);
@@ -48,25 +94,29 @@ static void test_select_then_query_ack_ownership(void) {
     gmk_battery_poll();
     assert(tx_count == 3 && snapshot().queries == 0);
     ack();
+    const uint8_t stopped[] = {0xa6, 0x65, 0x0b};
+    expect_bytes(3, stopped, sizeof(stopped));
+    assert(tx_count == 6 && radio.waiting && !state.waiting_ack);
+    ack();
     const uint8_t query[] = {0xa6, 0x53, 0xf9};
-    expect_bytes(3, query, sizeof(query));
+    expect_bytes(6, query, sizeof(query));
     assert(snapshot().queries == 1 && !radio.waiting && state.waiting_ack);
     assert(gmk_radio_core_select(&radio, GMK_HOST_BT2, false) == 0);
     gmk_battery_poll();
-    assert(tx_count == 6); /* Battery ACK must precede the next acknowledged control. */
+    assert(tx_count == 9); /* Battery ACK must precede the next acknowledged control. */
     ack();
     const uint8_t release_keyboard[]   = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1};
     const uint8_t release_consumer[]   = {0xa3, 0, 0, 0xa3};
     const uint8_t release_overflow[16] = {0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa2};
-    expect_bytes(6, release_keyboard, sizeof(release_keyboard));
+    expect_bytes(9, release_keyboard, sizeof(release_keyboard));
     assert(!state.waiting_ack && !radio.waiting);
     gmk_battery_poll();
-    expect_bytes(16, release_overflow, sizeof(release_overflow));
+    expect_bytes(19, release_overflow, sizeof(release_overflow));
     gmk_battery_poll();
-    expect_bytes(32, release_consumer, sizeof(release_consumer));
+    expect_bytes(35, release_consumer, sizeof(release_consumer));
     gmk_battery_poll();
     const uint8_t next_selection[] = {0xa6, 0x32, 0xd8};
-    expect_bytes(36, next_selection, sizeof(next_selection));
+    expect_bytes(39, next_selection, sizeof(next_selection));
     assert(!state.waiting_ack && radio.waiting && radio.active == GMK_HOST_BT2);
     ack();
     assert(!radio.waiting && snapshot().queries == 1);
@@ -87,12 +137,16 @@ static void test_control_early_ack_cannot_complete_partial_transmit(void) {
     assert(tx_count == 3 && radio.waiting);
     tx_allowance = UINT32_MAX;
     ack();
-    assert(tx_count == 6 && !radio.waiting && state.waiting_ack && snapshot().queries == 1);
+    assert(tx_count == 6 && radio.waiting && !state.waiting_ack && !snapshot().queries);
+    ack();
+    assert(tx_count == 9 && !radio.waiting && state.waiting_ack && snapshot().queries == 1);
 }
-static void connected(void) {
+static void connected_at(uint32_t now) {
     reset_radio();
+    battery_test_time = now;
     assert(gmk_radio_core_select(&radio, GMK_HOST_BT1, false) == 0);
     gmk_battery_poll();
+    ack();
     ack();
     ack();
     const uint8_t notification[] = {0x5b, 0x32, 0x8d};
@@ -102,6 +156,9 @@ static void connected(void) {
         gmk_battery_poll();
     assert(!radio.release && !radio.inflight && !radio.waiting && !state.waiting_ack);
     tx_count = 0;
+}
+static void connected(void) {
+    connected_at(0);
 }
 static void test_partial_keyboard_ack_between_frames(void) {
     for (unsigned allowance = 1; allowance <= 2; ++allowance) {
@@ -146,11 +203,14 @@ static void test_partial_timeout_does_not_complete_frame(void) {
     battery_test_time = 10;
     tx_allowance      = 0;
     gmk_battery_poll();
-    assert(radio.reports == reports && !radio.inflight && radio.faulted && radio.errors == 1 && snapshot().errors == 1);
+    assert(radio.reports == reports && radio.inflight == GMK_RADIO_TX_RELEASE_KEYBOARD && radio.faulted && radio.errors == 1 && snapshot().errors == 1);
     tx_allowance = UINT32_MAX;
     ++battery_test_time;
     gmk_battery_poll();
-    assert(tx_count == 2 && radio.reports == reports);
+    const uint8_t release[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1};
+    expect_bytes(2, release, sizeof(release));
+    assert(tx_count == 12 && radio.reports == reports + 1);
+    assert(gmk_radio_core_report(&radio, false, report) == -ENOTCONN);
 }
 static void test_nkro_overflow_is_immutable_during_partial_uart_transmit(void) {
     for (unsigned allowance = 1; allowance <= 2; ++allowance) {
@@ -195,10 +255,9 @@ static void test_ten_byte_budget_and_partial_timeout_wrap(void) {
     assert(tx_count == 10 && radio.count == 1);
     gmk_battery_poll();
     assert(tx_count == 20 && !radio.count);
-    connected();
+    connected_at(UINT32_MAX - 5);
     assert(gmk_radio_core_report(&radio, false, report) == 0);
-    battery_test_time = UINT32_MAX - 5;
-    tx_allowance      = 1;
+    tx_allowance = 1;
     gmk_battery_poll();
     uint32_t reports  = radio.reports;
     battery_test_time = 3;
@@ -207,7 +266,7 @@ static void test_ten_byte_budget_and_partial_timeout_wrap(void) {
     assert(tx_count == 1 && radio.inflight == GMK_RADIO_TX_KEYBOARD && radio.reports == reports);
     battery_test_time = 4;
     gmk_battery_poll();
-    assert(tx_count == 1 && radio.faulted && !radio.inflight && radio.reports == reports);
+    assert(tx_count == 1 && radio.faulted && radio.inflight == GMK_RADIO_TX_RELEASE_KEYBOARD && radio.reports == reports);
 }
 static void test_notifications_obey_checksum_raw_quarantine_and_errors(void) {
     connected();
@@ -244,7 +303,229 @@ static void test_notifications_obey_checksum_raw_quarantine_and_errors(void) {
     feed(connected_status, sizeof(connected_status));
     assert(radio.connection == GMK_RADIO_CONNECTED);
 }
+static void test_sleep_controls_never_lend_their_ack_to_battery_queries(void) {
+    reset_radio();
+    gmk_radio_core_enable_sleep(&radio);
+    assert(gmk_radio_core_select(&radio, GMK_HOST_BT1, false) == 0);
+    gmk_battery_poll();
+    tx_allowance = 1;
+    ack();
+    assert(tx_count == 4 && radio.inflight == GMK_RADIO_TX_SLEEP_BT);
+    tx_allowance = 1;
+    ack();
+    assert(tx_count == 5 && !radio.waiting && radio.sleep_pending == 3);
+    tx_allowance = 1;
+    gmk_battery_poll();
+    assert(tx_count == 6 && radio.waiting && snapshot().queries == 0);
+    tx_allowance      = UINT32_MAX;
+    battery_test_time = 10;
+    gmk_battery_poll();
+    const uint8_t bt[] = {0xa6, 0x55, 0xfb};
+    expect_bytes(3, bt, sizeof(bt));
+    expect_bytes(6, bt, sizeof(bt));
+    ack();
+    const uint8_t dongle[] = {0xa6, 0x57, 0xfd};
+    expect_bytes(9, dongle, sizeof(dongle));
+    assert(radio.waiting && !state.waiting_ack && snapshot().queries == 0);
+    ack();
+    const uint8_t stopped[] = {0xa6, 0x65, 0x0b};
+    expect_bytes(12, stopped, sizeof(stopped));
+    assert(radio.waiting && !state.waiting_ack);
+    ack();
+    const uint8_t query[] = {0xa6, 0x53, 0xf9};
+    expect_bytes(15, query, sizeof(query));
+    assert(!radio.sleep_pending && !radio.waiting && state.waiting_ack);
+}
+static void test_power_quiesce_drains_uart_then_suppresses_periodic_queries(void) {
+    reset_radio();
+    assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
+    gmk_battery_poll();
+    ack();
+    ack();
+    assert(!gmk_battery_idle() && !gmk_battery_power_quiesce(true));
+    ack();
+    tx_empty = false;
+    assert(!gmk_battery_idle() && !gmk_battery_power_quiesce(true));
+    tx_empty = true;
+    assert(gmk_battery_idle() && gmk_battery_power_quiesce(true));
+    unsigned reads = mmio_reads, writes = mmio_writes;
+    battery_test_time = 30000;
+    gmk_battery_poll();
+    assert(mmio_reads == reads && mmio_writes == writes);
+    assert(snapshot().queries == 1);
+    assert(gmk_battery_power_quiesce(false));
+    gmk_battery_poll();
+    ack(); /* Refresh charger state before the overdue query resumes. */
+    assert(snapshot().queries == 2);
+    reset_radio();
+    assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
+    gmk_battery_poll();
+    ack();
+    ack();
+    ack();
+    const uint8_t truncated[] = {0x5c};
+    feed(truncated, sizeof(truncated));
+    assert(!gmk_battery_idle() && !gmk_battery_power_quiesce(true));
+    reset_model(false);
+    reads = mmio_reads;
+    assert(gmk_battery_idle() && gmk_battery_power_quiesce(true));
+    assert(mmio_reads == reads);
+}
+static void test_partial_mouse_frame_keeps_snapshot_and_queued_release(void) {
+    connected();
+    uint8_t mouse[5] = {1, 2, 0xfe, 3, 0xfd};
+    assert(gmk_radio_core_mouse(&radio, mouse) == 0);
+    tx_allowance = 2;
+    gmk_battery_poll();
+    memset(mouse, 0, sizeof(mouse));
+    assert(gmk_radio_core_mouse(&radio, mouse) == 0);
+    const uint8_t reply[] = {0x5c, 67, 0x9f};
+    tx_allowance          = 2;
+    feed(reply, sizeof(reply));
+    tx_allowance = 32;
+    gmk_battery_poll();
+    const uint8_t pressed[] = {0xa8, 1, 2, 0xfe, 3, 0xfd, 0xa9};
+    expect_bytes(0, pressed, sizeof(pressed));
+    assert(tx_count == 7);
+    gmk_battery_poll();
+    const uint8_t acknowledgement[] = {0x61, 0x0d, 0x0a};
+    expect_bytes(7, acknowledgement, sizeof(acknowledgement));
+    gmk_battery_poll();
+    const uint8_t release[] = {0xa8, 0, 0, 0, 0, 0, 0xa8};
+    expect_bytes(10, release, sizeof(release));
+    assert(tx_count == 17 && !radio.count);
+}
+static void test_failed_controls_release_query_scheduler_and_allow_drained_sleep(void) {
+    reset_radio();
+    gmk_radio_core_enable_sleep(&radio);
+    assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
+    for (battery_test_time = 0; battery_test_time <= 2000; ++battery_test_time) {
+        gmk_battery_poll(); /* No module ACKs: each acknowledged command must finish its retry budget. */
+        if (radio.clear_requested) {
+            radio.clear_requested = false;
+            gmk_radio_core_release(&radio, false);
+            gmk_radio_core_release(&radio, true);
+            gmk_radio_core_release_mouse(&radio);
+        }
+    }
+    assert(radio.faulted && snapshot().queries > 0 && !gmk_radio_core_control_busy(&radio));
+    const uint8_t keyboard[8] = {0, 0, 4};
+    assert(gmk_radio_core_report(&radio, false, keyboard) == -ENOTCONN);
+    const uint8_t percentage[] = {0x5c, 67, 0x9f};
+    feed(percentage, sizeof(percentage));
+    assert(snapshot().valid && snapshot().percentage == 67);
+    assert(gmk_radio_core_idle(&radio) && gmk_battery_idle());
+    tx_empty = false;
+    assert(!gmk_battery_idle() && !gmk_battery_power_quiesce(true));
+    tx_empty                = true;
+    const uint8_t partial[] = {0x5c};
+    feed(partial, sizeof(partial));
+    assert(!gmk_battery_idle() && !gmk_battery_power_quiesce(true));
+    battery_test_time += 10;
+    gmk_battery_poll();
+    assert(gmk_radio_core_idle(&radio) && gmk_battery_idle() && gmk_battery_power_quiesce(true));
+    size_t before = tx_count;
+    battery_test_time += 10000;
+    gmk_battery_poll();
+    assert(tx_count == before);
+}
+static void test_usb_selection_allows_module_sleep_before_telemetry_resumes(void) {
+    reset_radio();
+    gpio_registers[0][0x10 / 4] = 1U << 7;
+    gmk_battery_poll();
+    const uint8_t usb[] = {0xa6, 0x11, 0xb7};
+    expect_bytes(0, usb, sizeof(usb));
+    ack();
+    assert(tx_count == 3 && !snapshot().queries && gmk_radio_core_control_busy(&radio));
+    for (battery_test_time = 1; battery_test_time < 5500; ++battery_test_time) {
+        gmk_battery_poll();
+        assert(tx_count == 3 && !snapshot().queries);
+    }
+    gmk_battery_poll();
+    const uint8_t charging[] = {0xa6, 0x64, 0x0a};
+    expect_bytes(3, charging, sizeof(charging));
+    ack();
+    const uint8_t query[] = {0xa6, 0x53, 0xf9};
+    expect_bytes(6, query, sizeof(query));
+    ack();
+    ack(); /* The original overdue query can be followed by the current query cycle. */
+    uint32_t queries = snapshot().queries;
+    assert(queries && !radio.waiting && !state.waiting_ack);
+    for (unsigned heartbeat = 1; heartbeat <= 11; ++heartbeat) {
+        battery_test_time = 5500 + heartbeat * 1000;
+        size_t before     = tx_count;
+        gmk_battery_poll();
+        expect_bytes(before, charging, sizeof(charging));
+        for (unsigned reply = 0; reply < 3 && (radio.waiting || state.waiting_ack); ++reply)
+            ack();
+        assert(!radio.waiting && !state.waiting_ack);
+    }
+    assert(snapshot().queries >= queries + 3);
+    const uint8_t increased[] = {0x5c, 67, 0x9f};
+    feed(increased, sizeof(increased));
+    assert(snapshot().valid && snapshot().percentage == 67);
+}
+static void test_module_acknowledgements_do_not_break_usb_quiet_interval(void) {
+    reset_radio();
+    gmk_battery_poll();
+    ack();
+    battery_test_time          = 1000;
+    const uint8_t percentage[] = {0x5c, 3, 0x5f};
+    feed(percentage, sizeof(percentage));
+    const uint8_t acknowledgement[] = {0x61, 0x0d, 0x0a};
+    expect_bytes(3, acknowledgement, sizeof(acknowledgement));
+    assert(tx_count == 6 && !snapshot().queries);
+    battery_test_time = 5499;
+    gmk_battery_poll();
+    assert(tx_count == 6 && !snapshot().queries);
+    battery_test_time = 5500;
+    gmk_battery_poll();
+    const uint8_t stopped[] = {0xa6, 0x65, 0x0b};
+    expect_bytes(6, stopped, sizeof(stopped));
+}
+static void test_connected_select_drains_late_ack_before_charger_and_query(void) {
+    reset_radio();
+    assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
+    gmk_battery_poll();
+    const uint8_t first[] = {0xa6, 0x31, 0xd7}, connected[] = {0x5b, 0x32, 0x8d};
+    expect_bytes(0, first, sizeof(first));
+    battery_test_time = 1;
+    feed(connected, sizeof(connected));
+    gmk_battery_poll(); /* Finish the status ACK, then retire the missing SELECT ACK. */
+    assert(tx_count == 6 && !state.waiting_ack && gmk_radio_core_control_busy(&radio));
+    battery_test_time = 19;
+    ack();
+    assert(tx_count == 6 && !state.waiting_ack);
+    battery_test_time = 20;
+    gmk_battery_poll();
+    assert(tx_count == 6 && !snapshot().queries);
+    battery_test_time = 21;
+    for (unsigned frame = 0; frame < 4; ++frame)
+        gmk_battery_poll();
+    const uint8_t stopped[] = {0xa6, 0x65, 0x0b};
+    expect_bytes(36, stopped, sizeof(stopped));
+    assert(radio.waiting && !state.waiting_ack && !snapshot().queries && !radio.faulted);
+    battery_test_time = 30;
+    gmk_battery_poll();
+    assert(radio.waiting && !state.waiting_ack && tx_count == 39);
+    ack(); /* Only this new ACK can complete the charger and start the query. */
+    const uint8_t query[] = {0xa6, 0x53, 0xf9};
+    expect_bytes(39, query, sizeof(query));
+    assert(!radio.waiting && state.waiting_ack && snapshot().queries == 1);
+    ack();
+    const uint8_t key[8] = {0, 0, 4};
+    assert(!gmk_radio_core_report(&radio, false, key));
+    size_t before = tx_count;
+    gmk_battery_poll();
+    const uint8_t down[] = {0xa1, 0, 0, 4, 0, 0, 0, 0, 0, 0xa5};
+    expect_bytes(before, down, sizeof(down));
+}
 int main(void) {
+    test_connected_select_drains_late_ack_before_charger_and_query();
+    test_usb_selection_allows_module_sleep_before_telemetry_resumes();
+    test_module_acknowledgements_do_not_break_usb_quiet_interval();
+    test_failed_controls_release_query_scheduler_and_allow_drained_sleep();
+    test_charging_updates_the_module_without_restarting();
     test_select_then_query_ack_ownership();
     test_control_early_ack_cannot_complete_partial_transmit();
     test_partial_keyboard_ack_between_frames();
@@ -252,6 +533,9 @@ int main(void) {
     test_partial_timeout_does_not_complete_frame();
     test_ten_byte_budget_and_partial_timeout_wrap();
     test_notifications_obey_checksum_raw_quarantine_and_errors();
+    test_sleep_controls_never_lend_their_ack_to_battery_queries();
+    test_power_quiesce_drains_uart_then_suppresses_periodic_queries();
+    test_partial_mouse_frame_keeps_snapshot_and_queued_release();
     puts("Battery/radio UART: real-core serialization, ACK ownership, partial TX, parser quarantine and faults passed");
     return 0;
 }

@@ -7,6 +7,9 @@
 #include "wired.h"
 #include "virtual_keys.h"
 #include "../../lighting/lighting.h"
+#ifdef CONFIG_GMK70_RECOVERY
+#    include "../../recovery/recovery.h"
+#endif
 
 struct gmk_kscan_data {
     kscan_callback_t callback;
@@ -67,6 +70,9 @@ static void scan_once(void) {
     uint16_t rows[10] = {0};
     unsigned offset   = gmk_wired_is_left() ? 0 : 5;
     gmk_wired_scan(rows + offset);
+#ifdef CONFIG_GMK70_RECOVERY
+    gmk_recovery_startup_poll(rows + offset);
+#endif
     if (gmk_wired_is_left()) {
         gmk_wired_poll();
         gmk_wired_remote_matrix(rows + 5);

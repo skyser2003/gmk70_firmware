@@ -39,7 +39,7 @@ struct battery_state {
     struct gmk_radio_frame radio_frame;
 #endif
     uint8_t tx_offset, acknowledgements;
-    bool    initialized, have_cycle, waiting_ack, retry_used, query_pending;
+    bool    initialized, have_cycle, waiting_ack, retry_used, query_pending, quiesced;
 };
 static struct battery_state state;
 static struct {
@@ -74,6 +74,20 @@ void gmk_battery_get(struct gmk_battery_status *out) {
     k_spin_unlock(&cache_lock, key);
     out->age_ms = out->valid || out->replies ? k_uptime_get_32() - sample_ms : UINT32_MAX;
     out->valid  = out->valid && out->age_ms <= BATTERY_FRESH_MS;
+}
+bool gmk_battery_idle(void) {
+    if (!state.initialized || !gmk_wired_is_left()) return true;
+    if (state.transmitting != BATTERY_TX_NONE || state.waiting_ack || state.acknowledgements || state.parser.count) return false;
+    /* LSR.TEMT includes the physical shift register; FIFO admission alone does
+     * not establish that the last byte has left the module's UART wire. */
+    uint32_t status = sys_read32(BATTERY_UART_BASE + 0x14);
+    return (status & 0x40U) != 0 && (status & 0x9fU) == 0;
+}
+bool gmk_battery_power_quiesce(bool enabled) {
+    if (enabled && !gmk_battery_idle()) return false;
+    state.quiesced = enabled;
+    if (enabled) state.query_pending = false;
+    return true;
 }
 
 static bool recognized(uint8_t byte) {
@@ -272,11 +286,14 @@ static void transmit(uint32_t now) {
     state.transmitting = BATTERY_TX_NONE;
 }
 void gmk_battery_poll(void) {
-    if (!state.initialized || !gmk_wired_is_left()) return;
+    if (!state.initialized || !gmk_wired_is_left() || state.quiesced) return;
     uint32_t now       = k_uptime_get_32();
     uint32_t pins      = sys_read32(WB32_GPIOA_BASE + 0x10);
     state.status.cable = (pins & (1U << 7)) != 0;
     state.status.full  = state.status.cable && (pins & (1U << 15)) != 0;
+#ifdef CONFIG_GMK70_RADIO
+    gmk_radio_charger_state(state.status.cable, state.status.full);
+#endif
     drain_rx(now);
     if (state.status.valid && (uint32_t)(now - state.sample_ms) > BATTERY_FRESH_MS) state.status.valid = false;
     schedule_query(now);

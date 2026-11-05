@@ -107,8 +107,8 @@ class VialToZmkTests(unittest.TestCase):
             (0x7849, Binding("rgb_ug", (7, 0))),
             ("USER27", Binding("gmk_battery", (0,))),
             (0x7E07, Binding("gmk_battery", (1,))),
-            ("GMK70_WINDOWS_MODE", Binding("to", (0,))),
-            ("GMK70_MAC_MODE", Binding("to", (2,))),
+            ("GMK70_WINDOWS_MODE", Binding("gmk_controls", (3,))),
+            ("GMK70_MAC_MODE", Binding("gmk_controls", (4,))),
             ("GMK70_RGB_TOGGLE", Binding("rgb_ug", (0, 0))),
         )
         for keycode, expected in cases:
@@ -215,13 +215,31 @@ class VialToZmkTests(unittest.TestCase):
         self.assertFalse(converted.ready)
         self.assertEqual(converted.issues[0].disposition, IssueDisposition.UNRESOLVED)
 
-    def test_settings_reset_and_unimplemented_controls_are_reported_by_category(
+    def test_native_controls_preserve_qmk_enable_and_lock_semantics(self) -> None:
+        cases: tuple[tuple[str, Binding], ...] = (
+            ("GU_TOGG", Binding("gmk_controls", (0,))),
+            ("GU_ON", Binding("gmk_controls", (2,))),
+            ("GU_OFF", Binding("gmk_controls", (1,))),
+            ("STOCK_USB_SLEEP_OFF", Binding("gmk_controls", (8,))),
+            ("STOCK_USB_SLEEP_ON", Binding("gmk_controls", (7,))),
+            ("STOCK_USB_SLEEP_TOGGLE", Binding("gmk_controls", (6,))),
+            ("QK_CLEAR_EEPROM", Binding("gmk_recovery", (3,))),
+        )
+        for keycode, expected in cases:
+            with self.subTest(keycode=keycode):
+                self.assertEqual(self.converter.translate(keycode, 4), expected)
+
+    def test_unavailable_native_system_report_page_is_rejected(self) -> None:
+        for keycode in ("KC_SYSTEM_POWER", "KC_SYSTEM_SLEEP", "KC_SYSTEM_WAKE"):
+            with self.subTest(keycode=keycode):
+                with self.assertRaises(UnsupportedKeycode) as raised:
+                    self.converter.translate(keycode, 4)
+                self.assertEqual(raised.exception.category, IssueCategory.UNSUPPORTED)
+
+    def test_unimplemented_controls_are_reported_by_category(
         self,
     ) -> None:
         cases: tuple[tuple[JsonValue, IssueCategory], ...] = (
-            ("QK_CLEAR_EEPROM", IssueCategory.SETTINGS_RESET),
-            ("GU_TOGG", IssueCategory.GUI_LOCK),
-            ("STOCK_USB_SLEEP_TOGGLE", IssueCategory.SLEEP),
             ("RL_MOD", IssueCategory.LIGHTING),
             ("STOCK_RESERVED_19", IssueCategory.RESERVED),
             ("DF(2)", IssueCategory.LAYER_SEMANTICS),

@@ -24,8 +24,8 @@ ZMK_LISTENER(gmk_battery_release, position_released);
 ZMK_SUBSCRIPTION(gmk_battery_release, zmk_position_state_changed);
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 static const struct behavior_parameter_value_metadata values[] = {
-    {.display_name = "Hold to show battery level", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK_BATTERY_LEVEL},
-    {.display_name = "Hold to show charging status", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK_BATTERY_CHARGING},
+    {.display_name = "Battery (hold)", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK_BATTERY_LEVEL},
+    {.display_name = "Charging (hold)", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK_BATTERY_CHARGING},
 };
 static const struct behavior_parameter_metadata_set sets[]   = {{.param1_values = values, .param1_values_len = ARRAY_SIZE(values)}};
 static const struct behavior_parameter_metadata     metadata = {.sets_len = ARRAY_SIZE(sets), .sets = sets};

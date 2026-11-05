@@ -4,6 +4,7 @@
 #include "quantum.h"
 #include "wireless.h"
 #include "util.h"
+#include "wb32_stop.h"
 
 #ifndef LPWR_UART_WAKEUP_DISABLE
 #    include "uart.h"
@@ -23,14 +24,6 @@ static const ioline_t right_col_pins[MATRIX_COLS] = MATRIX_COL_PINS_RIGHT;
 #if !((DIODE_DIRECTION == ROW2COL) || (DIODE_DIRECTION == COL2ROW))
 #    error DIODE_DIRECTION must be one of COL2ROW or ROW2COL!
 #endif
-
-// clang-format off
-static const uint32_t pre_lp_code[] = {553863175u, 554459777u, 1208378049u, 4026624001u, 688390415u, 554227969u, 3204472833u, 1198571264u, 1073807360u, 1073808388u};
-#define PRE_LP() ((void (*)(void))((uintptr_t)(pre_lp_code) | 0x01))()
-
-static const uint32_t post_lp_code[] = {553863177u, 554459777u, 1208509121u, 51443856u, 4026550535u, 1745485839u, 3489677954u, 536895496u, 673389632u, 1198578684u, 1073807360u, 536866816u, 1073808388u};
-#define POST_LP() ((void (*)(void))((uintptr_t)(post_lp_code) | 0x01))()
-// clang-format on
 
 extern void __early_init(void);
 extern void matrix_init_pins(void);
@@ -234,32 +227,7 @@ bool lpwr_stop_pending(void) {
 }
 
 void wb32_stop_mode(void) {
-    SysTick->CTRL &= ~SysTick_CTRL_ENABLE_Msk;
-    SCB->ICSR |= SCB_ICSR_PENDSTCLR_Msk;
-    // Keep EXTI/NVIC wake requests that arrived since arming. With PRIMASK set,
-    // a pending enabled IRQ still releases WFI and runs after chSysEnable.
-
-    /* Clear all bits except DBP and FCLKSD bit */
-    PWR->CR0 &= 0x09U;
-
-    // STOP LP4 MODE S32KON
-    PWR->CR0 |= 0x3B004U;
-    PWR->CFGR = 0x3B3;
-
-    PRE_LP();
-
-    /* Set SLEEPDEEP bit of Cortex System Control Register */
-    SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
-
-    /* Request Wait For Interrupt */
-    __WFI();
-
-    POST_LP();
-
-    /* Clear SLEEPDEEP bit of Cortex System Control Register */
-    SCB->SCR &= (~SCB_SCR_SLEEPDEEP_Msk);
-
-    SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk;
+    wb32_stop_hardware();
 }
 
 void mcu_stop_mode(void) {

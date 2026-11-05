@@ -16,7 +16,27 @@ static bool                           inject_release;
 static struct zmk_hid_keyboard_report keyboard;
 static struct zmk_hid_consumer_report consumer;
 static uint8_t                        explicit_mods;
-bool                                  gmk_wired_is_left(void) {
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+static bool ids_confirmed = true;
+bool        gmk_zmk_settings_ids_ready(void) {
+    return ids_confirmed;
+}
+#endif
+#ifdef CONFIG_GMK70_CONTROLS
+static uint8_t  controls_selected, controls_connection, controls_leds;
+static unsigned controls_led_updates;
+void            gmk_controls_radio_state(uint8_t selected, uint8_t connection) {
+    assert(!radio_test_locked);
+    controls_selected   = selected;
+    controls_connection = connection;
+}
+void gmk_controls_radio_leds(uint8_t leds) {
+    assert(!radio_test_locked && controls_selected == core.selected && controls_connection == GMK_RADIO_CONNECTED);
+    controls_leds = leds;
+    ++controls_led_updates;
+}
+#endif
+bool gmk_wired_is_left(void) {
     return left;
 }
 uint8_t gmk_host_switch(void) {
@@ -296,6 +316,124 @@ static void status_waits_while_control_retry_is_being_transmitted(void) {
     gmk_radio_get(&status);
     assert(status.waiting && gmk_radio_control_busy());
 }
+static void power_quiesce_requires_drained_reports_and_blocks_new_work(void) {
+    start(true);
+    assert(!gmk_radio_idle() && !gmk_radio_power_quiesce(true));
+    connect_radio();
+    const uint8_t keyboard_report[8] = {0, 0, 4};
+    assert(gmk_radio_submit_keyboard(keyboard_report) == 0);
+    assert(!gmk_radio_idle() && !gmk_radio_power_quiesce(true));
+    settle();
+    assert(gmk_radio_idle() && gmk_radio_power_quiesce(true));
+    assert(gmk_radio_submit_keyboard(keyboard_report) == -EBUSY);
+    assert(gmk_radio_select(3, false) == -EBUSY);
+    assert(gmk_radio_hold(3, 9) == -EBUSY);
+    assert(gmk_radio_power_quiesce(false));
+    assert(gmk_radio_submit_keyboard(keyboard_report) == 0);
+    start(false);
+    assert(gmk_radio_idle() && gmk_radio_power_quiesce(true));
+}
+static void restoring_bt_slot_does_not_select_or_transmit(void) {
+    start(true);
+    assert(gmk_radio_restore_last_bt(0) == -EINVAL);
+    assert(gmk_radio_restore_last_bt(6) == -EINVAL);
+    assert(gmk_radio_restore_last_bt(5) == 0);
+    assert(gmk_radio_last_bt() == 5 && core.selected == GMK_HOST_USB);
+    connect_radio();
+    assert(gmk_radio_last_bt() == 2);
+}
+static void slider_stable(uint8_t raw) {
+    physical_raw = raw;
+    gmk_radio_poll();
+    run_work();
+    radio_test_time += 50;
+    gmk_radio_poll();
+    run_work();
+}
+static void slider_send_select(uint8_t command) {
+    struct gmk_radio_frame frame;
+    for (unsigned count = 0; count < 6; ++count) {
+        assert(gmk_radio_next(radio_test_time, &frame));
+        gmk_radio_sent(radio_test_time, true);
+        if (frame.bytes[0] == 0xa6) {
+            assert(frame.bytes[1] == command);
+            return;
+        }
+        assert(frame.bytes[0] == 0xa1 || frame.bytes[0] == 0xa2 || frame.bytes[0] == 0xa3 || frame.bytes[0] == 0xa8);
+    }
+    assert(!"slider did not dispatch its selected channel");
+}
+static void slider_transition_retires_an_old_select_lease(void) {
+    static const struct slider_case {
+        uint8_t start_raw, next_raw, first_command, next_command, selected;
+    } cases[] = {{1, 2, 0x30, 0x31, GMK_HOST_BT1}, {2, 1, 0x31, 0x30, GMK_HOST_DONGLE}, {3, 2, 0x11, 0x31, GMK_HOST_BT1}, {2, 3, 0x31, 0x11, GMK_HOST_USB}};
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        start(true);
+        slider_stable(cases[i].start_raw);
+        slider_send_select(cases[i].first_command);
+        physical_raw = 0; /* Invalid contact between slider detents cannot select or pair. */
+        ++radio_test_time;
+        gmk_radio_poll();
+        run_work();
+        slider_stable(cases[i].next_raw);
+        struct gmk_radio_frame frame;
+        assert(core.selected == cases[i].selected && !core.pending_pair);
+        assert(!gmk_radio_next(radio_test_time, &frame));
+        gmk_radio_ack();
+        radio_test_time += 19;
+        assert(!gmk_radio_next(radio_test_time, &frame));
+        ++radio_test_time;
+        slider_send_select(cases[i].next_command);
+        assert(core.selected == cases[i].selected && core.active == cases[i].selected && core.waiting && !core.faulted);
+    }
+}
+static void slider_bypasses_usb_quiet_without_reusing_its_ack(void) {
+    start(true);
+    slider_stable(3);
+    slider_send_select(0x11);
+    gmk_radio_ack();
+    struct gmk_radio_frame frame;
+    ++radio_test_time;
+    assert(!gmk_radio_next(radio_test_time, &frame) && gmk_radio_control_busy());
+    slider_stable(2);
+    assert(radio_test_time < 5500);
+    slider_send_select(0x31);
+    gmk_radio_ack();
+    gmk_radio_notification(0x5b, 0x32);
+    gmk_radio_poll();
+    run_work();
+    settle();
+    const uint8_t key[8] = {0, 0, 4};
+    assert(!gmk_radio_submit_keyboard(key));
+}
+#ifdef CONFIG_GMK70_CONTROLS
+static void host_leds_require_an_attributed_connected_host(void) {
+    start(true);
+    controls_led_updates = 0;
+    gmk_radio_notification(0x5a, 2);
+    assert(controls_led_updates == 0);
+    connect_radio();
+    gmk_radio_notification(0x5a, 2);
+    assert(controls_led_updates == 1 && controls_leds == 2 && controls_selected == 2);
+    gmk_radio_notification(0x5b, 0x33);
+    gmk_radio_notification(0x5a, 0);
+    assert(controls_led_updates == 1);
+    gmk_radio_notification(0x5b, 0x32);
+    gmk_radio_notification(0x5a, 0);
+    assert(controls_led_updates == 2 && controls_leds == 0);
+    assert(gmk_radio_select(3, false) == 0);
+    run_work();
+    gmk_radio_notification(0x5a, 2);
+    assert(controls_led_updates == 2);
+    settle();
+    gmk_radio_notification(0x5b, 0x32);
+    gmk_radio_notification(0x5a, 1);
+    assert(controls_led_updates == 3 && controls_selected == 3);
+    start(false);
+    gmk_radio_notification(0x5a, 2);
+    assert(controls_led_updates == 3);
+}
+#endif
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION
 static void qualification_marker_is_only_fixed_f24_and_respects_held_input(void) {
     start(true);
@@ -326,10 +464,77 @@ static void qualification_marker_is_only_fixed_f24_and_respects_held_input(void)
 #endif
 #ifdef CONFIG_GMK70_NATIVE_KEYMAP_TEST
 #    include "radio_native_keymap_fixture.h"
+static void native_shortcut_taps_switch_profiles_during_an_old_select(void) {
+    for (unsigned reverse = 0; reverse < 2; ++reverse) {
+        settings_block = map_block = false;
+        reload_result              = 0;
+        map_result                 = 16;
+        start(true);
+        assert(!keymap_init());
+        uint8_t first = reverse ? GMK_HOST_BT2 : GMK_HOST_BT1;
+        uint8_t next  = reverse ? GMK_HOST_BT1 : GMK_HOST_BT2;
+        assert(!gmk_radio_restore_last_bt(first));
+        slider_stable(2);
+        const struct zmk_behavior_binding first_binding = {.behavior_dev = "radio", .param1 = first};
+        const struct zmk_behavior_binding next_binding  = {.behavior_dev = "radio", .param1 = next};
+        assert(!zmk_keymap_set_layer_binding_at_idx(0, 9, first_binding));
+        assert(!zmk_keymap_set_layer_binding_at_idx(0, 10, next_binding));
+        struct zmk_behavior_binding       first_key = *zmk_keymap_get_layer_binding_at_idx(0, 9);
+        struct zmk_behavior_binding       next_key  = *zmk_keymap_get_layer_binding_at_idx(0, 10);
+        struct zmk_behavior_binding_event event     = {.position = 9, .timestamp = radio_test_time};
+        assert(!registered_api->binding_pressed(&first_key, event));
+        run_work();
+        slider_send_select(reverse ? 0x32 : 0x31);
+        radio_test_time += 10;
+        event.timestamp = radio_test_time;
+        assert(!registered_api->binding_released(&first_key, event));
+        event.position = 10;
+        assert(!registered_api->binding_pressed(&next_key, event));
+        radio_test_time += 10;
+        event.timestamp = radio_test_time;
+        assert(!registered_api->binding_released(&next_key, event));
+        run_work();
+        assert(core.selected == next && !core.pending_pair && !selector.holding);
+        struct gmk_radio_frame frame;
+        assert(!gmk_radio_next(radio_test_time, &frame));
+        gmk_radio_ack(); /* Old profile's delayed ACK must not complete the next one. */
+        radio_test_time += 19;
+        assert(!gmk_radio_next(radio_test_time, &frame));
+        ++radio_test_time;
+        slider_send_select(reverse ? 0x31 : 0x32);
+        assert(core.waiting && core.active == next && !core.pending_pair);
+        gmk_radio_ack();
+        gmk_radio_notification(0x5b, 0x32);
+        gmk_radio_poll();
+        run_work();
+        settle();
+        radio_test_time += 3000;
+        gmk_radio_poll();
+        run_work();
+        settle();
+        assert(!selector.holding && !core.pending_pair && !core.faulted);
+        const uint8_t key[8] = {0, 0, 4};
+        assert(!gmk_radio_submit_keyboard(key));
+    }
+}
 #endif
+static void unsaved_native_ids_block_binding_mutation(void) {
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+    start(true);
+    ids_confirmed                           = false;
+    struct zmk_behavior_binding replacement = {.behavior_dev = "replacement", .param1 = 4};
+    assert(__wrap_zmk_keymap_set_layer_binding_at_idx(0, 1, replacement) == -EACCES);
+    ids_confirmed = true;
+    assert(__wrap_zmk_keymap_set_layer_binding_at_idx(0, 1, replacement) == binding_result);
+#endif
+}
 int main(void) {
+    slider_transition_retires_an_old_select_lease();
+    slider_bypasses_usb_quiet_without_reusing_its_ack();
+    unsaved_native_ids_block_binding_mutation();
 #ifdef CONFIG_GMK70_NATIVE_KEYMAP_TEST
     native_keymap_remapping_tests();
+    native_shortcut_taps_switch_profiles_during_an_old_select();
 #endif
     nkro_submission_preserves_both_reports_and_role_gates();
     canceled_pair_after_syswork_preserves_connected_typing();
@@ -339,6 +544,11 @@ int main(void) {
     release_after_timeout_cancels_pair_before_syswork();
     hold_pairs_once_at_three_seconds_in_system_context();
     status_waits_while_control_retry_is_being_transmitted();
+    power_quiesce_requires_drained_reports_and_blocks_new_work();
+    restoring_bt_slot_does_not_select_or_transmit();
+#ifdef CONFIG_GMK70_CONTROLS
+    host_leds_require_an_attributed_connected_host();
+#endif
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION
     qualification_marker_is_only_fixed_f24_and_respects_held_input();
 #endif

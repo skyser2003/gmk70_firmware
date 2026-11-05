@@ -4,7 +4,20 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+static unsigned checksum_calls, comparison_calls;
+uint32_t        __real_gmk_crc32(const void *data, size_t size);
+int             __real_memcmp(const void *left, const void *right, size_t size);
+uint32_t        __wrap_gmk_crc32(const void *data, size_t size) {
+    ++checksum_calls;
+    return __real_gmk_crc32(data, size);
+}
+int __wrap_memcmp(const void *left, const void *right, size_t size) {
+    ++comparison_calls;
+    return __real_memcmp(left, right, size);
+}
 
 typedef struct {
     uint8_t  before[256], bytes[GMK_SETTINGS_BYTES], after[256];
@@ -312,6 +325,59 @@ static void legacy_page(uint8_t *p, unsigned kind, unsigned sequence, const uint
     memcpy(p + 49, value, 12);
     recalc(p);
 }
+static void native_capacity_with_id_history(void) {
+    static const char *const behaviors[21] = {"mouse_key_press", "mouse_move", "mouse_scroll", "sysreset", "extpower", "gmk_battery", "gmk_controls", "gmk_flip", "gmk_radio", "gmk_sleep", "gmk_recovery", "studio_unlock", "bootload", "z_so_off", "gmk_nkro", "key_press", "momentary_layer", "to_layer", "transparent", "none", "rgb_ug"};
+    flash_t                  flash;
+    gmk_settings_store_t     store;
+    blank(&flash);
+    mount(&store, &flash);
+    for (unsigned i = 0; i < 21; ++i) {
+        char name[32];
+        snprintf(name, sizeof(name), "behavior/local_id/%u", i + 1);
+        assert(!gmk_settings_store_save(&store, name, behaviors[i], strlen(behaviors[i])));
+    }
+    /* Native packed binding: uint16 local ID + two little-endian uint32 params.
+     * Keep the legal full ten-byte representation, including a zero param2. */
+    uint8_t binding[10] = {16};
+    for (unsigned layer = 0; layer < 4; ++layer)
+        for (unsigned position = 0; position < 74; ++position) {
+            char name[32];
+            snprintf(name, sizeof(name), "keymap/l/%u/%u", layer, position);
+            gmk_write_u32(binding + 2, 0x00070004U + position % 26);
+            assert(!gmk_settings_store_save(&store, name, binding, sizeof(binding)));
+        }
+    for (unsigned layer = 0; layer < 4; ++layer) {
+        char name[32];
+        snprintf(name, sizeof(name), "keymap/l_n/%u", layer);
+        assert(!gmk_settings_store_save(&store, name, "ABCDEFGHIJKLMNOPQRS", 19));
+    }
+    uint8_t order[4] = {0, 1, 2, 3}, rgb[10] = {130, 0, 80, 30, 1, 0, 0, 0, 1, 0};
+    uint8_t enabled = 1, controls[4] = {1, 0, 5, 7}, selected = 0;
+    assert(!gmk_settings_store_save(&store, "keymap/layer_order", order, sizeof(order)));
+    assert(!gmk_settings_store_save(&store, "rgb/underglow/state", rgb, sizeof(rgb)));
+    assert(!gmk_settings_store_save(&store, "gmk_flip/state", &enabled, 1));
+    assert(!gmk_settings_store_save(&store, "gmk_nkro/state", &enabled, 1));
+    assert(!gmk_settings_store_save(&store, "gmk_controls/state", controls, sizeof(controls)));
+    assert(!gmk_settings_store_save(&store, "physical_layouts/selected", &selected, 1));
+    assert(!gmk_settings_store_save(&store, "endpoints/preferred2", &enabled, 1));
+    assert(store.count == 328);
+    for (unsigned i = 0; i < 16; ++i) {
+        char name[32], device[32];
+        snprintf(name, sizeof(name), "behavior/local_id/%u", 100 + i);
+        snprintf(device, sizeof(device), "old_behavior_%02u", i);
+        assert(!gmk_settings_store_save(&store, name, device, strlen(device)));
+    }
+    assert(store.count == 344);
+    for (unsigned i = 0; i <= GMK_SETTINGS_BANK / GMK_SETTINGS_PAGE; ++i) {
+        rgb[0] = (uint8_t)i;
+        assert(!gmk_settings_store_save(&store, "rgb/underglow/state", rgb, sizeof(rgb)));
+    }
+    mount(&store, &flash);
+    assert(store.count == 344 && store.snapshot_pages < GMK_SETTINGS_BANK / GMK_SETTINGS_PAGE);
+    expect(&store, "gmk_controls/state", controls, sizeof(controls));
+    expect(&store, "behavior/local_id/115", "old_behavior_15", 15);
+    printf("Native capacity: 296 bindings,21 IDs,4 names,7 preferences,16 historical IDs fit %u snapshot pages plus commit\n", store.snapshot_pages);
+}
 static void legacy_migration(void) {
     flash_t              f;
     gmk_settings_store_t s;
@@ -355,7 +421,142 @@ static void legacy_migration(void) {
     assert(!gmk_settings_store_entry(&s, 0, name, &got, &size));
     assert(!strcmp(name, "keymap/l/1/71"));
 }
+static void factory_reset_transaction(void) {
+    flash_t              base;
+    gmk_settings_store_t store;
+    blank(&base);
+    mount(&store, &base);
+    assert(!gmk_settings_store_save(&store, "keymap/test", "layout", 6));
+    assert(!gmk_settings_store_save(&store, "gmk_controls/state", "prefs", 5));
+    for (unsigned n = 0; n < 40; ++n)
+        assert(!gmk_settings_store_save(&store, "counter", &n, sizeof(n)));
+    unsigned active = (unsigned)store.bank;
+    /* A failed/corrupt newer COMMIT can leave valid future-generation journal
+     * pages in the target bank. Reset must never revive those stale records. */
+    flash_t damaged = base;
+    damaged.bytes[active * GMK_SETTINGS_BANK] ^= 1;
+    mount(&store, &damaged);
+    assert(!gmk_settings_store_factory_reset(&store));
+    mount(&store, &damaged);
+    assert(store.count == 0);
+    for (unsigned mode = 0; mode < 3; ++mode)
+        for (unsigned cut = 0; cut <= GMK_SETTINGS_PAGE; ++cut) {
+            flash_t trial = base;
+            mount(&store, &trial);
+            trial.fail_call = trial.calls + 1;
+            trial.tear      = cut;
+            trial.mode      = mode;
+            assert(gmk_settings_store_factory_reset(&store) == -EIO);
+            assert(!memcmp(trial.bytes + active * GMK_SETTINGS_BANK, base.bytes + active * GMK_SETTINGS_BANK, GMK_SETTINGS_BANK));
+            mount(&store, &trial);
+            assert(store.count == 0 || store.count == 3);
+            if (store.count) {
+                expect(&store, "keymap/test", "layout", 6);
+                expect(&store, "gmk_controls/state", "prefs", 5);
+                unsigned last = 39;
+                expect(&store, "counter", &last, sizeof(last));
+            }
+        }
+    mount(&store, &base);
+    unsigned writes = base.calls;
+    assert(!gmk_settings_store_factory_reset(&store));
+    assert(base.calls == writes + 1 && store.count == 0);
+    mount(&store, &base);
+    expect(&store, "keymap/test", NULL, 0);
+    expect(&store, "gmk_controls/state", NULL, 0);
+    assert(!gmk_settings_store_save(&store, "new", "ok", 2));
+    mount(&store, &base);
+    assert(store.count == 1);
+    expect(&store, "new", "ok", 2);
+    assert(!gmk_settings_store_factory_reset(&store));
+    mount(&store, &base);
+    assert(store.count == 0);
+    for (unsigned i = 0; i < sizeof(base.before); ++i)
+        assert(base.before[i] == 0xa5 && base.after[i] == 0xa5);
+    /* Deliberate recovery can replace a corrupt application-owned bank. */
+    memset(base.bytes, 0x5a, sizeof(base.bytes));
+    assert(gmk_settings_store_mount(&store, base.bytes, write_page, &base) == -EIO);
+    assert(!gmk_settings_store_factory_reset(&store));
+    mount(&store, &base);
+    assert(store.count == 0);
+    uint8_t *commit = base.bytes + (unsigned)store.bank * GMK_SETTINGS_BANK;
+    gmk_write_u32(commit + 8, UINT32_MAX);
+    gmk_write_u32(commit + 12, UINT32_MAX);
+    recalc(commit);
+    writes = base.calls;
+    assert(gmk_settings_store_factory_reset(&store) == -EOVERFLOW && base.calls == writes);
+}
+
+static void streaming_capacity_and_read_bounds(void) {
+    enum { SAVED_ENTRIES = 328 };
+    flash_t              flash;
+    gmk_settings_store_t store;
+    blank(&flash);
+    mount(&store, &flash);
+    uint32_t expected[SAVED_ENTRIES + 1];
+    for (unsigned i = 0; i < SAVED_ENTRIES; ++i) {
+        char name[32];
+        snprintf(name, sizeof(name), "key/%u", i);
+        expected[i] = i;
+        assert(!gmk_settings_store_save(&store, name, &expected[i], sizeof(expected[i])));
+    }
+    assert(store.count == SAVED_ENTRIES);
+    assert(!gmk_settings_store_save(&store, "key/5", NULL, 0));
+    expected[SAVED_ENTRIES] = 400;
+    assert(!gmk_settings_store_save(&store, "new", &expected[SAVED_ENTRIES], sizeof(expected[SAVED_ENTRIES])));
+    assert(!gmk_settings_store_save(&store, "key/10", NULL, 0));
+    expected[10] = 1000;
+    assert(!gmk_settings_store_save(&store, "key/10", &expected[10], sizeof(expected[10])));
+    for (unsigned i = 0; i < 64; ++i) {
+        expected[2] = 2000 + i;
+        assert(!gmk_settings_store_save(&store, "key/2", &expected[2], sizeof(expected[2])));
+    }
+    checksum_calls = 0;
+    mount(&store, &flash);
+    assert(store.count == SAVED_ENTRIES && checksum_calls <= 4 * (GMK_SETTINGS_BANK / GMK_SETTINGS_PAGE + 2));
+    checksum_calls = comparison_calls = 0;
+    const uint8_t *value;
+    size_t         size;
+    assert(gmk_settings_store_get(&store, "key/999", &value, &size) == -ENOENT);
+    unsigned lookup_comparisons = comparison_calls;
+    assert(lookup_comparisons <= GMK_SETTINGS_ENTRIES + GMK_SETTINGS_BANK / GMK_SETTINGS_PAGE);
+    comparison_calls = 0;
+    gmk_settings_cursor_t cursor;
+    gmk_settings_cursor_init(&cursor);
+    bool     seen[SAVED_ENTRIES + 1] = {false};
+    unsigned count                   = 0;
+    char     name[GMK_SETTINGS_NAME_MAX + 1];
+    while (!gmk_settings_store_next(&store, &cursor, name, &value, &size)) {
+        unsigned index = SAVED_ENTRIES;
+        if (strcmp(name, "new")) {
+            assert(!strncmp(name, "key/", 4));
+            char         *end;
+            unsigned long parsed = strtoul(name + 4, &end, 10);
+            assert(!*end && parsed < SAVED_ENTRIES);
+            index = (unsigned)parsed;
+        }
+        assert(!seen[index] && size == sizeof(uint32_t));
+        seen[index] = true;
+        uint32_t actual;
+        memcpy(&actual, value, size);
+        assert(actual == expected[index]);
+        ++count;
+    }
+    unsigned iteration_comparisons = comparison_calls;
+    assert(count == SAVED_ENTRIES && !seen[5] && seen[SAVED_ENTRIES]);
+    assert(checksum_calls == 0);
+    assert(iteration_comparisons <= 2 * (GMK_SETTINGS_ENTRIES + GMK_SETTINGS_BANK / GMK_SETTINGS_PAGE) * (GMK_SETTINGS_BANK / GMK_SETTINGS_PAGE));
+    assert(gmk_settings_store_next(&store, &cursor, name, &value, &size) == -ENOENT);
+    printf("Streaming settings: store=%zu cursor=%zu bytes, missing lookup=%u and full%u iteration=%u comparisons, zero lookup CRCs\n", sizeof(store), sizeof(cursor), lookup_comparisons, SAVED_ENTRIES, iteration_comparisons);
+}
+
 int main(void) {
+    /* The retained application RAM admits a streaming store, not an index
+     * containing one RAM offset for every possible saved binding. */
+    assert(sizeof(gmk_settings_store_t) <= 40);
+    native_capacity_with_id_history();
+    streaming_capacity_and_read_bounds();
+    factory_reset_transaction();
     four_layers();
     legacy_migration();
     basic();

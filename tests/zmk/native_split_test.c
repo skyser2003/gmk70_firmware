@@ -6,10 +6,18 @@
 #include "../../dependencies/zmk/app/src/split/central.c"
 #include <zmk/events/sensor_event.h>
 
-int64_t                                  fake_ms = 20;
-static bool                              left = true, available = true;
-static int                               selected;
-static unsigned                          events, commands, invoked, remote_state, capability_calls;
+int64_t         fake_ms = 20;
+static bool     left = true, available = true, host_wired = true;
+static int      selected;
+static unsigned events, commands, invoked, remote_state, capability_calls;
+#ifdef CONFIG_GMK70_POWER
+static unsigned power_calls;
+void            gmk_power_receive(const uint8_t request[32], uint8_t response[32]) {
+    assert(request[0] == 'P' && request[1] == 'W' && request[2] == 'R');
+    ++power_calls;
+    response[0] = 0x73;
+}
+#endif
 static uint8_t                           transmitted[32];
 static struct zmk_position_state_changed last_event;
 static struct zmk_behavior_binding       last_binding;
@@ -19,7 +27,7 @@ bool gmk_wired_is_left(void) {
     return left;
 }
 bool gmk_wired_mode(void) {
-    return available;
+    return available && host_wired;
 }
 bool gmk_split_available(void) {
     return available;
@@ -176,6 +184,20 @@ int main(void) {
     available = true;
     gmk_native_split_receive(probe, response);
     assert(response[0] == 0xcc && capability_calls == 1 && !native_commands.count);
+#ifdef CONFIG_GMK70_POWER
+    uint8_t power[32] = {'P', 'W', 'R'};
+    host_wired        = false; /* Split power negotiation also serves Bluetooth/dongle. */
+    gmk_native_split_receive(power, response);
+    assert(response[0] == 0x73 && power_calls == 1 && !native_commands.count);
+    available = false;
+    gmk_native_split_receive(power, response);
+    assert(!response[0] && power_calls == 1);
+    available = true;
+    left      = true;
+    gmk_native_split_receive(power, response);
+    assert(!response[0] && power_calls == 1);
+    host_wired = true;
+#endif
     left = true;
     positions();
     behavior_commands();

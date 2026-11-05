@@ -158,6 +158,7 @@ int main(int argc, char **argv) {
     memset(flash, 0xff, 16384);
     assert(!settings_backend_init());
     assert(!rgb_test_init());
+    assert(!gmk_rgb_settings_dirty());
     atomic_store(&writes_ready, true);
     pthread_t thread;
     assert(!pthread_create(&thread, NULL, storage_worker, NULL));
@@ -167,6 +168,7 @@ int main(int argc, char **argv) {
     rgb_test_time = 60000;
     system_work();
     assert(atomic_load(&writes) == 0); /* Wired but unconfigured must not use generic startup writes. */
+    assert(gmk_rgb_settings_dirty());
     rgb_test_time = 180000;
     poll();
     system_work();
@@ -177,6 +179,7 @@ int main(int argc, char **argv) {
     system_work();
     assert(atomic_load(&writes) > 0); /* Failed wireless native save must survive beyond its debounce. */
     assert(generic_saves == 0);
+    assert(!gmk_rgb_settings_dirty());
     reload(130, 30);
     unsigned before = atomic_load(&writes);
     assert(!zmk_rgb_underglow_set_hsb((struct zmk_led_hsb){.h = 200, .s = 80, .b = 40}));
@@ -223,10 +226,12 @@ int main(int argc, char **argv) {
     system_work();
     assert(atomic_load(&writes) > before);
     reload(230, 65);
+    assert(gmk_rgb_settings_dirty());
     rgb_test_time += 1000;
     poll();
     system_work();
     reload(240, 70);
+    assert(!gmk_rgb_settings_dirty());
     /* A physical backend failure retains pending bytes while storage is unavailable. */
     assert(!zmk_rgb_underglow_set_hsb((struct zmk_led_hsb){.h = 250, .s = 80, .b = 75}));
     rgb_test_time += 60000;

@@ -18,6 +18,27 @@ rsource "battery/Kconfig"
 rsource "radio/Kconfig"
 rsource "function_flip/Kconfig"
 rsource "nkro/Kconfig"
+
+config GMK70_CONTROLS
+	bool "GMK70 native indicators and persistent board controls"
+	depends on GMK70_ZMK_STUDIO_SETTINGS && GMK70_NKRO
+	select ZMK_HID_INDICATORS
+	default y
+
+config GMK70_RECOVERY
+	bool "GMK70 native reset and factory bootloader integration"
+	depends on GMK70_ZMK_STUDIO_SETTINGS && !RETENTION_BOOT_MODE
+	default y
+
+config INPUT_THREAD_PRIORITY_OVERRIDE
+	bool
+	depends on ZMK_POINTING && INPUT_MODE_SYNCHRONOUS
+	help
+	  The pinned ZMK pointing subsystem selects this flag unconditionally.
+	  Admit that unused priority selection in synchronous mode without
+	  reserving an input thread or changing the pinned framework sources.
+
+rsource "power/Kconfig"
 endif
 
 config GMK70_TRIAL_MAIN_RETURN

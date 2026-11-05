@@ -10,6 +10,8 @@ int gmk_lighting_battery_release(uint32_t position);
 void gmk_lighting_receive(const uint8_t packet[16]);
 void gmk_lighting_wire_poll(const struct gmk_wire_io *);
 void gmk_lighting_poll(void);
+/* Each half blanks its own LEDs before advertising power readiness. */
+bool gmk_lighting_power_quiesce(bool enabled);
 #else
 static inline void gmk_lighting_receive(const uint8_t packet[16]) {
     (void)packet;
@@ -18,4 +20,8 @@ static inline void gmk_lighting_wire_poll(const struct gmk_wire_io *io) {
     (void)io;
 }
 static inline void gmk_lighting_poll(void) {}
+static inline bool gmk_lighting_power_quiesce(bool enabled) {
+    (void)enabled;
+    return true;
+}
 #endif

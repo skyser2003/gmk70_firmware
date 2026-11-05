@@ -565,7 +565,9 @@ static void studio_size_bounds(void) {
 }
 static void storage_exclusion(void) {
     setup();
+    assert(gmk_zmk_receiver_idle());
     assert(gmk_zmk_receiver_storage_claim());
+    assert(!gmk_zmk_receiver_idle());
     assert(!gmk_zmk_receiver_storage_claim());
     packet(GMK_BEGIN);
     receive();
@@ -573,13 +575,16 @@ static void storage_exclusion(void) {
     gmk_zmk_receiver_step(&env);
     assert(writes == 0);
     gmk_zmk_receiver_storage_release();
+    assert(gmk_zmk_receiver_idle());
     packet(GMK_INFO);
     receive();
+    assert(!gmk_zmk_receiver_idle());
     assert(!gmk_zmk_receiver_storage_claim());
     gmk_zmk_receiver_step(&env);
     assert(gmk_zmk_receiver_storage_claim());
     gmk_zmk_receiver_storage_release();
     begin();
+    assert(!gmk_zmk_receiver_idle());
     assert(!gmk_zmk_receiver_storage_claim());
 }
 #endif

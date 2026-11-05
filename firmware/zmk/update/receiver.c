@@ -38,6 +38,16 @@ void gmk_zmk_receiver_storage_release(void) {
 }
 #endif
 
+bool gmk_zmk_receiver_idle(void) {
+    k_spinlock_key_t key  = k_spin_lock(&lock);
+    bool             idle = !pending && !committed && update.state == GMK_IDLE;
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+    idle = idle && !storage_busy;
+#endif
+    k_spin_unlock(&lock, key);
+    return idle;
+}
+
 static bool health_packet(const uint8_t *request) {
     if (request[0] != 0x7f || request[1] != 0x72 || request[2] != 1 || request[3] > 1 || request[4] != 0x20 || request[5] || request[6] || request[7] || !gmk_read_u32(request + 8)) return false;
     for (unsigned i = 12; i < 32; ++i)

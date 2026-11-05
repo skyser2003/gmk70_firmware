@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-03",
+  "installed": "both",
+  "application_bytes": 105876,
+  "application_crc32": 2614232591,
+  "application_sha256": "dd1cb2d7ea6659d6e76a560864b3d3fa8334bc550524125ba10b7e530d763310",
+  "resident_crc32_each": 1770733249,
+  "identical_universal_image": true,
+  "install_requests_each": 1,
+  "install_acknowledged_each": true,
+  "manual_power_cycles": 0,
+  "right_only_usb": false,
+  "recovery_pads_used": false,
+  "saved_layers": 4,
+  "saved_bindings": 296,
+  "saved_keymap_preserved": true,
+  "studio_geometry_and_metadata_verified": true,
+  "left_continued_running_during_right_install": true,
+  "health_windows": [
+    {
+      "target_install": "left",
+      "stage": "baseline",
+      "verified_seconds": 70.187,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "watchdog_feeds": 0
+    },
+    {
+      "target_install": "left",
+      "stage": "after",
+      "verified_seconds": 70.25,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "watchdog_feeds": 0
+    },
+    {
+      "target_install": "right",
+      "stage": "baseline",
+      "verified_seconds": 70.234,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "watchdog_feeds": 0
+    },
+    {
+      "target_install": "right",
+      "stage": "after",
+      "verified_seconds": 70.265,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "watchdog_feeds": 0
+    }
+  ],
+  "battery": {
+    "percentage_initial": 60,
+    "percentage_final": 60,
+    "valid": true,
+    "cable": true,
+    "full": false,
+    "final_age_ms": 2830,
+    "queries_initial": 83,
+    "queries_final": 267,
+    "replies_initial": 83,
+    "replies_final": 267,
+    "radio_errors": 0,
+    "percentage_increase_observed": false
+  },
+  "unverified_hardware": [
+    "battery STOP wake and current",
+    "overnight battery life",
+    "USB host remote wake",
+    "charging percentage increase",
+    "Windows Bluetooth battery refresh",
+    "physical key, encoder and LED actuation after this update"
+  ]
+}

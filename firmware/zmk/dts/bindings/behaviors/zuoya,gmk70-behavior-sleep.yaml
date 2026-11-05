@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+description: |
+  Persistent GMK70 inactivity timeout using the stock selector values.
+  Values 0 through 7 mean never, 1, 3, 5, 10, 20, 30 minutes and default
+  (5 minutes). Changing this preference does not enter sleep immediately.
+compatible: "zuoya,gmk70-behavior-sleep"
+include: one_param.yaml

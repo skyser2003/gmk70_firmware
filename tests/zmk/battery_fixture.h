@@ -22,7 +22,7 @@ static uint8_t  rx[1024], tx[1024];
 static size_t   rx_count, rx_cursor, tx_count;
 static unsigned mmio_reads, mmio_writes, receive_reads;
 static uint32_t line_error;
-static bool     tx_ready, endless_rx, initializing;
+static bool     tx_ready, tx_empty, endless_rx, initializing;
 static unsigned tx_allowance;
 
 static uint32_t *register_at(uintptr_t address) {
@@ -37,7 +37,7 @@ static uint32_t *register_at(uintptr_t address) {
 uint32_t sys_read32(uintptr_t address) {
     assert(!battery_test_locks);
     ++mmio_reads;
-    if (address == UART + 0x14) return line_error | (endless_rx || rx_cursor < rx_count ? 1U : 0U);
+    if (address == UART + 0x14) return (tx_empty ? 0x40U : 0U) | line_error | (endless_rx || rx_cursor < rx_count ? 1U : 0U);
     if (address == UART + 0x7c) return tx_ready && tx_allowance ? 2U : 0U;
     if (address == UART && !(uart_registers[0x0c / 4] & 0x80)) {
         ++receive_reads;
@@ -87,12 +87,14 @@ static void reset_model(bool is_left) {
     memset(uart_registers, 0, sizeof(uart_registers));
     memset(rcc_registers, 0xa5, sizeof(rcc_registers));
     memset(gpio_registers, 0xa5, sizeof(gpio_registers));
-    battery_test_time = 0;
-    left              = is_left;
+    gpio_registers[0][0x10 / 4] = 0; /* Unplugged charger inputs, independent of GPIO modes. */
+    battery_test_time           = 0;
+    left                        = is_left;
     rx_count = rx_cursor = tx_count = 0;
     mmio_reads = mmio_writes = receive_reads = 0;
     line_error                               = 0;
     tx_ready                                 = true;
+    tx_empty                                 = true;
     endless_rx                               = false;
     tx_allowance                             = UINT32_MAX;
     initializing                             = true;

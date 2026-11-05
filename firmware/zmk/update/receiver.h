@@ -13,6 +13,8 @@ void gmk_zmk_receiver_init(const gmk_zmk_update_env_t *env);
 void gmk_zmk_receiver_receive(const uint8_t request[32], uint8_t response[32], bool usb, const gmk_zmk_update_env_t *env);
 /* Exactly one worker owns this entry point, common state, flash and relay. */
 void gmk_zmk_receiver_step(const gmk_zmk_update_env_t *env);
+/* Nonblocking ownership snapshot for power admission; no lease is granted. */
+bool gmk_zmk_receiver_idle(void);
 /* Platform reset, used only by the dedicated worker after the ACK grace. */
 void gmk_zmk_update_reset(void);
 

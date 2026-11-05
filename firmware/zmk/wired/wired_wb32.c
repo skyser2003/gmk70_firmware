@@ -64,6 +64,16 @@ static struct gmk_encoder          encoder;
 static struct gpio_callback        encoder_callback;
 static bool                        encoder_irq_ready;
 static bool                        encoder_ready;
+static atomic_t                    power_wake;
+static bool                        power_prepared, power_paused;
+static uint8_t                     power_inputs;
+static uint8_t                     power_armed;
+static bool                        power_critical;
+
+#define POWER_LOCAL_LINES (BIT(1) | BIT(2) | BIT(3) | BIT(4) | BIT(6) | BIT(7) | BIT(13) | BIT(14) | BIT(15))
+#define EXTI_PENDING_ADDRESS 0x40001814U
+#define EXTI_MASK_ADDRESS 0x40001800U
+enum { POWER_ARM_A7 = 1, POWER_ARM_A10 = 2, POWER_ARM_C14 = 4, POWER_ARM_C15 = 8, POWER_ARM_B6 = 16, POWER_RESTORE_ENCODER = 32 };
 
 static struct wb32_gpio *port_of(struct gmk_wired_pin pin) {
     return (struct wb32_gpio *)(uintptr_t)(WB32_GPIOA_BASE + 0x400U * pin.port);
@@ -87,6 +97,11 @@ static void encoder_wake(const struct device *dev, struct gpio_callback *cb, gpi
     ARG_UNUSED(dev);
     ARG_UNUSED(cb);
     ARG_UNUSED(pins);
+    if (power_prepared) {
+        atomic_set(&power_wake, 1);
+        return;
+    }
+    if (!initialized || !left || !encoder_ready) return;
     gmk_encoder_sample(&encoder, gmk_native_encoder_sample());
     if (!initialized || !left || !gmk_split_available()) gmk_encoder_clear(&encoder);
 }
@@ -111,7 +126,7 @@ static void encoder_init(void) {
 int gmk_wired_encoder_next(void) {
     unsigned key       = irq_lock();
     int      direction = 0;
-    if (initialized && left && encoder_ready) {
+    if (!power_paused && initialized && left && encoder_ready) {
         if (!encoder_irq_ready) gmk_encoder_sample(&encoder, gmk_native_encoder_sample());
         if (gmk_split_available())
             direction = gmk_encoder_take(&encoder);
@@ -133,6 +148,7 @@ static void matrix_wake(const struct device *dev, struct gpio_callback *callback
     ARG_UNUSED(pins);
     /* IRQs only latch activity; scanning, debounce and reports stay in thread context. */
     atomic_set(&scan_pending, 1);
+    if (power_prepared) atomic_set(&power_wake, 1);
 }
 
 static void matrix_irq_disable(void) {
@@ -201,6 +217,7 @@ static void uart_isr(const void *unused) {
     /* Bounded ISR: enqueue only; protocol and updater never run in IRQ context. */
     for (unsigned n = 0; n < 32; ++n) {
         uint32_t status = sys_read32(REG(0x14));
+        if (power_paused && (status & 0x9fU)) atomic_set(&power_wake, 1);
         if (!(status & 1)) break;
         uint8_t byte = (uint8_t)sys_read32(REG(0));
         if ((status & 0x9e) || k_msgq_put(&uart_rx, &byte, K_NO_WAIT) != 0) {
@@ -260,6 +277,175 @@ uint8_t gmk_host_switch(void) {
     if (!initialized) return 0;
     return (uint8_t)((pin_read((struct gmk_wired_pin){2, 14}) ? 2 : 0) | (pin_read((struct gmk_wired_pin){2, 15}) ? 1 : 0));
 }
+
+static uint8_t power_sample_inputs(void) {
+    return gmk_host_switch() | (pin_read((struct gmk_wired_pin){0, 7}) ? BIT(2) : 0) | (pin_read((struct gmk_wired_pin){0, 10}) ? BIT(3) : 0) | (pin_read((struct gmk_wired_pin){1, 6}) ? BIT(4) : 0) | (left && pin_read((struct gmk_wired_pin){1, 7}) ? BIT(5) : 0);
+}
+
+static bool power_rows_released(void) {
+    for (unsigned r = 0; r < 5; ++r)
+        if (!pin_read(row_pins[r])) return false;
+    return true;
+}
+
+static bool power_uart_idle(void) {
+    /* Pinned WB32 UART_LSR: DR0, errors1..4/7, TEMT6. TEMT covers both FIFO
+     * and the physical shift register; TFNF alone only allows another byte. */
+    uint32_t status = sys_read32(REG(0x14));
+    return !have_first && !k_msgq_num_used_get(&uart_rx) && !atomic_get(&rx_fault) && (status & 0xdfU) == BIT(6) && pin_read((struct gmk_wired_pin){0, 10});
+}
+
+static bool power_input_idle(void) {
+    if (!initialized || !scan_idle || !scan_irq_ready || atomic_get(&scan_pending) || (left && encoder.count)) return false;
+    for (unsigned r = 0; r < 5; ++r)
+        if (debounce.candidate[r] || debounce.stable[r]) return false;
+    return true;
+}
+
+bool gmk_wired_power_input_idle(void) {
+    /* Single-core snapshot: scanner mutations do not yield, and the IRQ mask
+     * also excludes encoder updates. A required peer RPC may own wired_lock
+     * while waiting for UART; that is not a held key or new physical input. */
+    unsigned key  = irq_lock();
+    bool     idle = power_input_idle();
+    irq_unlock(key);
+    return idle;
+}
+
+static bool power_idle_locked(void) {
+    if (!power_input_idle() || !power_uart_idle()) return false;
+    return !power_prepared || !gmk_wired_power_wake_pending();
+}
+
+bool gmk_wired_power_idle(void) {
+    if (k_is_in_isr() || k_mutex_lock(&wired_lock, K_NO_WAIT)) return false;
+    unsigned key  = irq_lock();
+    bool     idle = power_idle_locked();
+    irq_unlock(key);
+    k_mutex_unlock(&wired_lock);
+    return idle;
+}
+
+bool gmk_wired_power_wake_pending(void) {
+    if (atomic_get(&power_wake)) return true;
+    if (!power_prepared) return false;
+    uint32_t lines = (power_critical ? BIT(6) | BIT(7) | BIT(14) | BIT(15) : POWER_LOCAL_LINES) | (power_paused ? BIT(10) : 0);
+    uint8_t  mask  = (power_paused ? 0x3fU : 0x37U) & (power_critical ? 0x1fU : 0x3fU);
+    if ((sys_read32(EXTI_PENDING_ADDRESS) & lines) || ((power_sample_inputs() ^ power_inputs) & mask) || (!power_critical && !power_rows_released()) || (power_paused && !power_uart_idle())) atomic_set(&power_wake, 1);
+    return atomic_get(&power_wake) != 0;
+}
+
+static bool power_arm(unsigned port, unsigned pin) {
+    return gpio_pin_interrupt_configure(gpio_ports[port], pin, GPIO_INT_EDGE_BOTH) == 0;
+}
+
+static bool power_arm_free(unsigned port, unsigned pin, uint8_t owned) {
+    /* GPIO's EXTI arbiter owns ports, not clients on the same port. Refuse
+     * every preexisting extra line rather than commandeering another client. */
+    if (sys_read32(EXTI_MASK_ADDRESS) & BIT(pin)) return false;
+    if (!power_arm(port, pin)) return false;
+    power_armed |= owned;
+    return true;
+}
+
+bool gmk_wired_power_prepare(bool critical) {
+    if (k_is_in_isr() || k_mutex_lock(&wired_lock, K_NO_WAIT)) return false;
+    unsigned key = irq_lock();
+    bool     ok;
+    if (power_prepared) {
+        ok = !gmk_wired_power_wake_pending();
+        goto out; /* RPC traffic remains valid until the final UART pause. */
+    }
+    ok = critical ? initialized && power_uart_idle() : power_idle_locked();
+    if (!ok) goto out;
+    /* Existing matrix row IRQs are already armed. Do not reconfigure them or
+     * clear their pending bits. Clear only our previous software latch before
+     * local arming begins; no later stage may discard a newly observed edge. */
+    atomic_set(&power_wake, 0);
+    power_prepared         = true;
+    power_critical         = critical;
+    uint32_t pending_lines = critical ? BIT(6) | BIT(14) | BIT(15) : POWER_LOCAL_LINES;
+    if (sys_read32(EXTI_PENDING_ADDRESS) & sys_read32(EXTI_MASK_ADDRESS) & pending_lines) atomic_set(&power_wake, 1);
+    if (critical) {
+        /* Canonical QMK critical policy excludes the held matrix: columns
+         * become pulled-up inputs and rows pulled-down inputs, no row IRQs. */
+        matrix_irq_disable();
+        for (unsigned c = 0; c < 9; ++c)
+            pin_mode(col_pins[c], 0, 1);
+        for (unsigned r = 0; r < 5; ++r)
+            pin_mode(row_pins[r], 0, 2);
+        scan_idle = false;
+    }
+    bool b6_armed = left && encoder_irq_ready;
+    power_armed   = b6_armed ? POWER_RESTORE_ENCODER : 0;
+    pin_mode((struct gmk_wired_pin){0, 7}, 0, 0);
+    if (!left) pin_mode((struct gmk_wired_pin){1, 6}, 0, 1);
+    power_inputs = power_sample_inputs();
+    row_callbacks[0].pin_mask |= BIT(7) | BIT(10);
+    row_callbacks[2].pin_mask |= BIT(14) | BIT(15);
+    gpio_init_callback(&encoder_callback, encoder_wake, BIT(6));
+    if (gpio_add_callback(gpio_ports[1], &encoder_callback)) ok = false;
+    /* A7 cable and LEFT encoder A=B7 share EXTI7. Preserve a preexisting
+     * encoder edge before yielding this line; B6 remains a knob wake source. */
+    if (b6_armed) {
+        if (!critical && (sys_read32(EXTI_PENDING_ADDRESS) & BIT(7))) atomic_set(&power_wake, 1);
+        gpio_pin_interrupt_configure(gpio_ports[1], 7, GPIO_INT_DISABLE);
+        encoder_irq_ready = false;
+    }
+    if ((!b6_armed && !power_arm_free(1, 6, POWER_ARM_B6)) || !power_arm_free(0, 7, POWER_ARM_A7) || !power_arm_free(2, 14, POWER_ARM_C14) || !power_arm_free(2, 15, POWER_ARM_C15)) ok = false;
+    if (gmk_wired_power_wake_pending()) ok = false;
+out:
+    irq_unlock(key);
+    k_mutex_unlock(&wired_lock);
+    if (!ok && power_prepared) gmk_wired_power_resume();
+    return ok;
+}
+
+void gmk_wired_power_pause(bool paused) {
+    unsigned key = irq_lock();
+    power_paused = paused;
+    if (paused) {
+        if (!power_prepared || (!(power_armed & POWER_ARM_A10) && !power_arm_free(0, 10, POWER_ARM_A10))) atomic_set(&power_wake, 1);
+        (void)gmk_wired_power_wake_pending();
+    }
+    irq_unlock(key);
+}
+
+void gmk_wired_power_resume(void) {
+    if (!initialized || k_is_in_isr()) return;
+    k_mutex_lock(&wired_lock, K_FOREVER);
+    unsigned key = irq_lock();
+    if (!power_prepared && !power_paused) goto out;
+    if (power_armed & POWER_ARM_A10) gpio_pin_interrupt_configure(gpio_ports[0], 10, GPIO_INT_DISABLE);
+    if (power_armed & POWER_ARM_A7) gpio_pin_interrupt_configure(gpio_ports[0], 7, GPIO_INT_DISABLE);
+    if (power_armed & POWER_ARM_C14) gpio_pin_interrupt_configure(gpio_ports[2], 14, GPIO_INT_DISABLE);
+    if (power_armed & POWER_ARM_C15) gpio_pin_interrupt_configure(gpio_ports[2], 15, GPIO_INT_DISABLE);
+    row_callbacks[0].pin_mask &= ~(BIT(7) | BIT(10));
+    row_callbacks[2].pin_mask &= ~(BIT(14) | BIT(15));
+    encoder_callback.pin_mask = left ? BIT(6) | BIT(7) : 0;
+    if (power_critical) {
+        for (unsigned r = 0; r < 5; ++r)
+            pin_mode(row_pins[r], 0, 1);
+        for (unsigned c = 0; c < 9; ++c)
+            pin_mode(col_pins[c], 0, 1);
+        atomic_set(&scan_pending, 1);
+        power_critical = false;
+    }
+    power_prepared = power_paused = false;
+    if (power_armed & POWER_RESTORE_ENCODER) {
+        encoder_irq_ready = power_arm(1, 6) && power_arm(1, 7);
+        /* Resynchronize native EC11 state, without device_init on an already
+         * initialized device, before accepting fresh post-abort detents. */
+        (void)gmk_native_encoder_sample();
+        gmk_encoder_clear(&encoder);
+    } else if (power_armed & POWER_ARM_B6) {
+        gpio_pin_interrupt_configure(gpio_ports[1], 6, GPIO_INT_DISABLE);
+    }
+    power_armed = 0;
+out:
+    irq_unlock(key);
+    k_mutex_unlock(&wired_lock);
+}
 bool gmk_split_available(void) {
 #ifdef CONFIG_GMK70_RADIO
     if (gmk_wired_is_left()) return gmk_host_switch() != 0;
@@ -301,6 +487,12 @@ void gmk_wired_scan(uint16_t rows[5]) {
         memset(rows, 0, 10);
         return;
     }
+    if (power_paused || (power_prepared && power_critical)) {
+        k_mutex_lock(&wired_lock, K_FOREVER);
+        memcpy(rows, debounce.stable, 10);
+        k_mutex_unlock(&wired_lock);
+        return;
+    }
     /* A quiet matrix stays electrically armed for a GPIO edge. Keep split,
      * host-mode gates and lighting alive without another local GPIO sweep. */
     if (scan_idle && !atomic_get(&scan_pending)) goto publish;
@@ -333,9 +525,13 @@ publish:
     k_mutex_unlock(&wired_lock);
 }
 void gmk_wired_poll(void) {
-    if (!gmk_wired_is_left()) return;
+    if (!gmk_wired_is_left() || power_prepared || power_paused) return;
     uint16_t rows[5];
     k_mutex_lock(&wired_lock, K_FOREVER);
+    if (power_prepared || power_paused) {
+        k_mutex_unlock(&wired_lock);
+        return;
+    }
     if (gmk_split_available()) {
         ++counters.polls;
         if (gmk_protocol_poll(&master_wire, rows)) {

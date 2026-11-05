@@ -76,6 +76,13 @@ void sys_clear_bits(uintptr_t address, uint32_t bits) {
 
 extern "C" {
 void (*fake_usb_isr)(const void *);
+bool usb_get_remote_wakeup_status(void) {
+    return false;
+}
+void k_busy_wait(uint32_t usec) {
+    (void)usec;
+    assert(false && "USB attach must not request remote wake");
+}
 int            usb_dc_attach(void);
 static uint8_t usb_registers[0x30];
 uint8_t        sys_read8(uintptr_t address) {

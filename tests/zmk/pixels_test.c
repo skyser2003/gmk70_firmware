@@ -57,7 +57,7 @@ static uint32_t spi[0x100 / 4], dma[0x400 / 4], rcc[0x100 / 4];
 static uint32_t gpio[2][0x34 / 4];
 enum fault { NO_FAULT, DMA_ERROR, DMA_TIMEOUT, SPI_BUSY_TIMEOUT, DMA_STOP_TIMEOUT };
 static enum fault fault;
-static bool       active, stick_on_abort;
+static bool       active, stick_on_abort, reset_cannot_stop;
 static bool       publish_ready, needs_acquire;
 static unsigned   barriers;
 static unsigned   dma_resets;
@@ -155,8 +155,10 @@ void sys_write32(uint32_t value, uintptr_t address) {
         return;
     }
     if (address == HW_RCC + 0x94 && (value & 1) && !(*reg_at(address) & 1)) {
-        memset(dma, 0, sizeof(dma));
-        active = stick_on_abort = false;
+        if (!reset_cannot_stop) {
+            memset(dma, 0, sizeof(dma));
+            active = stick_on_abort = false;
+        }
         ++dma_resets;
     }
     if (address >= HW_DMA + 0x338 && address <= HW_DMA + 0x358 && (address - HW_DMA - 0x338) % 8 == 0) {
@@ -200,7 +202,7 @@ static void clear_model(void) {
     rcc[0x48 / 4] = 0x10000000;
     rcc[0x4c / 4] = 0x10000000;
     captured_size = writes = reads = sched_depth = irq_depth = sched_locks = now_ms = reset_waits = 0;
-    active = clock_stopped = stick_on_abort = false;
+    active = clock_stopped = stick_on_abort = reset_cannot_stop = false;
     dma_resets = barriers = 0;
     publish_ready = needs_acquire = false;
     progress_reads = busy_reads = 0;
@@ -336,6 +338,25 @@ static void test_stuck_abort_resets_dma_before_buffer_reuse(void) {
     fault = NO_FAULT;
     assert(gmk_pixels_write(rgb, 1) == 0 && captured_size == 12);
     assert_clean();
+}
+
+/* Moving encoded[] to a returning stack frame would leave this DMA pointer
+ * dangling after an unprovable abort. Preserve the buffer and close reentry. */
+static void test_unrecoverable_active_dma_keeps_its_buffer_alive(void) {
+    clear_model();
+    assert(gmk_pixels_init() == 0);
+    fault          = DMA_TIMEOUT;
+    stick_on_abort = reset_cannot_stop = true;
+    const uint8_t rgb[3]               = {0xff, 0, 0};
+    assert(gmk_pixels_write(rgb, 1) == -EIO);
+    assert(active && !ready && dma[0x398 / 4] == 0);
+    const uint8_t *borrowed     = (const uint8_t *)(uintptr_t)dma[0];
+    const uint8_t  expected[12] = {0xee, 0xee, 0xee, 0xee, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88};
+    assert(memcmp(borrowed, expected, sizeof(expected)) == 0);
+    const uint8_t replacement[3] = {0, 0xff, 0xff};
+    assert(gmk_pixels_write(replacement, 1) == -ENODEV);
+    assert(memcmp(borrowed, expected, sizeof(expected)) == 0);
+    assert(!sched_depth && !irq_depth);
 }
 static void test_uptime_wrap_is_bounded(void) {
     uint8_t rgb[3] = {0, 0xff, 0};
@@ -475,6 +496,7 @@ int main(void) {
     test_failure_cleanup(SPI_BUSY_TIMEOUT);
     test_initial_dma_failure_is_closed();
     test_stuck_abort_resets_dma_before_buffer_reuse();
+    test_unrecoverable_active_dma_keeps_its_buffer_alive();
     test_uptime_wrap_is_bounded();
     clear_model();
     assert(gmk_pixels_init() == 0);

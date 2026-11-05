@@ -1,0 +1,64 @@
+{
+  "date": "2026-11-05",
+  "status": "reporting_chain_agrees_at_ceiling_discharge_trace_interrupted",
+  "application_bytes_both": 105996,
+  "application_crc32_both": 3957255507,
+  "resident_crc32_both": 1770733249,
+  "initial_usb": {
+    "percentage": 100,
+    "cable": true,
+    "hardware_full": false,
+    "queries": 16287,
+    "replies": 16287
+  },
+  "usb_baseline": {
+    "samples": 7,
+    "elapsed_seconds_rounded": 60.11,
+    "percentage_min": 100,
+    "percentage_max": 100,
+    "queries_added": 20,
+    "replies_added": 20,
+    "maximum_reply_age_ms": 2180,
+    "uptime_advanced_ms": 60076,
+    "radio_errors": 0
+  },
+  "bluetooth_probe": {
+    "existing_profile": 2,
+    "radio_percentage": 100,
+    "uncached_ble_battery_service_percentage": 100,
+    "previous_percentage": 100,
+    "charger_mode": 3,
+    "internal_percentage_source": true,
+    "battery_service_enabled": true,
+    "drop_counter": 0,
+    "timer_id": 3844,
+    "timer_period_ticks": 1000
+  },
+  "unplug_probe": {
+    "charging_samples_obtained": 11,
+    "discharge_samples_obtained": 0,
+    "complete": false,
+    "initial_exception_preserved": false,
+    "main_controller_restart_observed": true,
+    "restart_cause_established": false
+  },
+  "final_state": {
+    "selected_output": "USB",
+    "active_output": "USB",
+    "waiting": false,
+    "queued": 0,
+    "radio_errors": 0,
+    "battery_percentage": 100
+  },
+  "limits": {
+    "below_ceiling_charging_freeze_reproduced": false,
+    "physical_adc_conversion_freshness_proven": false,
+    "initial_usb_sampler_state_observed": false,
+    "battery_endurance_measured": false
+  },
+  "firmware_written": false,
+  "radio_ram_written": false,
+  "pairing_changed": false,
+  "software_reset_requested": false,
+  "temporary_output_selection_performed": true
+}

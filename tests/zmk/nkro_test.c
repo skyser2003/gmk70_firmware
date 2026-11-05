@@ -11,6 +11,12 @@ static bool                           left = true;
 static struct zmk_hid_keyboard_report native;
 static unsigned                       releases, sends;
 static unsigned                       phase;
+#ifdef CONFIG_GMK70_CONTROLS
+static bool gui_locked;
+uint8_t     gmk_controls_project_modifiers(uint8_t modifiers) {
+    return gui_locked ? (uint8_t)(modifiers & 0x77U) : modifiers;
+}
+#endif
 
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 static ssize_t read_state(void *ctx, void *data, size_t size) {
@@ -62,12 +68,14 @@ static unsigned count(const struct zmk_hid_keyboard_report *report) {
 }
 int main(void) {
     assert(!registered_init() && gmk_nkro_enabled());
+    assert(!gmk_nkro_dirty());
     native.report_id      = 1;
     native.body.modifiers = 0x28;
     for (unsigned usage = 4; usage < 14; ++usage)
         key(usage, true);
     assert(count(__wrap_zmk_hid_get_keyboard_report()) == 10);
     assert(!gmk_nkro_set(false) && !gmk_nkro_enabled());
+    assert(gmk_nkro_dirty());
     const struct zmk_hid_keyboard_report *limited = __wrap_zmk_hid_get_keyboard_report();
     assert(count(limited) == 6 && limited->report_id == 1 && limited->body.modifiers == 0x28);
     for (unsigned usage = 4; usage < 10; ++usage)
@@ -81,6 +89,7 @@ int main(void) {
     assert(count(limited) == 6 && !has(limited, 4) && !has(limited, 7));
     assert(has(limited, 5) && has(limited, 9) && has(limited, 10) && has(limited, 11));
     assert(!gmk_nkro_toggle() && gmk_nkro_enabled());
+    assert(!gmk_nkro_dirty());
     assert(count(__wrap_zmk_hid_get_keyboard_report()) == 8 && releases == 4);
     assert(!gmk_nkro_set(false));
     key(0x73, true);
@@ -98,6 +107,14 @@ int main(void) {
     saved = 2;
     assert(registered_set("state", 1, read_state, &saved) == -EINVAL && !gmk_nkro_enabled());
     assert(registered_set("other", 1, read_state, &saved) == -ENOENT);
+#endif
+#ifdef CONFIG_GMK70_CONTROLS
+    native.body.modifiers = 0xff;
+    gui_locked            = true;
+    assert(__wrap_zmk_hid_get_keyboard_report()->body.modifiers == 0x77);
+    assert(native.body.modifiers == 0xff); /* Native held state stays intact. */
+    gui_locked = false;
+    assert(__wrap_zmk_hid_get_keyboard_report()->body.modifiers == 0xff);
 #endif
     puts("NKRO: default on, six-key projection, native state, modifiers, releases and role gate passed");
 }

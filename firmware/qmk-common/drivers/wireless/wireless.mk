@@ -27,6 +27,6 @@ ifeq ($(strip $(WIRELESS_ENABLE)), yes)
 
     ifeq ($(strip $(WIRELESS_LPWR_STOP_ENABLE)), yes)
         OPT_DEFS += -DWIRELESS_LPWR_STOP_ENABLE
-        SRC += $(WIRELESS_DIR)/lpwr_wb32.c
+        SRC += $(WIRELESS_DIR)/lpwr_wb32.c $(WIRELESS_DIR)/wb32_stop.c $(WIRELESS_DIR)/wb32_stop_hw.c
     endif
 endif

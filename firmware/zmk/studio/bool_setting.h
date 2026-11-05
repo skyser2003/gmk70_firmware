@@ -17,6 +17,7 @@ struct gmk_bool_setting {
 /* The name must remain valid for the setting's lifetime. Defaults are clean. */
 void gmk_bool_setting_init(struct gmk_bool_setting *setting, const char *name, bool default_value);
 bool gmk_bool_setting_get(struct gmk_bool_setting *setting);
+bool gmk_bool_setting_dirty(struct gmk_bool_setting *setting);
 /* Set returns whether the value changed; toggle returns the new value. */
 bool gmk_bool_setting_set(struct gmk_bool_setting *setting, bool value);
 bool gmk_bool_setting_toggle(struct gmk_bool_setting *setting);

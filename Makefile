@@ -60,6 +60,19 @@ setup-zmk:
 .PHONY: setup-zmk
 
 test-zmk:
+	bash ./tests/zmk/run_controls_tests.sh
+	bash ./tests/zmk/run_native_ids_tests.sh
+	bash ./tests/zmk/run_controls_behavior_tests.sh
+	bash ./tests/zmk/run_recovery_tests.sh
+	bash ./tests/zmk/run_wb32_stop_tests.sh
+	bash ./tests/zmk/run_wired_power_tests.sh
+	bash ./tests/zmk/run_power_core_tests.sh
+	bash ./tests/zmk/run_power_protocol_tests.sh
+	bash ./tests/zmk/run_power_coordinator_tests.sh
+	bash ./tests/zmk/run_power_native_tests.sh
+	bash ./tests/zmk/run_radio_parity_tests.sh
+	bash ./tests/zmk/run_rgb_idle_tests.sh
+	bash ./tests/zmk/run_cbprintf_tests.sh
 	bash ./tests/zmk/run_main_return_tests.sh
 	bash ./tests/zmk/run_usb_dc_tests.sh
 	bash ./tests/zmk/run_soc_clock_tests.sh

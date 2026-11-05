@@ -7,8 +7,13 @@
 #include <string.h>
 #define ARG_UNUSED(x) (void)(x)
 #define K_FOREVER (-1)
+#define K_NO_WAIT 0
+extern bool        settings_test_in_isr;
+static inline bool k_is_in_isr(void) {
+    return settings_test_in_isr;
+}
 #define K_MUTEX_DEFINE(n) pthread_mutex_t n = PTHREAD_MUTEX_INITIALIZER
-#define k_mutex_lock(m, t) ((void)(t), pthread_mutex_lock(m))
+#define k_mutex_lock(m, t) ((t) == K_NO_WAIT ? pthread_mutex_trylock(m) : pthread_mutex_lock(m))
 #define k_mutex_unlock(m) pthread_mutex_unlock(m)
 struct k_sem {
     pthread_mutex_t mutex;

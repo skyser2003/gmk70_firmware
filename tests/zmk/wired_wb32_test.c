@@ -19,6 +19,7 @@ static const struct ec11_config native_encoder_config = {
     .resolution = 1,
 };
 static const struct device native_encoder_device = {.data = &native_encoder_data, .config = &native_encoder_config, .api = &ec11_driver_api};
+static unsigned            native_encoder_initializations;
 int                        gpio_pin_get_dt(const struct gpio_dt_spec *pin) {
     gpio_port_value_t value;
     assert(wb32_port_get_raw(pin->port, &value) == 0);
@@ -29,6 +30,7 @@ int gpio_pin_configure_dt(const struct gpio_dt_spec *pin, gpio_flags_t flags) {
 }
 bool gmk_native_encoder_init(void) {
     assert(left);
+    ++native_encoder_initializations;
     return ec11_init(&native_encoder_device) == 0;
 }
 int32_t gmk_native_encoder_sample(void) {
@@ -46,6 +48,8 @@ static bool     saw_divider;
 static bool     emulate_peer;
 static unsigned uart_transmissions;
 static bool     arm_race;
+static bool     hw_tx_busy;
+static unsigned power_arm_race;
 #ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
 static bool    capture_native;
 static uint8_t native_tx[64];
@@ -58,11 +62,16 @@ int gpio_pin_interrupt_configure(const struct device *dev, gpio_pin_t pin, gpio_
         ((struct wb32_gpio *)WB32_GPIOA_BASE)->idr &= ~BIT(1);
         arm_race = false;
     }
+    if (flags && dev == &fake_gpio_ports[2] && pin == 15 && power_arm_race) {
+        if (power_arm_race == 1) ((struct wb32_gpio *)WB32_GPIOA_BASE)->idr &= ~BIT(1);
+        if (power_arm_race == 2) ((struct wb32_gpio *)WB32_GPIOA_BASE)->idr ^= BIT(7);
+        power_arm_race = 0;
+    }
     return result;
 }
 static const uint8_t peer_matrix[10] = {1, 0, 0, 1, 2, 0, 3, 0, 4, 0};
 uint32_t             sys_read32(uintptr_t address) {
-    if (address == REG(0x14)) return hw_error | (hw_pos < hw_size ? 1 : 0);
+    if (address == REG(0x14)) return hw_error | (hw_pos < hw_size ? 1 : 0) | (hw_tx_busy ? 0 : 0x60);
     if (address == REG(0)) {
         assert(hw_pos < hw_size);
         return hw_rx[hw_pos++];
@@ -529,4 +538,5 @@ int main(void) {
 #endif
     assert(munmap((void *)0x40000000, 0x20000) == 0);
     puts("native WB32 UART/GPIO EXTI/idle matrix/arm race/held key/fallback/both-role tests passed");
+    return 0;
 }

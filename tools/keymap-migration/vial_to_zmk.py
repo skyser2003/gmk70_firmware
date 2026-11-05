@@ -355,6 +355,10 @@ class KeycodeCatalog:
 
     def hid_usage(self, code: int) -> int:
         if code in self._hid:
+            if self._hid[code] >> 16 == 1:
+                # Pinned native ZMK only produces keyboard/consumer reports.
+                # A system-page KP binding would be accepted then do nothing.
+                raise UnsupportedKeycode(IssueCategory.UNSUPPORTED)
             return self._hid[code]
         if 4 <= code <= 0xA4 or 0xE0 <= code <= 0xE7:
             return 0x70000 | code
@@ -466,7 +470,7 @@ class VialToZmk:
         if code in (0x7E07, 0x7E1B):
             return Binding("gmk_battery", (1 if code == 0x7E07 else 0,))
         if code in (0x7E22, 0x7E23):
-            return self.translate(0x5200 + (2 if code == 0x7E23 else 0), layer_count)
+            return Binding("gmk_controls", (4 if code == 0x7E23 else 3,))
         if 0x7E1C <= code <= 0x7E21:
             shortcuts = (0x011D, 0x011B, 0x0106, 0x0119, 0x082B, 0x0808)
             return self.translate(shortcuts[code - 0x7E1C], layer_count)
@@ -475,15 +479,20 @@ class VialToZmk:
         if code == 0x7E09:
             raise UnsupportedKeycode(IssueCategory.LIGHTING)
         if code in (0x7E11, 0x7E12, 0x7E13):
-            raise UnsupportedKeycode(IssueCategory.SLEEP)
+            return Binding("gmk_controls", ({0x7E11: 8, 0x7E12: 7, 0x7E13: 6}[code],))
         if code == 0x7E1A:
             return Binding("gmk_flip", ())
         if code in (0x7009, 0x700A, 0x700B, 0x7E24):
-            raise UnsupportedKeycode(IssueCategory.GUI_LOCK)
+            # QMK GUI_ON permits Windows keys; the native board control's
+            # lock-on action suppresses them, so the on/off values invert.
+            return Binding(
+                "gmk_controls", ({0x7009: 2, 0x700A: 1, 0x700B: 0, 0x7E24: 0}[code],)
+            )
         if code in (0x7011, 0x7012, 0x7013):
             return Binding("gmk_nkro", ({0x7011: 1, 0x7012: 2, 0x7013: 0}[code],))
         if code == 0x7C03:
-            raise UnsupportedKeycode(IssueCategory.SETTINGS_RESET)
+            # Deliberate hold/release resets only ZMK's application settings.
+            return Binding("gmk_recovery", (3,))
         if 0x7E00 <= code <= 0x7E3F:
             raise UnsupportedKeycode(IssueCategory.RESERVED)
         raise UnsupportedKeycode(IssueCategory.UNSUPPORTED)

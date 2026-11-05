@@ -178,6 +178,9 @@ int gmk_flip_toggle(void) {
 void gmk_flip_poll(bool writes_allowed) {
     gmk_bool_setting_poll(&setting, writes_allowed);
 }
+bool gmk_flip_dirty(void) {
+    return gmk_bool_setting_dirty(&setting);
+}
 static int load(const char *name, size_t len, settings_read_cb read, void *ctx) {
     if (strcmp(name, "state")) return -ENOENT;
     return gmk_bool_setting_load(&setting, len, read, ctx);

@@ -41,6 +41,13 @@ bool gmk_bool_setting_get(struct gmk_bool_setting *setting) {
     return enabled;
 }
 
+bool gmk_bool_setting_dirty(struct gmk_bool_setting *setting) {
+    k_spinlock_key_t key   = k_spin_lock(&setting->lock);
+    bool             dirty = setting->saving || setting->enabled != setting->stored;
+    k_spin_unlock(&setting->lock, key);
+    return dirty;
+}
+
 bool gmk_bool_setting_set(struct gmk_bool_setting *setting, bool value) {
     k_spinlock_key_t key     = k_spin_lock(&setting->lock);
     bool             changed = set_locked(setting, value);

@@ -1,5 +1,355 @@
 # Local continuation: updater-preserving ZMK development
 
+## Last battery trial rolled back — 2026-11-05
+
+The user requested removal of the last attempted battery correction, a renewed
+QMK comparison and an explanation of wired polling. Source and all eight builds
+are restored to the exact pre-trial application. **LEFT is now rolled back and
+verified; RIGHT already had that image and was not written.** Both applications
+are 105,996 bytes / CRC32 `3957255507`, SHA256
+`88a1c6490e8543201a29b73fa13bd079d5d1c0bfbf8ef26dad8b716c492fd1b2`.
+Both residents remain CRC32 `1770733249`. RAM is 28,162 / 28,544 bytes, leaving
+382 bytes unallocated; stacks remain 14,336 bytes, without a runtime watermark
+claim. Permanent firmware still initializes/feeds no hardware watchdog.
+
+The full-input qualifier, transition metadata/getter `0x72/0x23`, CLI `--trace`
+and trace-only tests are removed. Ordinary battery getter `0x21`, the earlier
+three-second wired inquiries, charger notifications and 5.5-second USB sampler
+recovery remain. This rollback is not a battery-estimation fix. The stock radio
+still supplies the percentage; no radio firmware/RAM or pairing was changed.
+
+`make test`, `make check-tools`, all eight builds, formatting, lint, strict
+typing and dependency-duplication review pass. Frozen LEFT case
+`.work/zmk-battery-transition-rollback/left/` has a completed 70-second baseline,
+one acknowledged INSTALL and successful independent 70-second after-health.
+Exact identities, zero transport/relay retries, no watchdog feeds and the saved
+four-layer keymap are verified. USB returned without requesting reconnect or
+power cycling. **Never replay the case's INSTALL marker.** Private keymap
+backups must not be printed or committed. No commit or push was performed.
+
+Wired polling is the GMK70 integration policy for a current battery indicator
+and USB telemetry during charging, not an updater requirement. Native ZMK's
+active battery reporter is endpoint-independent, but GMK70's separate UART
+worker implements the three-second inquiries. QMK's regular inquiries are
+wireless-only in normal power state; its power-state assignment hook also sends
+a one-off inquiry without that gate, so it is inaccurate to say QMK never
+queries while wired. ZMK additionally keeps USB available during wireless use
+and has different startup/charger timing. See the
+[rollback comparison](validation/2026-11-05-zmk-battery-rollback/README.md).
+No physical test or user answer remains pending. The older trial below is
+historical evidence and does not describe the installed image.
+
+## Battery transition candidate — historical trial, 2026-11-05
+
+Latest user update: both GMK70 and Sofle return to expected battery indication
+after a short wait, possibly30s, without powercycling. Exact delay/levels are
+unmeasured; this changes the description to a transient high reading with
+automatic correction. Existing GMK trace100->98 over33.71s already supports it.
+User clarified Sofle corrected after pressing a key again. This supports its
+idle-to-ACTIVE fresh-sample path; actual ADC/idle timing remains uncaptured.
+No question remains pending. GMK's radio trace already corrected without a
+keypress, so do not assign one shared idle mechanism to both keyboards.
+
+User authorized trying the main-firmware fix and supplied LEFT USB/wired. The
+candidate is **installed on LEFT**: exact image/residents and both-half 70-second
+health checks pass before and after. Saved Studio keymap compares exactly, with
+no unsaved edits. RIGHT remains on application 105,996 / CRC32 `3957255507`.
+USB returned without a requested power cycle. **The first candidate does not
+fully fix the fault**: after clearing old history, radio/BLE read 86% unplugged;
+adding USB while staying on BT2 produced 100%, charging mode 3 and internal
+source. USB status independently verified selected=active=BT2, connected,
+queue=0, waiting=false and errors=0. Wired recovery is unnecessary for this jump.
+
+The worker requires 1,000 ms continuous observed cable/full before sending full,
+with immediate falling-edge revocation. Canonical Studio has a separate cached
+transition getter (`read_battery.py --trace`, opcode `0x72/0x23`); normal battery
+getter `0x21` and its status layout remain compatible. Metadata records full
+pulses, complete charger-frame submissions and the previous percentage/time at
+100%. It cannot establish fresh voltage. The reproduced increase originates in
+the radio's estimate; physical voltage and ADC correctness remain unmeasured.
+USB recovery and wired percentage reporting remain enabled.
+
+Candidate: 106,316 bytes, CRC32 `3247243295`, SHA256
+`1c0604283dc4981c1e47485c40321ea1cdd104abff2ff9a13b9914075f8da73b`.
+RAM 28,202 / 28,544, stacks unchanged 14,336; no watchdog. All eight builds,
+`make test`, `make check-tools`, strict typing/lint/format, static analysis and
+15 Windows battery tests pass. Fresh review's stale-history ordering finding
+was reproduced and fixed, then re-reviewed. Temporary bridge/F24 images omit
+only the new trace, retaining their previous features and full qualification;
+F24 image is 106,492 bytes, with only four flash bytes spare.
+
+Freeze `.work/zmk-battery-transition-fix/left/` is LEFT-only and expects both
+last-verified before images 105,996 / CRC32 `3957255507`. Its frozen `source_commit`
+is the parent; uncommitted candidate inputs have a separate SHA256 manifest.
+The baseline, one INSTALL acknowledgment and after-health evidence now exist;
+**do not replay INSTALL**. The initial radio state was already 100% before
+installation. A software USB -> BT2 -> USB round trip worked with zero errors,
+but could not distinguish retained history from a new bad reading.
+
+The user then established an unplugged Bluetooth baseline after powering off:
+radio and uncached BLE both reported 86%. Adding USB while remaining on BT2
+produced 100%, charging mode 3, unchanged timer identity and zero radio errors.
+Moving only the slider to wired exposed the trace: 86% -> 100% at uptime
+192,074 ms, **zero raw-full rises and zero full commands**, last charger `0x64`.
+The ordinary getter matched 100%, queries=replies=191 and age 54 ms. Thus a
+false-full notification is also unnecessary for this reproduction.
+
+The user returned to BT2, tapped Shift and unplugged only USB, keeping power on.
+Four radio samples over 33.71 seconds were 100/100/100/98%, all discharging,
+with drop counters 1/2/3/0. Uncached BLE then matched 98%. Six later reads stayed
+98% with counter 0; final observation was 137.34 seconds after the first
+discharge capture. A final uncached BLE read also matched. This proves updates
+without a power cycle in this run; permanent 100% after unplug was not reproduced.
+The captured mapper separately proves its 4.1 V charging threshold and long
+large-drop hold. Those tests use synthetic voltages; actual ADC input is unknown.
+
+No question remains pending. Keyboard was left on Bluetooth/BT2 with USB unplugged.
+The user's QMK comparison is now recorded in the validation report: historical
+Vial0.1.7 sends the same charging commands, but polls only in wireless mode,
+stops USB/disables B1 pull-up on wireless selection, and has no explicit wired
+sampler recovery interval. ZMK keeps USB available for Studio, queries both modes,
+and has the 5.5-second recovery plus different edge/queue/startup timing.
+The historical tag's battery cache has no freshness handling; current QMK does.
+The bad value originates in the unchanged radio, but concluding radio flash is
+required is premature: main-firmware operating conditions differ. No matched
+physical QMK or QMK-style USB-disconnect experiment was run. Next isolate those
+differences and converted voltage before deciding the remedy. Do not blindly
+remove recovery or overwrite percentage. UART exposes no verified raw voltage
+or clean history reset. No radio correction image is prepared, and
+persistent radio recovery remains unverified; see `docs/RADIO-RECOVERY.md`.
+Do not update RIGHT with this candidate as a claimed percentage fix. Preserve
+resident CRC32 `1770733249` and saved mappings. Private backups contain bindings
+and must not be printed or committed. No radio firmware/RAM or pairing change
+was made. No commit or push was performed for this candidate.
+
+Follow-up Sofle/source research: clean `zmk-sofle` checkout8909b061 selects Nordic
+VDDH ADC via the Eyelash shield and disables battery-history on both halves.
+Selected cormoran fork resolved to4493783ef88ce2e653bf8217c92ee17140df71e3;
+immutable driver/mapper/reporting sources verified. Native calculation gives87%
+at synthetic4100mV; captured GMK radio incharging mode gives100% for the same
+synthetic input. Native reporting defaults60s whileactive, pausesidle/sleep, and
+owns nativeBAS; GMK radio owns independentBAS and only exposespercentage toWB32.
+No special Sofle charging fix was found. Official docs and cases #392 (Windows
+subscription, including Sofle report), #2972 (zero-at-startup/nativeGATT100), a
+TOTEM USB0->100 observation and a Nordic ADC sticking report were inspected.
+None establishes GMK's exact cause. Details/source links are in the validation
+report. No code/device changes, no additional physical test or question pending.
+
+User then recalled Sofle also stays visually full after cold USB startup ->
+Bluetooth, confirming cable unplugged and Sofle display (Windows unchecked).
+Checked fork nice!view implementation: cached SOC, no USB-forced100, icon fill
+rounds98/100 to same width; idle display blanking disabled. Native battery
+reporter samples initially/every60s active, stopsidle (default30s, runtime setting
+unknown), resumes immediately onACTIVE; reporter has no USB/endpoint subscription.
+Initial USB sample retained whileidle/displayvisible is a plausible explanation,
+not proven; sustained active-use and raw voltage/SOC need capture to distinguish.
+Do not attribute both boards to one bug or treat Sofle as a proven good reference.
+No question pending; no code, firmware or device operation performed.
+See [validation and limitations](validation/2026-11-05-zmk-battery-transition/README.md).
+
+## Live battery follow-up — 2026-11-05
+
+Historical checkpoint: the trial above supersedes the unresolved trigger and
+hardware-availability statements below. The earlier captures remain evidence
+for the estimator and ADC hypotheses, not the latest device state.
+
+First-100% investigation: native cache/LED and captured UART query handler do
+not force 100 on USB entry. A production-core C trace sends no full notification
+with stable false full input; a synthetic 10 ms full pulse does send one. Cold
+radio ADC setup consumes ten ignored conversions, while periodic setup schedules
+one completion after 10 ms without those ignored reads. Eleven instruction tests
+pass. Ordinary Bluetooth uses the same periodic path, so this does not establish
+an analog settling fault. The first bad converted sample or a transient full
+state still needs correlation with USB recovery. No firmware/RAM write, output
+selection or reset was requested. See
+[initial-result analysis](validation/2026-11-05-zmk-battery-capture/INITIAL-100-ANALYSIS.md).
+
+User's latest reproduction: Bluetooth -> wired becomes 100%; returning to
+Bluetooth retains 100% with or without USB power; full off/on restores normal.
+This is stronger transition evidence than the isolated captures below. Three
+additional captured-instruction tests conditionally explain persistence after
+one high sample or transient full-mode input; all eight mapper tests pass.
+The first incorrect sample's trigger is still unproven. Investigate QMK/ZMK
+USB control ordering, transient full notifications and sampler wake validity,
+including the 5.5-second quiet workaround. Preserve wired percentage reporting
+and exclusive host routing. No firmware/RAM write, mode switch or reset requested.
+Latest isolated direct Bluetooth snapshot: 98%, discharging mode 0, internal
+source, drop counter 0 and armed timer; not a capture of the reported sequence.
+See the validation's `mode-latch-result.json` and final section. Private evidence
+ends in `.work/battery-estimator-investigation/2026-11-05-mode-latch/`.
+
+Latest wired return: local USB telemetry confirms 100%, cable present and
+hardware full inactive. Seven samples over 60.047 seconds retain 100%, with
+query/reply counts 144 -> 164, selected=active=USB and radio errors 0. LEFT uptime
+429,446 -> 489,462 ms advances continuously during this capture. File timing
+places the previous 86% Bluetooth capture about three hours earlier, before the
+current main-controller boot; this is not an immediate mode-switch comparison.
+The captured mapper can reach 100% at 4,100 mV before hardware full and retain it
+while charging, but no physical voltage or radio sampler freshness was measured.
+No firmware/RAM write, output switch or reset was requested. See the validation's
+`wired-return-result.json` and final section; private evidence ends in
+`.work/battery-estimator-investigation/2026-11-05-wired-return/`.
+
+Latest battery-only follow-up, with Bluetooth mode preserved: the radio and an
+uncached BLE read both show 86%. Thirteen samples over 63.165 seconds remain at
+86%, charger mode 0, internal source, BAS enabled and drop-counter 0; the sampler
+timer is armed. No large-drop hold progression was observed. New ADC conversion
+freshness and real voltage remain unmeasured. See the validation's Bluetooth
+section and `bluetooth-result.json`; private evidence ends in
+`.work/battery-estimator-investigation/2026-11-05-bluetooth/`. No firmware/RAM
+write, output switch, pairing or reset was requested in this latest follow-up.
+
+User connected USB without a requested power cycle. Both applications/residents
+still verify the November 4 identities below. USB, radio RAM and uncached BLE
+Battery Service all read 100%; charging mode 3, internal source and armed sampler
+timer were observed during a temporary existing-BT2 probe. Baseline UART replies
+advanced normally, with zero radio errors and continuous LEFT uptime. The ceiling
+prevents this capture from proving a charging freeze or fresh ADC conversions.
+
+The manual unplug comparison ended after 11 charging samples and obtained no
+discharge sample. Cleanup failed while USB was absent and masked the initial
+exception. Both main controllers had restarted by the later inspection, so the
+continuous-state comparison is invalid. Sleep/power cause remains unrecorded.
+USB output is explicitly restored and verified selected=active=0 with no pending
+work/errors. No firmware/RAM write, pairing or software reset was requested.
+See [capture and limits](validation/2026-11-05-zmk-battery-capture/README.md).
+
+## Battery estimator analysis — 2026-11-04
+
+The user reports higher levels while charging and values that refresh after a
+full power-off. Stateful execution of the stock radio mapper confirms a
+360-sample large-drop hold and mode-dependent clamps that retain old values.
+The native ZMK cache timestamps replies, not ADC conversions. See the
+[analysis and offline proof](validation/2026-11-04-zmk-battery-estimator/README.md).
+Five captured-instruction tests, strict typing/lint/format and the existing
+power-core tests pass. No firmware was changed or flashed; the installed image
+below remains current. Live USB telemetry was unavailable and the known BLE
+profile was unreachable. The user has been asked to connect LEFT USB in wired
+mode without fully powering off, to preserve the current stale state for capture.
+
+## Battery sleep handoff correction installed — 2026-11-04
+
+Both halves now run the same 105,996-byte universal image, CRC32 `3957255507`,
+SHA256 `88a1c6490e8543201a29b73fa13bd079d5d1c0bfbf8ef26dad8b716c492fd1b2`.
+Residents remain CRC32 `1770733249`. Each half received one acknowledged
+INSTALL; four before/after 70-second health windows passed with zero retries,
+reconnects or feeds. No recovery or right-only connection was needed. Exact
+four-layer/296-binding saved Studio snapshots verify unchanged and clean.
+
+The sleep handshake no longer treats its own peer RPC as physical input, and
+ordinary LEFT matrix polling stops during preparation so it cannot restart
+traffic at the final pause. Full UART/storage and genuine-wake gates remain.
+The previous unflashed radio-clear USB-detour correction is also included.
+RAM remains 28,162 / 28,544 with unchanged 14,336 stack bytes and no watchdog.
+Eight builds, full tests, typing/lint/format checks and the new failing-then-
+passing regressions pass. See [validation](validation/2026-11-04-zmk-sleep/README.md).
+The user completed the requested battery-only idle test and confirmed a keypress
+resumed Bluetooth typing normally. Subsequent uptimes were about 37 seconds on
+both halves, with exact application/resident identities and zero feeds. This is
+positive functional wake evidence. The watcher expired before a verified wired
+return, so exact sleep/reconnect timing and entry reason were not captured.
+Saved Studio layers/bindings remain identical after the test. Sleep current and
+overnight endurance remain unmeasured; see the validation record for limits.
+The additional post-wake both-half 70-second health window also passes with no
+retries, reconnects or feeds and unchanged image/resident identities.
+
+## Repeating-key investigation — 2026-11-03
+
+The [offline follow-up](validation/2026-11-03-zmk-radio-switch/STUCK-KEY-ANALYSIS.md)
+found no main-MCU per-switch heap leak or sanitizer-detected corruption. A host
+model reproduces a held key plus stopped reports when release delivery and its
+emergency zero fail. The original trigger remains unproven. A concrete USB
+detour during radio-owned HID clear is corrected and regression-tested in
+source. Candidate: 105,928 bytes, CRC32 `1671338335`, SHA256
+`1d6102e98c74b6c123426a1c2e10f91f348f883de62958386b6f90f543a5ef96`;
+RAM and stack reservations are unchanged. At this checkpoint the candidate was
+not flashed; its correction is now included in the November 4 image above.
+No device operations were performed during the follow-up. Installed identity
+below remains authoritative. Residual radio-state/delivery/queue risks and
+unmeasured live stacks/radio heap are documented in the follow-up.
+
+## Bluetooth shortcut transition correction — 2026-11-03
+
+Current installed universal image on both halves: 105,900 bytes, CRC32
+`2042255645`, SHA256
+`897d6ea48bd14a9b119b009c8a78e0aee3985529358af7f4209aa036042331fa`.
+Residents remain CRC32 `1770733249`; no radio firmware was written. Older
+installed image identities below are historical.
+
+Latest radio requests survive old control completion/failure, obsolete PAIR
+retries stop, and an attributed CONNECTED can recover a fully transmitted SELECT
+despite separate ACK loss. A finite 20 ms late-ACK quarantine precedes transfer
+to another control; arbitrary delayed untagged packets remain unattributable.
+The existing 5.5-second USB ADC-recovery interval remains. Core state is still
+228 bytes and total RAM remains 28,162 / 28,544 bytes with unchanged stacks.
+
+Eight builds and all required checks pass. Both images/residents and four
+70-second before/after health windows verify, with zero retries/reconnects/feeds.
+RIGHT's single INSTALL acknowledgment was unvalidated; no request was replayed.
+Its exact running image and final health window established completion. Exact
+four-layer/296-binding Studio map and native metadata/geometry remain preserved.
+
+Automatic BT1/BT2/return/rapid-return checks passed with zero radio errors. The
+user reports the original shortcuts work initially but will continue normal use
+because the prior failure appeared only after several switches. **Do not claim
+long-term intermittent stability is proven.** No matching USB diagnostic
+interface was available for the final post-retest snapshot. See
+[validation](validation/2026-11-03-zmk-radio-switch/README.md), private evidence in
+`.work/zmk-profile-switch-investigation/`, and the
+[three-stack audit](CUSTOM-FEATURE-PARITY.md) for remaining gaps and policies.
+
+## Battery refresh follow-up — 2026-11-03
+
+Both joined halves now run the same 105,972-byte canonical Studio image,
+CRC32 `1734310917`, SHA256
+`e940c81a45798f74480c742efc7ea4cbd7936ea141be22cb0ed7d3d53a8c646a`.
+Both residents remain CRC32 `1770733249`; no radio firmware was written.
+The USB-selection fix inserts one 5.5-second radio UART quiet interval, then
+resumes normal maintenance so the stock radio can restart its battery sampler.
+Bounded radio faults also retire their work instead of permanently blocking
+battery queries and MCU sleep. No watchdog, stack reduction or new mutable state
+was added. RAM remains 28,162 / 28,544 bytes.
+
+Charging progressed from 58% to 73% on continuous LEFT uptime with USB still
+selected, after the old image had held at 30% and then 49%. Exact Studio layers,
+296 bindings and native metadata/geometry verify after both installations.
+RIGHT's single INSTALL had an unvalidated acknowledgment; do not replay it.
+Independent exact readback and 70-second both-half health established completion.
+See [validation](validation/2026-11-03-zmk-battery-refresh/README.md) and private
+evidence under `.work/zmk-battery-investigation/`.
+
+Physical battery-only endurance/current remains unqualified. A charging-curve
+percentage and fresh UART reply do not by themselves measure energy consumption.
+
+## Basic feature parity installed — 2026-11-03
+
+[Basic parity](ZMK-BASIC-PARITY.md) adds coordinated battery sleep/wake, native
+RGB idle-off, critical/low-battery handling, status/lock LEDs, persistent OS/host
+preferences, safe wireless runtime saves, native mouse transport, USB remote wake
+and deliberate reset/recovery. It keeps one universal image, resident preservation
+and the permanent no-watchdog policy. See the
+[validation record](validation/2026-11-03-zmk-basic-parity/README.md).
+
+The same build also restores the stock radio's charging/stopped/full
+notifications. The earlier port omitted these while continuing to query the
+module, matching a reported battery level frozen at 3% until a restart. See
+[charging-update details](ZMK-BATTERY-LAYOUT.md#battery-implementation).
+
+Both halves now run the same 105,876-byte image, CRC32 2614232591; both residents
+remain 1770733249. One acknowledged INSTALL per half returned automatically
+through joined LEFT USB, without a manual reconnect, right-only connection or
+pads. Final both-half health passed 70.265 seconds with zero retries,
+reconnects/feeds. All four saved Studio layers and 296 bindings, native metadata
+and geometry verify after each update. RAM is 28,162 / 28,544 bytes, including
+unchanged 14,336 stack bytes, leaving 382 bytes free.
+
+Battery replies are fresh with zero radio errors, currently 60% while cable/full
+inputs indicate charging. No percentage increase or Windows Bluetooth refresh
+was observed; physical sleep/wake, key/knob/LED actuation and overnight life
+remain unverified. The reviewed source is still uncommitted because required
+GPG signing was unavailable; its patch/overlay and exact packages are frozen in
+ignored private evidence. The following checkpoints are historical.
+
 ## Native updater framing — 2026-11-02
 
 [Native ZMK updater frames](ZMK-NATIVE-UPDATER-WIRE.md) now carry the relay.

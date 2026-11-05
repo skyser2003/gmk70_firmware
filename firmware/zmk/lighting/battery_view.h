@@ -15,3 +15,7 @@ int  gmk_battery_view_set(struct gmk_battery_view *view, enum gmk_battery_indica
 bool gmk_battery_view_active(const struct gmk_battery_view *view);
 bool gmk_battery_view_release(struct gmk_battery_view *view, uint32_t position);
 void gmk_battery_view_overlay(const struct gmk_battery_view *view, const struct gmk_battery_status *status, uint8_t pixels[3 * GMK_LIGHT_PIXELS]);
+/* The lighting owner additionally gates automatic warning on native ACTIVE.
+ * Apply before held battery/charging overlays so explicit indicators win. */
+bool gmk_battery_warning_active(const struct gmk_battery_status *status);
+void gmk_battery_warning_overlay(const struct gmk_battery_status *status, uint8_t pixels[3 * GMK_LIGHT_PIXELS], uint32_t now);

@@ -29,6 +29,12 @@ static void color(uint8_t *rgb, unsigned index, uint8_t r, uint8_t g, uint8_t b)
     rgb[3 * index + 1] = g;
     rgb[3 * index + 2] = b;
 }
+bool gmk_battery_warning_active(const struct gmk_battery_status *status) {
+    return status->valid && status->age_ms <= 10000U && status->percentage <= 15 && !status->cable;
+}
+void gmk_battery_warning_overlay(const struct gmk_battery_status *status, uint8_t pixels[3 * GMK_LIGHT_PIXELS], uint32_t now) {
+    if (gmk_battery_warning_active(status)) color(pixels, 33, (now / 250U) % 2U == 0 ? 80 : 0, 0, 0);
+}
 
 void gmk_battery_view_overlay(const struct gmk_battery_view *view, const struct gmk_battery_status *status, uint8_t pixels[3 * GMK_LIGHT_PIXELS]) {
     if (held(view, GMK_BATTERY_LEVEL)) {

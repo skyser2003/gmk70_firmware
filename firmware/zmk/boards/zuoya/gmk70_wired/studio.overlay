@@ -1,7 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
+#include <dt-bindings/zmk/behaviors.h>
+#include <behaviors/soft_off.dtsi>
 /* The app-tail settings reservation is outside the admitted load region. */
 &flash0 { reg = <0x08002000 0x1a000>; };
 / {
+    aliases {
+        gmk70-soft-off = &soft_off;
+    };
     chosen {
         zmk,studio-rpc-uart = &studio_uart;
         zmk,battery = &battery_sensor;
@@ -10,6 +15,21 @@
         compatible = "zuoya,gmk70-battery";
     };
     behaviors {
+        gmk_controls: gmk_controls {
+            compatible = "zuoya,gmk70-behavior-controls";
+            display-name = "GMK70 controls";
+            #binding-cells = <1>;
+        };
+        gmk_sleep: gmk_sleep {
+            compatible = "zuoya,gmk70-behavior-sleep";
+            display-name = "GMK70 sleep timeout";
+            #binding-cells = <1>;
+        };
+        gmk_recovery: gmk_recovery {
+            compatible = "zuoya,gmk70-behavior-recovery";
+            display-name = "GMK70 recovery: hold 3s/release";
+            #binding-cells = <1>;
+        };
         gmk_flip: gmk_flip {
             compatible = "zuoya,gmk70-behavior-function-flip";
             display-name = "GMK70 Function / Media Flip";
@@ -31,4 +51,7 @@
     studio_uart: studio_uart {
         compatible = "zephyr,cdc-acm-uart";
     };
+};
+&soft_off {
+    hold-time-ms = <3000>;
 };

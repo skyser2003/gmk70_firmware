@@ -5,6 +5,9 @@
 #ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
 #    include "native_update_wire.h"
 #endif
+#ifdef CONFIG_GMK70_POWER
+#    include "../power/power.h"
+#endif
 #include <errno.h>
 #include <string.h>
 #include <zephyr/kernel.h>
@@ -75,6 +78,14 @@ int __wrap_raise_zmk_position_state_changed(struct zmk_position_state_changed ev
 
 void gmk_native_split_receive(const uint8_t request[32], uint8_t response[32]) {
     memset(response, 0, 32);
+#ifdef CONFIG_GMK70_POWER
+    /* Power negotiation is read-only to storage and must also work while the
+     * host switch selects Bluetooth or the dongle. Mutation gates stay below. */
+    if (!gmk_wired_is_left() && gmk_split_available() && request[0] == 'P' && request[1] == 'W' && request[2] == 'R') {
+        gmk_power_receive(request, response);
+        return;
+    }
+#endif
 #ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
     if (!gmk_wired_is_left() && gmk_wired_mode() && gmk_native_update_capability(request, response)) return;
 #endif

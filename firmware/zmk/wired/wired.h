@@ -31,3 +31,14 @@ void gmk_wired_get_stats(struct gmk_wired_stats *stats);
 
 /* Nonblocking telemetry: false means contended and leaves *stats unchanged. */
 bool gmk_wired_try_get_stats(struct gmk_wired_stats *stats);
+/* Local sleep boundary, thread context. Prepare arms local wake sources and
+ * stops ordinary LEFT peer polling; explicit split control RPCs remain live.
+ * Pause after the handshake additionally arms UART RX and stops local scans. */
+bool gmk_wired_power_idle(void);
+/* Physical input only; an in-flight power RPC must not advertise a held key.
+ * Full UART quiescence is still required by prepare and runtime storage. */
+bool gmk_wired_power_input_idle(void);
+bool gmk_wired_power_prepare(bool critical);
+void gmk_wired_power_pause(bool paused);
+bool gmk_wired_power_wake_pending(void);
+void gmk_wired_power_resume(void);

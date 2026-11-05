@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+description: |
+  Persistent GMK70 GUI-key lock, Windows/Mac mode and USB-sleep preference.
+  One action parameter uses the constants in dt-bindings/zmk/gmk70_controls.h.
+  Actions apply on press through the shared native preferences adapter.
+compatible: "zuoya,gmk70-behavior-controls"
+include: one_param.yaml

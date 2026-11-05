@@ -3,12 +3,18 @@
 #include "radio.h"
 #include "selection.h"
 #include "../wired/wired.h"
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+#    include "../studio/settings_backend.h"
+#endif
 #include <errno.h>
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zmk/behavior.h>
 #include <zmk/hid.h>
 #include <zmk/keymap.h>
+#ifdef CONFIG_GMK70_CONTROLS
+#    include "../controls/controls.h"
+#endif
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION
 #    include <zmk/events/keycode_state_changed.h>
 #endif
@@ -18,6 +24,7 @@ static struct gmk_radio_selector selector;
 static struct k_spinlock         lock;
 static struct k_work             work;
 static bool                      available;
+static bool                      quiesced, processing;
 static uint8_t                   pair_raw;
 static uint32_t                  cancel_epoch;
 static struct radio_request {
@@ -34,10 +41,11 @@ static bool valid_mode(uint8_t raw) {
 }
 static int admission_locked(uint8_t raw) {
     if (!available) return -ENODEV;
+    if (quiesced) return -EBUSY;
     return valid_mode(raw) ? 0 : -EPERM;
 }
 static bool control_busy_locked(void) {
-    return core.waiting || core.pending_select || core.pending_pair || core.inflight == GMK_RADIO_TX_SELECT || core.inflight == GMK_RADIO_TX_PAIR;
+    return gmk_radio_core_control_busy(&core);
 }
 static void request_locked(uint8_t channel, bool pair, uint8_t raw) {
     mailbox.channel = channel;
@@ -100,6 +108,7 @@ static void work_handler(struct k_work *item) {
     for (unsigned pass = 0; pass < 2; ++pass) {
         k_spinlock_key_t     key     = k_spin_lock(&lock);
         struct radio_request request = mailbox;
+        processing                   = true;
         mailbox.pending = mailbox.clear = false;
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION
         mailbox.marker = false;
@@ -116,6 +125,7 @@ static void work_handler(struct k_work *item) {
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION
         again = again || mailbox.marker;
 #endif
+        processing = again;
         k_spin_unlock(&lock, key);
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION
         if (request.marker && !request.pending && !request.clear) emit_marker();
@@ -161,7 +171,7 @@ void gmk_radio_poll(void) {
     uint8_t          raw = gmk_host_switch(), channel;
     uint32_t         now = k_uptime_get_32();
     k_spinlock_key_t key = k_spin_lock(&lock);
-    if (available) {
+    if (available && !quiesced) {
         if (!valid_mode(raw) || (selector.have_candidate && selector.candidate_raw != raw)) cancel_pair_locked();
         if (core.pending_pair && (raw != pair_raw || !valid_mode(raw))) core.pending_pair = false;
         if (gmk_radio_selector_switch(&selector, raw, now, core.last_bt, &channel)) {
@@ -178,7 +188,13 @@ void gmk_radio_poll(void) {
         }
     }
     bool pending = mailbox.pending || mailbox.clear;
+#ifdef CONFIG_GMK70_CONTROLS
+    uint8_t selected = core.selected, connection = core.connection;
+#endif
     k_spin_unlock(&lock, key);
+#ifdef CONFIG_GMK70_CONTROLS
+    if (available) gmk_controls_radio_state(selected, connection);
+#endif
     if (pending) k_work_submit(&work);
 }
 bool gmk_radio_selected(void) {
@@ -205,24 +221,52 @@ int gmk_radio_submit_consumer(uint16_t usage) {
     const uint8_t report[8] = {(uint8_t)usage, (uint8_t)(usage >> 8)};
     return submit(true, report, NULL);
 }
+int gmk_radio_submit_mouse(const uint8_t report[5]) {
+    uint8_t          raw    = gmk_host_switch();
+    k_spinlock_key_t key    = k_spin_lock(&lock);
+    int              result = admission_locked(raw);
+    if (!result) result = gmk_radio_core_mouse(&core, report);
+    k_spin_unlock(&lock, key);
+    return result;
+}
 void gmk_radio_release(bool consumer) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     if (available) gmk_radio_core_release(&core, consumer);
     k_spin_unlock(&lock, key);
 }
+void gmk_radio_release_mouse(void) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    if (available) gmk_radio_core_release_mouse(&core);
+    k_spin_unlock(&lock, key);
+}
 void gmk_radio_notification(uint8_t command, uint8_t value) {
     k_spinlock_key_t key = k_spin_lock(&lock);
+#ifdef CONFIG_GMK70_CONTROLS
+    bool leds = available && command == 0x5a && core.accept_status && core.active == core.selected && core.active != GMK_HOST_USB && core.connection == GMK_RADIO_CONNECTED;
+#endif
     if (available) gmk_radio_core_notification(&core, command, value);
+#ifdef CONFIG_GMK70_CONTROLS
+    uint8_t selected = core.selected, connection = core.connection;
+#endif
     k_spin_unlock(&lock, key);
+#ifdef CONFIG_GMK70_CONTROLS
+    if (available) gmk_controls_radio_state(selected, connection);
+    if (leds) gmk_controls_radio_leds(value);
+#endif
 }
 void gmk_radio_ack(void) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     if (available) gmk_radio_core_ack(&core);
     k_spin_unlock(&lock, key);
 }
+void gmk_radio_charger_state(bool cable, bool full) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    if (available && !quiesced) gmk_radio_core_charger(&core, cable, full);
+    k_spin_unlock(&lock, key);
+}
 bool gmk_radio_next(uint32_t now, struct gmk_radio_frame *frame) {
     k_spinlock_key_t key    = k_spin_lock(&lock);
-    bool             result = available && gmk_radio_core_next(&core, now, frame);
+    bool             result = available && !quiesced && gmk_radio_core_next(&core, now, frame);
     k_spin_unlock(&lock, key);
     return result;
 }
@@ -236,6 +280,39 @@ bool gmk_radio_control_busy(void) {
     bool             busy = available && control_busy_locked();
     k_spin_unlock(&lock, key);
     return busy;
+}
+static bool idle_locked(void) {
+    return !available || (gmk_radio_core_idle(&core) && !mailbox.pending && !mailbox.clear && !processing && !selector.holding
+#ifdef CONFIG_GMK70_RADIO_QUALIFICATION
+                          && !mailbox.marker
+#endif
+                         );
+}
+bool gmk_radio_idle(void) {
+    k_spinlock_key_t key  = k_spin_lock(&lock);
+    bool             idle = idle_locked();
+    k_spin_unlock(&lock, key);
+    return idle;
+}
+bool gmk_radio_power_quiesce(bool enabled) {
+    k_spinlock_key_t key   = k_spin_lock(&lock);
+    bool             ready = !enabled || idle_locked();
+    if (ready) quiesced = enabled;
+    k_spin_unlock(&lock, key);
+    return ready;
+}
+uint8_t gmk_radio_last_bt(void) {
+    k_spinlock_key_t key     = k_spin_lock(&lock);
+    uint8_t          channel = core.last_bt;
+    k_spin_unlock(&lock, key);
+    return channel;
+}
+int gmk_radio_restore_last_bt(uint8_t channel) {
+    if (channel < GMK_HOST_BT1 || channel > GMK_HOST_BT5) return -EINVAL;
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    core.last_bt         = channel;
+    k_spin_unlock(&lock, key);
+    return 0;
 }
 void gmk_radio_get(struct gmk_radio_status *out) {
     k_spinlock_key_t key = k_spin_lock(&lock);
@@ -251,6 +328,9 @@ static void cancel_pair_for_keymap_change(void) {
  * Invalidate the held deadline, mailbox and pending pair before entering them. */
 int __real_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint16_t binding_idx, const struct zmk_behavior_binding binding);
 int __wrap_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint16_t binding_idx, const struct zmk_behavior_binding binding) {
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+    if (!gmk_zmk_settings_ids_ready()) return -EACCES;
+#endif
     cancel_pair_for_keymap_change();
     return __real_zmk_keymap_set_layer_binding_at_idx(layer, binding_idx, binding);
 }
@@ -286,11 +366,13 @@ int __wrap_zmk_keymap_restore_layer(zmk_keymap_layer_id_t id, zmk_keymap_layer_i
 }
 static int radio_init(void) {
     gmk_radio_core_init(&core);
+    gmk_radio_core_enable_sleep(&core);
     selector     = (struct gmk_radio_selector){0};
     mailbox      = (struct radio_request){0};
     pair_raw     = 0;
     cancel_epoch = 0;
-    available    = gmk_wired_is_left();
+    quiesced = processing = false;
+    available             = gmk_wired_is_left();
     k_work_init(&work, work_handler);
     return 0;
 }

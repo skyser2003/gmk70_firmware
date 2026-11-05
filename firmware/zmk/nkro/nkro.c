@@ -12,6 +12,9 @@
 #include <zephyr/kernel.h>
 #include <zmk/endpoints.h>
 #include <zmk/hid.h>
+#ifdef CONFIG_GMK70_CONTROLS
+#    include "../controls/controls.h"
+#endif
 #ifdef CONFIG_GMK70_FUNCTION_FLIP
 #    include "../function_flip/flip.h"
 #endif
@@ -29,15 +32,19 @@ struct zmk_hid_keyboard_report *__real_zmk_hid_get_keyboard_report(void);
 struct zmk_hid_keyboard_report *__wrap_zmk_hid_get_keyboard_report(void) {
     struct zmk_hid_keyboard_report *native  = __real_zmk_hid_get_keyboard_report();
     bool                            enabled = gmk_nkro_enabled();
-#ifndef CONFIG_GMK70_FUNCTION_FLIP
+#if !defined(CONFIG_GMK70_FUNCTION_FLIP) && !defined(CONFIG_GMK70_CONTROLS)
     if (enabled) return native;
-#else
+#endif
+#ifdef CONFIG_GMK70_FUNCTION_FLIP
     uint8_t modifiers = gmk_flip_modifiers();
 #endif
     k_spinlock_key_t key = k_spin_lock(&projection_lock);
     limited              = *native;
 #ifdef CONFIG_GMK70_FUNCTION_FLIP
     limited.body.modifiers |= modifiers;
+#endif
+#ifdef CONFIG_GMK70_CONTROLS
+    limited.body.modifiers = gmk_controls_project_modifiers(limited.body.modifiers);
 #endif
     if (!enabled) {
         uint8_t keyboard[8], overflow[14];
@@ -61,6 +68,9 @@ zmk_hid_boot_report_t       *__wrap_zmk_hid_get_boot_report(void) {
     boot                                         = (zmk_hid_boot_report_t){.modifiers = report->body.modifiers};
 #    ifdef CONFIG_GMK70_FUNCTION_FLIP
     boot.modifiers |= gmk_flip_modifiers();
+#    endif
+#    ifdef CONFIG_GMK70_CONTROLS
+    boot.modifiers = gmk_controls_project_modifiers(boot.modifiers);
 #    endif
     unsigned count = 0;
     for (unsigned usage = 1; usage < sizeof(report->body.keys) * 8; ++usage) {
@@ -97,6 +107,9 @@ int gmk_nkro_toggle(void) {
 }
 void gmk_nkro_poll(bool writes_allowed) {
     gmk_bool_setting_poll(&setting, writes_allowed);
+}
+bool gmk_nkro_dirty(void) {
+    return gmk_bool_setting_dirty(&setting);
 }
 
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS

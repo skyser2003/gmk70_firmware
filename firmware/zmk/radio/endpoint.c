@@ -20,6 +20,26 @@ static struct gmk70_radio_keys keys;
 int  __real_zmk_endpoint_send_report(uint16_t usage_page);
 void __real_zmk_hid_keyboard_clear(void);
 void __real_zmk_hid_consumer_clear(void);
+#if defined(CONFIG_ZMK_POINTING) && CONFIG_ZMK_POINTING
+int            __real_zmk_endpoint_send_mouse_report(void);
+void           __real_zmk_hid_mouse_clear(void);
+static uint8_t mouse_axis(int16_t value) {
+    /* The stock module uses signed eight-bit relative axes; native ZMK keeps
+     * sixteen-bit values. Saturate instead of wrapping a large native delta. */
+    int16_t bounded = value < -127 ? -127 : value > 127 ? 127 : value;
+    return (uint8_t)(int8_t)bounded;
+}
+int __wrap_zmk_endpoint_send_mouse_report(void) {
+    if (!gmk_radio_selected()) return __real_zmk_endpoint_send_mouse_report();
+    const struct zmk_hid_mouse_report_body *body      = &zmk_hid_get_mouse_report()->body;
+    const uint8_t                           report[5] = {body->buttons, mouse_axis(body->d_x), mouse_axis(body->d_y), mouse_axis(body->d_scroll_y), mouse_axis(body->d_scroll_x)};
+    return gmk_radio_submit_mouse(report);
+}
+void __wrap_zmk_hid_mouse_clear(void) {
+    __real_zmk_hid_mouse_clear();
+    gmk_radio_release_mouse();
+}
+#endif
 
 int __wrap_zmk_endpoint_send_report(uint16_t usage_page) {
     if (!gmk_radio_selected()) return __real_zmk_endpoint_send_report(usage_page);
@@ -82,5 +102,16 @@ void __wrap_zmk_hid_consumer_clear(void) {
 #endif
 }
 void gmk_radio_clear_hid(void) {
-    zmk_endpoint_clear_reports();
+    if (!gmk_radio_selected()) {
+        zmk_endpoint_clear_reports();
+        return;
+    }
+    /* Upstream clear sends from the same translation unit, bypassing the
+     * endpoint wrapper. While radio owns typing, clear through its reserved
+     * release barriers without waiting for unrelated native USB transfers. */
+    __wrap_zmk_hid_keyboard_clear();
+    __wrap_zmk_hid_consumer_clear();
+#if defined(CONFIG_ZMK_POINTING) && CONFIG_ZMK_POINTING
+    __wrap_zmk_hid_mouse_clear();
+#endif
 }

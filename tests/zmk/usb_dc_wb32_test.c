@@ -11,6 +11,19 @@ static uint8_t  common[16], indexed[4][8], rx_fifo[4][128], tx_fifo[4][128];
 static unsigned rx_pos[4], tx_len[4], rx_len[4], clocks, disconnects;
 static unsigned ep_events[256][3], status_events[16], dataends, flushes[4][2];
 static uint8_t  last_csr0_write;
+static unsigned waited_us, wake_pulses, wake_pulse_us;
+static void (*wait_interrupt)(void);
+static bool native_control;
+
+void k_busy_wait(uint32_t usec) {
+    waited_us += usec;
+    if (common[1] & 4U) wake_pulse_us += usec;
+    if (wait_interrupt) {
+        void (*interrupt)(void) = wait_interrupt;
+        wait_interrupt          = NULL;
+        interrupt();
+    }
+}
 
 void wb32_usb_clock_enable(void) {
     ++clocks;
@@ -58,12 +71,37 @@ void sys_write8(uint8_t value, uintptr_t address) {
         if (ep && offset == 0x14 && (value & 0x10)) ++flushes[ep][0];
         indexed[ep][offset - 0x10] = value;
     } else {
+        if (offset == 1 && (value & 4U) && !(common[1] & 4U)) {
+            assert(waited_us >= 5000U);
+            assert(common[11] & 8U);
+            ++wake_pulses;
+        }
         common[offset] = value;
     }
 }
 
 static void ep_callback(uint8_t ep, enum usb_dc_ep_cb_status_code event) {
     ++ep_events[ep][event];
+    if (native_control && !(ep & 0xfU)) {
+        usb_handle_control_transfer(ep, event);
+        return;
+    }
+    if (ep == 0 && event == USB_DC_EP_SETUP && rx_buffers[0][0] == 0 && (rx_buffers[0][1] == 1 || rx_buffers[0][1] == 3)) {
+        struct usb_setup_packet packet;
+        uint8_t                 bytes[8];
+        assert(usb_dc_ep_read(0, bytes, sizeof(bytes), NULL) == 0);
+        packet.bmRequestType = bytes[0];
+        packet.bRequest      = bytes[1];
+        packet.wValue        = (uint16_t)bytes[2] | (uint16_t)bytes[3] << 8;
+        packet.wIndex        = (uint16_t)bytes[4] | (uint16_t)bytes[5] << 8;
+        packet.wLength       = (uint16_t)bytes[6] | (uint16_t)bytes[7] << 8;
+        int32_t  length      = 0;
+        uint8_t *data        = NULL;
+        if (usb_handle_std_device_req(&packet, &length, &data))
+            assert(usb_dc_ep_write(0x80, NULL, 0, NULL) == 0);
+        else
+            assert(usb_dc_ep_set_stall(0) == 0);
+    }
 }
 static void host_status_callback(enum usb_dc_status_code event, const uint8_t *param) {
     (void)param;
@@ -87,6 +125,10 @@ static void start(void) {
     memset(status_events, 0, sizeof(status_events));
     memset(flushes, 0, sizeof(flushes));
     dataends = clocks = disconnects = 0;
+    waited_us = wake_pulses = wake_pulse_us = 0;
+    wait_interrupt                          = NULL;
+    usb_dev.remote_wakeup                   = false;
+    native_control                          = false;
     usb_dc_set_status_callback(host_status_callback);
     assert(usb_dc_attach() == 0);
     assert(clocks == 1);
@@ -312,7 +354,184 @@ static void test_control_and_bulk_out_packets_remain_independent(void) {
     }
 }
 
+static void usb_event(uint8_t event) {
+    common[6] = event;
+    fake_usb_isr(NULL);
+}
+
+static void authorize_remote_wake(void) {
+    const uint8_t request[8] = {0, 3, 1, 0, 0, 0, 0, 0};
+    receive(0, request, sizeof(request));
+    complete_in(0);
+    assert(usb_get_remote_wakeup_status());
+}
+
+/* Pinned Zephyr retains remote_wakeup across USB reset: the board must revoke. */
+static void test_bus_reset_revokes_previous_remote_wake_authorization(void) {
+    start();
+    authorize_remote_wake();
+    usb_event(4);
+    usb_event(1);
+    assert(usb_get_remote_wakeup_status()); /* Characterizes the pinned bug. */
+    assert(usb_wakeup_request() == -EACCES);
+    assert(wake_pulses == 0);
+}
+
+/* Returning ENOTSUP or pulsing before suspend/host authorization is a bug. */
+static void test_native_remote_wake_authorization_and_timing(void) {
+    start();
+    assert(usb_dc_wakeup_request() == -EACCES);
+    usb_event(1);
+    assert(usb_wakeup_request() == -EACCES);
+    assert(waited_us == 0 && wake_pulses == 0);
+    usb_event(2);
+    authorize_remote_wake();
+    usb_event(1);
+    common[1] |= 0x20U; /* Unrelated POWER bits must survive both writes. */
+    common[14] = 3;
+    assert(usb_wakeup_request() == 0);
+    assert(wake_pulses == 1 && wake_pulse_us == 10000U);
+    assert((common[1] & 0x24U) == 0x20U && common[14] == 3);
+    usb_event(8); /* WB32 detects completion via the first resumed SOF. */
+    assert(status_events[USB_DC_RESUME] == 2 && !(common[11] & 8U));
+    assert(usb_wakeup_request() == -EAGAIN);
+    assert(usb_dc_detach() == 0);
+    assert(usb_wakeup_request() == -ENODEV);
+}
+
+static void host_resume_during_wake(void) {
+    usb_event(2);
+}
+
+static void detach_during_wake(void) {
+    assert(usb_dc_detach() == 0);
+}
+
+static void reset_during_wake(void) {
+    usb_event(4);
+}
+
+/* Host resume, reset or unplug while waiting must cancel the pending pulse. */
+static void test_remote_wake_rechecks_after_suspend_idle_delay(void) {
+    void (*interruptions[])(void) = {host_resume_during_wake, detach_during_wake, reset_during_wake};
+    for (unsigned i = 0; i < sizeof(interruptions) / sizeof(interruptions[0]); ++i) {
+        start();
+        authorize_remote_wake();
+        usb_event(1);
+        wait_interrupt = interruptions[i];
+        assert(usb_wakeup_request() == -EAGAIN);
+        assert(wake_pulses == 0 && !(common[1] & 4U));
+    }
+}
+
+/* Resume processing must not reset or flush a live EP0 request. */
+static void test_remote_wake_preserves_control_transfer(void) {
+    start();
+    authorize_remote_wake();
+    setup(true, 2);
+    usb_event(1);
+    assert(usb_wakeup_request() == 0);
+    usb_event(2);
+    const uint8_t data[2] = {0x12, 0x34};
+    assert(usb_dc_ep_write(0x80, data, sizeof(data), NULL) == 0);
+    assert(tx_len[0] == 2 && memcmp(tx_fifo[0], data, 2) == 0);
+    assert(dataends == 2);
+}
+
+static unsigned vendor_requests;
+static uint8_t  vendor_data[128];
+static int      standard_request(struct usb_setup_packet *packet, int32_t *length, uint8_t **data) {
+    return usb_handle_std_device_req(packet, length, data) ? 0 : -EINVAL;
+}
+static int vendor_request(struct usb_setup_packet *packet, int32_t *length, uint8_t **data) {
+    assert(packet->wLength == 128 && *length == 128 && *data == usb_dev.req_data);
+    memcpy(vendor_data, *data, sizeof(vendor_data));
+    ++vendor_requests;
+    *length = 0;
+    return 0;
+}
+static void native_start(void) {
+    start();
+    memset(&usb_dev, 0, sizeof(usb_dev));
+    memset(usb_dev.before, 0xa5, sizeof(usb_dev.before));
+    memset(usb_dev.after, 0x5a, sizeof(usb_dev.after));
+    usb_dev.mps0            = 64;
+    usb_dev.req_handlers[0] = standard_request;
+    usb_dev.req_handlers[2] = vendor_request;
+    native_control          = true;
+    vendor_requests         = 0;
+}
+static void native_request(uint8_t type, uint8_t request, uint16_t value, uint16_t length) {
+    const uint8_t packet[8] = {type, request, value & 255U, value >> 8, 0, 0, length & 255U, length >> 8};
+    receive(0, packet, sizeof(packet));
+}
+static void request_guards(void) {
+    for (unsigned i = 0; i < 16; ++i) {
+        assert(usb_dev.before[i] == 0xa5);
+        assert(usb_dev.after[i] == 0x5a);
+    }
+}
+
+/* Native OUT setup bounds must reject129 while accepting both64-byte packets. */
+static void test_native_128_byte_control_out_buffer_bounds(void) {
+    native_start();
+    native_request(0x40, 0x55, 0, 129);
+    assert(endpoints[0][0].stalled && endpoints[1][0].stalled && vendor_requests == 0);
+    request_guards();
+    native_start();
+    native_request(0x40, 0x55, 0, 128);
+    uint8_t payload[128];
+    for (unsigned i = 0; i < sizeof(payload); ++i)
+        payload[i] = (uint8_t)(i ^ 0xa5);
+    receive(0, payload, 64);
+    assert(vendor_requests == 0);
+    receive(0, payload + 64, 64);
+    assert(vendor_requests == 1 && memcmp(vendor_data, payload, sizeof(payload)) == 0);
+    complete_in(0);
+    request_guards();
+}
+
+/* Large IN descriptors are streamed from their registered storage, not req_data. */
+static void test_native_descriptor_larger_than_request_buffer_is_streamed(void) {
+    static uint8_t descriptor[513];
+    for (unsigned i = 0; i < 512; ++i)
+        descriptor[i] = (uint8_t)(i ^ 0x3c);
+    descriptor[0]   = 9;
+    descriptor[1]   = 2;
+    descriptor[2]   = 0;
+    descriptor[3]   = 2; /* wTotalLength512, larger than request staging128. */
+    descriptor[512] = 0;
+    native_start();
+    usb_dev.descriptors = descriptor;
+    native_request(0x80, 6, 0x0200, 512);
+    for (unsigned packet = 0; packet < 8; ++packet) {
+        assert(tx_len[0] == 64);
+        assert(memcmp(tx_fifo[0], descriptor + 64 * packet, 64) == 0);
+        complete_in(0);
+    }
+    assert(dataends == 1);
+    receive(0, NULL, 0);
+    request_guards();
+}
+
+/* Exercise authorization through the complete pinned control callback as well. */
+static void test_native_control_authorization_is_reset_scoped(void) {
+    native_start();
+    native_request(0, 3, 1, 0);
+    complete_in(0);
+    usb_event(1);
+    assert(usb_wakeup_request() == 0);
+    usb_event(2);
+    native_request(0, 1, 1, 0);
+    complete_in(0);
+    usb_event(1);
+    assert(usb_wakeup_request() == -EACCES);
+    assert(wake_pulses == 1);
+    request_guards();
+}
+
 int main(void) {
+    test_bus_reset_revokes_previous_remote_wake_authorization();
     test_capabilities_and_lifecycle();
     test_control_in_packets_and_status();
     test_control_short_response_needs_zlp();
@@ -324,6 +543,12 @@ int main(void) {
     test_coalesced_final_in_and_status_out();
     test_control_and_bulk_out_packets_remain_independent();
     test_endpoint_metadata_does_not_reserve_packet_storage();
+    test_native_remote_wake_authorization_and_timing();
+    test_remote_wake_rechecks_after_suspend_idle_delay();
+    test_remote_wake_preserves_control_transfer();
+    test_native_128_byte_control_out_buffer_bounds();
+    test_native_descriptor_larger_than_request_buffer_is_streamed();
+    test_native_control_authorization_is_reset_scoped();
     puts("WB32 USB controller tests passed");
     return 0;
 }

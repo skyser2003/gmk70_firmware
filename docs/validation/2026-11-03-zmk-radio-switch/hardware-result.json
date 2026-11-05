@@ -1,0 +1,132 @@
+{
+  "date": "2026-11-03",
+  "status": "installed_initial_checks_passed_extended_use_pending",
+  "application": {
+    "bytes": 105900,
+    "crc32": 2042255645,
+    "sha256": "897d6ea48bd14a9b119b009c8a78e0aee3985529358af7f4209aa036042331fa",
+    "identical_on_both_halves": true
+  },
+  "resident_crc32_both": 1770733249,
+  "radio_firmware_written": false,
+  "installation": {
+    "left_install_requests": 1,
+    "right_install_requests": 1,
+    "left_ack_validated": true,
+    "right_ack_validated": false,
+    "both_running_images_verified": true,
+    "manual_power_cycles": 0,
+    "right_only_usb_required": false
+  },
+  "health_windows": [
+    {
+      "case": "left",
+      "stage": "baseline",
+      "verified_seconds": 70.29599999997299,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "watchdog_feed_calls": 0
+    },
+    {
+      "case": "left",
+      "stage": "after",
+      "verified_seconds": 70.35900000005495,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "watchdog_feed_calls": 0
+    },
+    {
+      "case": "right",
+      "stage": "baseline",
+      "verified_seconds": 70.23399999993853,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "watchdog_feed_calls": 0
+    },
+    {
+      "case": "right",
+      "stage": "after",
+      "verified_seconds": 70.25,
+      "transport_retries": 0,
+      "relay_retries": 0,
+      "reconnects": 0,
+      "watchdog_feed_calls": 0
+    }
+  ],
+  "ram": {
+    "reserved_bytes": 28162,
+    "capacity_bytes": 28544,
+    "unallocated_bytes": 382,
+    "radio_core_bytes": 228,
+    "stack_reservations_changed": false,
+    "stack_high_water_measured": false
+  },
+  "studio": {
+    "layers": 4,
+    "bindings": 296,
+    "exact_saved_map_preserved": true,
+    "native_metadata_and_geometry_verified": true
+  },
+  "hardware_profile_probe": {
+    "samples": 133,
+    "phases": [
+      {
+        "phase": "bt1",
+        "channel": 1,
+        "connected_or_usb": true,
+        "queue_drained": true,
+        "elapsed_seconds": 0.375
+      },
+      {
+        "phase": "bt2",
+        "channel": 2,
+        "connected_or_usb": true,
+        "queue_drained": true,
+        "elapsed_seconds": 0.8120000000344589
+      },
+      {
+        "phase": "returned-bt1",
+        "channel": 1,
+        "connected_or_usb": true,
+        "queue_drained": true,
+        "elapsed_seconds": 1.1400000000139698
+      },
+      {
+        "phase": "rapid-returned-bt1",
+        "channel": 1,
+        "connected_or_usb": true,
+        "queue_drained": true,
+        "elapsed_seconds": 1.202999999979511
+      },
+      {
+        "phase": "usb-restored",
+        "channel": 0,
+        "connected_or_usb": true,
+        "queue_drained": true,
+        "elapsed_seconds": 6.734000000054948
+      }
+    ],
+    "radio_errors_max": 0,
+    "pairing_requested": false,
+    "synthetic_keys_injected": false
+  },
+  "manual_retest": "User reports initial normal operation and will continue repeated switching during normal use.",
+  "extended_wireless_stability_confirmed": false,
+  "post_manual_usb_telemetry_available": false,
+  "validation": {
+    "full_project_tests": "pass",
+    "tool_format_lint_strict_types": "pass",
+    "affected_zmk_builds": 8,
+    "core_parity_uart_and_native_shortcut_regressions": "pass",
+    "independent_source_review": "no_material_findings"
+  },
+  "limitations": [
+    "Initial checks do not establish long-term intermittent stability.",
+    "The original RF/UART incident was not captured; aggregate pre-fix errors do not identify its cause.",
+    "The 20ms quarantine cannot attribute arbitrarily delayed untagged ACKs/status.",
+    "Battery-only sleep/wake/current and overnight endurance remain unqualified."
+  ]
+}

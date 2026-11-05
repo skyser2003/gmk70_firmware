@@ -17,7 +17,9 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/usb/usb_dc.h>
 #include <zephyr/irq.h>
+#include <zephyr/kernel.h>
 #include <zephyr/sys/sys_io.h>
+#include <zephyr/usb/usb_device.h>
 #include <soc.h>
 
 #define USB_BASE_ADDR DT_INST_REG_ADDR(0)
@@ -66,6 +68,7 @@
 #define USB_RESUME 0x02U
 #define USB_RESET 0x04U
 #define USB_SOF 0x08U
+#define POWER_RESUME 0x04U
 
 struct wb32_endpoint {
     usb_dc_ep_callback callback;
@@ -86,6 +89,10 @@ static struct wb32_endpoint endpoints[2][WB32_EP_COUNT];
 static uint8_t                rx_buffers[WB32_EP_COUNT][WB32_PACKET_SIZE];
 static usb_dc_status_callback status_callback;
 static bool                   attached;
+static bool                   suspended;
+static bool                   wake_active;
+static bool                   remote_authorized;
+static uint32_t               wake_epoch;
 static enum { EP0_SETUP, EP0_DATA_IN, EP0_DATA_OUT, EP0_STATUS_IN, EP0_STATUS_OUT } control_phase;
 static uint16_t control_remaining;
 static bool     control_final_in;
@@ -139,6 +146,9 @@ static void flush_endpoint(uint8_t ep) {
 }
 
 static void reset_controller(void) {
+    suspended = wake_active = false;
+    remote_authorized       = false;
+    ++wake_epoch;
     reset_control();
     reg_write(FADDR, 0);
     reg_write(INTRINE, 1);
@@ -160,6 +170,28 @@ static void reset_controller(void) {
     }
     reg_write(INDEX, 0);
     reg_write(CSR0, 0);
+}
+
+static void accepted_remote_feature(void) {
+    const uint8_t *request = rx_buffers[0];
+    /* Pinned Zephyr does not clear its remote_wakeup flag on bus reset. Keep
+     * a reset-scoped guard, armed only by a valid host device feature request
+     * accepted by native EP0 handling (an IN status handshake was submitted).
+     * Native Zephyr remains the owner/validator of USB feature authorization. */
+    if (request[0] != 0 || request[2] != 1 || request[3] || request[4] || request[5] || request[6] || request[7]) return;
+    if (request[1] == 1)
+        remote_authorized = false;
+    else if (request[1] == 3 && !endpoints[0][0].stalled && endpoints[1][0].tx_busy)
+        remote_authorized = usb_get_remote_wakeup_status();
+}
+
+/* Caller holds the interrupt lock, or runs in the controller ISR. */
+static void resumed(void) {
+    suspended = wake_active = false;
+    ++wake_epoch;
+    reg_write(POWER, reg_read(POWER) & ~POWER_RESUME);
+    reg_write(INTRUSBE, reg_read(INTRUSBE) & ~USB_SOF);
+    notify_status(USB_DC_RESUME);
 }
 
 /* Buffer one packet and hold OUTPKTRDY until read_continue supplies backpressure. */
@@ -210,7 +242,10 @@ static void service_ep0(void) {
         bool setup = control_phase == EP0_SETUP || ((control_phase == EP0_STATUS_OUT || (control_phase == EP0_STATUS_IN && in->tx_busy)) && reg_read(COUNTL) == 8);
         if (setup) {
             reset_control();
-            if (receive_packet(0, true)) notify_endpoint(0, USB_DC_EP_SETUP);
+            if (receive_packet(0, true)) {
+                notify_endpoint(0, USB_DC_EP_SETUP);
+                accepted_remote_feature();
+            }
             return;
         }
     }
@@ -240,7 +275,7 @@ static void wb32_usb_isr(const void *arg) {
         /* Endpoint flags from before RESET cannot complete old transfers. */
         in = out = 0;
     }
-    if (usb & USB_RESUME) notify_status(USB_DC_RESUME);
+    if (usb & USB_RESUME) resumed();
     if (in & 1) service_ep0();
     for (unsigned int number = 1; number < WB32_EP_COUNT; ++number) {
         struct wb32_endpoint *tx = &endpoints[1][number];
@@ -262,8 +297,17 @@ static void wb32_usb_isr(const void *arg) {
             if ((csr & OUT_READY) && receive_packet(number, false)) notify_endpoint(number, USB_DC_EP_DATA_OUT);
         }
     }
-    if (usb & USB_SOF) notify_status(USB_DC_SOF);
-    if (usb & USB_SUSPEND) notify_status(USB_DC_SUSPEND);
+    if (usb & USB_SOF) {
+        /* Vendor USBv1 uses the first SOF to detect host remote-wake recovery. */
+        if (suspended && (reg_read(INTRUSBE) & USB_SOF)) resumed();
+        notify_status(USB_DC_SOF);
+    }
+    if (usb & USB_SUSPEND) {
+        suspended   = true;
+        wake_active = false;
+        ++wake_epoch;
+        notify_status(USB_DC_SUSPEND);
+    }
     reg_write(INDEX, saved_index);
 }
 
@@ -294,7 +338,10 @@ int usb_dc_detach(void) {
         reg_write(INTROUTE, 0);
         wb32_usb_disconnect();
         wb32_usb_clock_disable();
-        attached = false;
+        attached          = false;
+        remote_authorized = false;
+        suspended = wake_active = false;
+        ++wake_epoch;
         reset_control();
         for (unsigned int dir = 0; dir < 2; ++dir) {
             for (unsigned int number = 0; number < WB32_EP_COUNT; ++number)
@@ -593,7 +640,48 @@ int usb_dc_ep_mps(uint8_t ep) {
     return endpoint(ep)->mps;
 }
 
-/* The first awake USB-only port does not advertise remote wakeup. */
 int usb_dc_wakeup_request(void) {
-    return -ENOTSUP;
+    unsigned int key = irq_lock();
+    if (!attached) {
+        irq_unlock(key);
+        return -ENODEV;
+    }
+    if (!remote_authorized || !usb_get_remote_wakeup_status()) {
+        irq_unlock(key);
+        return -EACCES;
+    }
+    if (!suspended || wake_active) {
+        int result = wake_active ? -EBUSY : -EAGAIN;
+        irq_unlock(key);
+        return result;
+    }
+    wake_active    = true;
+    uint32_t epoch = wake_epoch;
+    irq_unlock(key);
+
+    /* USB 2.0 7.1.7.7 requires at least 5 ms idle before remote wake. The
+     * controller already detected suspend; this conservative extra wait avoids
+     * relying on millisecond tick rounding. Keep USB/scan interrupts enabled. */
+    k_busy_wait(5000U);
+    key = irq_lock();
+    if (!attached || !suspended || wake_epoch != epoch || !remote_authorized || !usb_get_remote_wakeup_status()) {
+        if (wake_epoch == epoch) wake_active = false;
+        irq_unlock(key);
+        return -EAGAIN;
+    }
+    /* Exact pinned Westberry USBv1 sequence, default wake duration 10 ms
+     * (vendor permitted range 2..15 ms; USB requires 1..15 ms). */
+    reg_write(INTRUSBE, reg_read(INTRUSBE) | USB_SOF);
+    reg_write(POWER, reg_read(POWER) | POWER_RESUME);
+    irq_unlock(key);
+    k_busy_wait(10000U);
+    key = irq_lock();
+    /* Reset/unplug/resume may have stopped this pulse and started a new epoch.
+     * An old caller must never touch a subsequently reattached controller. */
+    if (attached && wake_epoch == epoch) {
+        reg_write(POWER, reg_read(POWER) & ~POWER_RESUME);
+        wake_active = false;
+    }
+    irq_unlock(key);
+    return 0;
 }

@@ -15,7 +15,41 @@ bool            gmk_zmk_resident_handoff(void) {
 static gmk_zmk_update_env_t observed;
 static void (*wire_handler)(const uint8_t[32], uint8_t[32]);
 static int raw_init_result;
-bool       gmk_zmk_watchdog_init(void) {
+#ifdef CONFIG_GMK70_POWER
+static bool     test_left = true, test_wired = true, test_usb = true, test_sleep, test_storage = true;
+static unsigned runtime_polls, power_polls;
+static bool     runtime_allowed;
+bool            gmk_power_sleep_pending(void) {
+    return test_sleep;
+}
+bool gmk_power_runtime_storage_safe(void) {
+    return test_storage;
+}
+void gmk_power_poll(bool ready) {
+    assert(ready);
+    ++power_polls;
+}
+void gmk_controls_poll(bool allowed) {
+    runtime_allowed = allowed;
+    ++runtime_polls;
+}
+void gmk_flip_poll(bool allowed) {
+    assert(allowed == runtime_allowed);
+    ++runtime_polls;
+}
+void gmk_nkro_poll(bool allowed) {
+    assert(allowed == runtime_allowed);
+    ++runtime_polls;
+}
+void gmk_rgb_settings_poll(bool allowed) {
+    assert(allowed == runtime_allowed);
+    ++runtime_polls;
+}
+void gmk_zmk_settings_poll(const gmk_zmk_update_env_t *env) {
+    assert(env->writes_ready == !test_sleep);
+}
+#endif
+bool gmk_zmk_watchdog_init(void) {
     ++early_calls;
     return true;
 }
@@ -23,10 +57,18 @@ void gmk_zmk_watchdog_feed(void) {
     ++feeds;
 }
 bool gmk_wired_is_left(void) {
+#ifdef CONFIG_GMK70_POWER
+    return test_left;
+#else
     return true;
+#endif
 }
 bool gmk_wired_mode(void) {
+#ifdef CONFIG_GMK70_POWER
+    return test_wired;
+#else
     return true;
+#endif
 }
 void gmk_wired_set_update_handler(void (*handler)(const uint8_t[32], uint8_t[32])) {
     wire_handler = handler;
@@ -39,7 +81,11 @@ bool gmk_wired_try_get_stats(struct gmk_wired_stats *stats) {
     return true;
 }
 bool zmk_usb_is_hid_ready(void) {
+#ifdef CONFIG_GMK70_POWER
+    return test_usb;
+#else
     return true;
+#endif
 }
 int gmk_zmk_raw_hid_init(void) {
     return raw_init_result;
@@ -82,6 +128,23 @@ int main(void) {
     uint8_t packet[32] = {0};
     wire_handler(packet, packet);
     assert(observed.left && observed.wired);
+#ifdef CONFIG_GMK70_POWER
+    assert(runtime_polls == 4 && runtime_allowed && power_polls == 1);
+    test_wired = test_usb = false;
+    if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
+    assert(runtime_allowed && observed.writes_ready && !observed.wired && !observed.usb_configured);
+    test_storage = false;
+    if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
+    assert(!runtime_allowed);
+    test_storage = true;
+    test_sleep   = true;
+    if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
+    assert(!runtime_allowed && !observed.writes_ready);
+    test_sleep = false;
+    test_left  = false;
+    if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
+    assert(!runtime_allowed);
+#endif
     raw_init_result = -1;
     assert(service_init() == -1 && !gates().writes_ready);
     unsigned previous = raw_polls;

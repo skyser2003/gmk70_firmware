@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+config GMK70_POWER
+	bool "GMK70 coordinated native sleep and runtime storage"
+	depends on GMK70_CONTROLS && GMK70_RADIO
+	default y
+	select HAS_POWEROFF
+	select ZMK_SLEEP
+	select ZMK_PM_SOFT_OFF
+	help
+	  Native inactivity and power-off policy with existing WB32 STOP/wake
+	  hardware and the stock radio's own sleep firmware. Both halves must
+	  advertise the coordinated power protocol before joined sleep is used.
+	  Runtime preference saves use an idle storage lease; updater and Studio
+	  writes retain their existing wired/USB authorization.

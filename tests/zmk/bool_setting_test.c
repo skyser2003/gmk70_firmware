@@ -51,12 +51,14 @@ static void defaults_are_clean_and_instances_are_independent(void) {
     start(true);
     assert(gmk_bool_setting_get(&first));
     assert(!gmk_bool_setting_get(&second));
+    assert(!gmk_bool_setting_dirty(&first) && !gmk_bool_setting_dirty(&second));
     radio_test_time = 1000;
     gmk_bool_setting_poll(&first, true);
     gmk_bool_setting_poll(&second, true);
     assert(!first.work.pending && !second.work.pending && writes == 0);
     assert(!gmk_bool_setting_toggle(&first));
     assert(gmk_bool_setting_toggle(&second));
+    assert(gmk_bool_setting_dirty(&first) && gmk_bool_setting_dirty(&second));
     radio_test_time = 1250;
     gmk_bool_setting_poll(&first, true);
     gmk_bool_setting_poll(&second, true);
@@ -64,6 +66,7 @@ static void defaults_are_clean_and_instances_are_independent(void) {
     run_work(&second);
     run_work(&first);
     assert(writes == 2 && first_saved == 0 && second_saved == 1);
+    assert(!gmk_bool_setting_dirty(&first) && !gmk_bool_setting_dirty(&second));
 }
 
 static void debounce_is_gated_and_unchanged_sets_do_not_delay_it(void) {
@@ -94,6 +97,7 @@ static void failed_writes_retry_after_one_second(void) {
     save_result = -EBUSY;
     run_work(&first);
     assert(writes == 1 && first_saved == 0);
+    assert(gmk_bool_setting_dirty(&first));
     radio_test_time = 1249;
     gmk_bool_setting_poll(&first, true);
     assert(!first.work.pending);
@@ -118,10 +122,12 @@ static void changes_coalesce_and_in_flight_changes_remain_dirty(void) {
     value_during_save  = false;
     run_work(&first);
     assert(writes == 1 && first_saved == 1 && !gmk_bool_setting_get(&first));
+    assert(gmk_bool_setting_dirty(&first));
     radio_test_time = 1750;
     gmk_bool_setting_poll(&first, true);
     run_work(&first);
     assert(writes == 2 && first_saved == 0);
+    assert(!gmk_bool_setting_dirty(&first));
 }
 
 static void pending_work_saves_the_latest_value(void) {
@@ -130,8 +136,10 @@ static void pending_work_saves_the_latest_value(void) {
     radio_test_time = 250;
     gmk_bool_setting_poll(&first, true);
     assert(!gmk_bool_setting_toggle(&first));
+    assert(gmk_bool_setting_dirty(&first)); /* Queued work still owns a snapshot. */
     run_work(&first);
     assert(writes == 1 && first_saved == 0);
+    assert(!gmk_bool_setting_dirty(&first));
     radio_test_time = 2000;
     gmk_bool_setting_poll(&first, true);
     assert(!first.work.pending);

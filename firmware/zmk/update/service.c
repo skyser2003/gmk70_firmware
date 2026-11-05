@@ -20,6 +20,12 @@
 #ifdef CONFIG_GMK70_RADIO
 #    include "radio.h"
 #endif
+#ifdef CONFIG_GMK70_CONTROLS
+#    include "../controls/controls.h"
+#endif
+#ifdef CONFIG_GMK70_POWER
+#    include "../power/power.h"
+#endif
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/reboot.h>
@@ -29,7 +35,11 @@
 static bool service_ready;
 
 static gmk_zmk_update_env_t gates(void) {
-    return (gmk_zmk_update_env_t){.left = gmk_wired_is_left(), .wired = gmk_wired_mode(), .usb_configured = zmk_usb_is_hid_ready(), .writes_ready = service_ready};
+    bool ready = service_ready;
+#ifdef CONFIG_GMK70_POWER
+    ready = ready && !gmk_power_sleep_pending();
+#endif
+    return (gmk_zmk_update_env_t){.left = gmk_wired_is_left(), .wired = gmk_wired_mode(), .usb_configured = zmk_usb_is_hid_ready(), .writes_ready = ready};
 }
 
 static void peer_receive(const uint8_t request[32], uint8_t response[32]) {
@@ -69,19 +79,27 @@ static void worker(void *a, void *b, void *c) {
         /* Never enqueue this worker behind the responder/scanner mutex.
          * Contention means unknown peer state, represented by a cleared flag;
          * do not reuse an earlier connected indication indefinitely. */
-        bool                 peer = gmk_wired_try_get_stats(&stats) && stats.peer;
-        gmk_zmk_update_env_t env  = worker_environment(peer);
+        bool                 peer           = gmk_wired_try_get_stats(&stats) && stats.peer;
+        gmk_zmk_update_env_t env            = worker_environment(peer);
+        bool                 runtime_writes = env.left && env.writes_ready && env.wired && env.usb_configured;
+#ifdef CONFIG_GMK70_POWER
+        runtime_writes = env.left && env.writes_ready && ((env.wired && env.usb_configured) || gmk_power_runtime_storage_safe());
+#endif
+#ifdef CONFIG_GMK70_CONTROLS
+        gmk_controls_poll(runtime_writes);
+#endif
 #ifdef CONFIG_GMK70_FUNCTION_FLIP
-        /* The settings caller runs on system work, never on its own storage
-         * worker. Radio changes remain runtime-only until wired USB returns. */
-        gmk_flip_poll(env.left && env.wired && env.usb_configured && env.writes_ready);
+        /* These native runtime preferences have a narrow wireless allowlist.
+         * Firmware and Studio writes still use the original environment. */
+        gmk_flip_poll(runtime_writes);
 #endif
 #ifdef CONFIG_GMK70_NKRO
-        gmk_nkro_poll(env.left && env.wired && env.usb_configured && env.writes_ready);
+        gmk_nkro_poll(runtime_writes);
 #endif
 #if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) && defined(CONFIG_GMK70_WB32_RGB)
-        gmk_rgb_settings_poll(env.left && env.wired && env.usb_configured && env.writes_ready);
+        gmk_rgb_settings_poll(runtime_writes);
 #endif
+        ARG_UNUSED(runtime_writes);
         gmk_zmk_raw_hid_poll(&env);
         /* Admission and execution are distinct boundaries: resample physical
          * mode/USB/role after USB work, immediately before protocol dispatch. */
@@ -90,6 +108,9 @@ static void worker(void *a, void *b, void *c) {
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
         env = worker_environment(peer);
         gmk_zmk_settings_poll(&env);
+#endif
+#ifdef CONFIG_GMK70_POWER
+        gmk_power_poll(service_ready);
 #endif
         k_sleep(K_MSEC(1));
     }

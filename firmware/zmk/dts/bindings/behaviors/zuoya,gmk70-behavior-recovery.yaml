@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+description: Deliberate native reset, factory bootloader and application settings reset
+compatible: "zuoya,gmk70-behavior-recovery"
+include: one_param.yaml
