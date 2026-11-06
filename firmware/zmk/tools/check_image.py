@@ -591,7 +591,9 @@ def check_wired(
         sha256=hashlib.sha256(payload).hexdigest(),
         image_end=symbols["__gmk_image_end"],
         ram_end=symbols["_image_ram_end"],
-        development="EXPERIMENTAL unlocked",
+        development="unlocked"
+        if variant == "wired-studio-updater"
+        else "EXPERIMENTAL unlocked",
         trial_backend="absent",
         main_wrapper="absent",
     )

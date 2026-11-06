@@ -3,7 +3,7 @@ run-name: Firmware — ${{ github.ref_name }}
 
 on:
   push:
-    branches: [release/via, release/vial]
+    branches: [release/via, release/vial, release/zmk]
 
 permissions:
   contents: read
@@ -50,11 +50,17 @@ jobs:
           path: |
             .work/toolchains
             .work/uv-cache
-          key: ${{ runner.os }}-gmk70-tools-${{ hashFiles('dependencies/sources.lock.json', 'scripts/setup.sh', 'tools/*/uv.lock') }}
+          key: ${{ runner.os }}-gmk70-tools-${{ hashFiles('dependencies/sources.lock.json', 'scripts/setup*.sh', 'tools/*/uv.lock', 'firmware/zmk/tools/uv.lock') }}
       - name: Initialize pinned sources and tools
         run: make setup setup-vial
+      - name: Initialize ZMK test sources and tools
+        if: needs.plan.outputs.family == 'zmk'
+        run: make setup-zmk
       - name: Native firmware and repository tests
         run: make test
+      - name: Native ZMK tests
+        if: needs.plan.outputs.family == 'zmk'
+        run: make test-zmk
       - name: Python formatting, types and tests
         run: make check-tools
 
@@ -86,12 +92,17 @@ jobs:
           path: |
             .work/toolchains
             .work/uv-cache
-          key: ${{ runner.os }}-gmk70-tools-${{ hashFiles('dependencies/sources.lock.json', 'scripts/setup.sh', 'tools/*/uv.lock') }}
+          key: ${{ runner.os }}-gmk70-tools-${{ hashFiles('dependencies/sources.lock.json', 'scripts/setup*.sh', 'tools/*/uv.lock', 'firmware/zmk/tools/uv.lock') }}
       - name: Initialize pinned sources and tools
         run: make setup
       - name: Initialize Vial sources
         if: startsWith(matrix.variant, 'vial')
         run: make setup-vial
+      - name: Initialize ZMK sources and reviewed resident prerequisite
+        if: matrix.variant == 'zmk'
+        env:
+          JOBS: "2"
+        run: make setup-zmk build-updater-debug
       - name: Build and verify package
         env:
           FIRMWARE_VARIANT: ${{ matrix.variant }}

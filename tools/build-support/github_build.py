@@ -2,12 +2,14 @@
 
 import argparse
 import hashlib
+import json
 import re
 import shutil
 import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
+from typing import TypedDict, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 VARIANTS = {
@@ -19,7 +21,36 @@ VARIANTS = {
     "vial": ("vial", "vial", "normal"),
     "vial-updater": ("vial", "vial", "updater"),
     "vial-unlocked-updater": ("vial", "vial", "unlocked-updater"),
+    "zmk": ("zmk", "wired-studio-updater", "normal"),
 }
+
+
+class ZmkReport(TypedDict):
+    board: str
+    variant: str
+    runtime_roles: list[str]
+    sha256: str
+    bytes: int
+    main_wrapper: str
+    trial_backend: str
+
+
+def verify_zmk_report(source: Path) -> None:
+    report = cast(ZmkReport, json.loads((source / "image-check.json").read_text()))
+    application = (source / "application.bin").read_bytes()
+    if (
+        report.get("board") != "gmk70_wired"
+        or report.get("variant") != "wired-studio-updater"
+        or report.get("runtime_roles") != ["left", "right"]
+        or report.get("trial_backend") != "absent"
+        or report.get("main_wrapper") != "absent"
+        or report.get("bytes") != len(application)
+        or report.get("sha256") != hashlib.sha256(application).hexdigest()
+        or application != (source / "zmk.bin").read_bytes()
+    ):
+        raise ValueError(
+            "ZMK release requires the validated universal Studio application"
+        )
 
 
 def package_variant(root: Path, variant: str) -> None:
@@ -44,18 +75,36 @@ def package_variant(root: Path, variant: str) -> None:
             if hashlib.file_digest(handle, "sha256").hexdigest() != digest:
                 raise ValueError(f"Checksum mismatch: {name}")
         files.add(name)
-    required = {
-        f"{target}.elf",
-        f"{target}.map",
-        "source.tar.gz",
-        "sources.lock.json",
-        "gmk70-source-origins.json",
-        "build-info.txt",
-        "cflags.txt",
-        "ldflags.txt",
-        "vial.json" if platform == "vial" else "ZUOYA_GMK70.json",
-    }
-    if mode != "normal":
+    required = {"source.tar.gz", "sources.lock.json", "build-info.txt"}
+    if platform == "zmk":
+        required.update(
+            {
+                "zmk.bin",
+                "zmk.hex",
+                "zmk.elf",
+                "zmk.map",
+                "zmk.config",
+                "zephyr.dts",
+                "compile_commands.json",
+                "image-check.json",
+                "package-info.json",
+                "application.bin",
+                "resident.bin",
+                "update.json",
+            }
+        )
+    else:
+        required.update(
+            {
+                f"{target}.elf",
+                f"{target}.map",
+                "gmk70-source-origins.json",
+                "cflags.txt",
+                "ldflags.txt",
+                "vial.json" if platform == "vial" else "ZUOYA_GMK70.json",
+            }
+        )
+    if platform != "zmk" and mode != "normal":
         required.update(
             {
                 "application.bin",
@@ -68,12 +117,14 @@ def package_variant(root: Path, variant: str) -> None:
                 "update.json",
             }
         )
-    else:
+    elif platform != "zmk":
         required.update({f"{target}.bin", f"{target}.hex"})
-    if platform == "vial":
+    if platform in ("vial", "zmk"):
         required.update({f"{stem}.zip", "README.txt", "FIRMWARE-SHA256SUMS"})
     if missing := required - files:
         raise ValueError(f"Missing required artifacts: {', '.join(sorted(missing))}")
+    if platform == "zmk":
+        verify_zmk_report(source)
     files.add("SHA256SUMS")
     if (source / "build.log").is_file() and not (source / "build.log").is_symlink():
         files.add("build.log")
@@ -85,12 +136,12 @@ def package_variant(root: Path, variant: str) -> None:
         with tarfile.open(archive, "w:gz") as bundle:
             for name in sorted(files):
                 bundle.add(source / name, arcname=name, recursive=False)
-        if mode == "normal":
+        if mode == "normal" and platform != "zmk":
             for extension in ("bin", "hex"):
                 shutil.copyfile(
                     source / f"{target}.{extension}", staging / f"{stem}.{extension}"
                 )
-        if platform == "vial":
+        if platform in ("vial", "zmk"):
             shutil.copyfile(source / f"{stem}.zip", staging / f"{stem}.zip")
         checksums = []
         for path in sorted(staging.iterdir()):
@@ -105,9 +156,12 @@ def package_variant(root: Path, variant: str) -> None:
 
 
 def build_variant(root: Path, variant: str) -> None:
-    subprocess.run(
-        ["bash", "scripts/build.sh", *VARIANTS[variant]], cwd=root, check=True
+    command = (
+        ["bash", "scripts/build_zmk_release.sh"]
+        if variant == "zmk"
+        else ["bash", "scripts/build.sh", *VARIANTS[variant]]
     )
+    subprocess.run(command, cwd=root, check=True)
     package_variant(root, variant)
 
 

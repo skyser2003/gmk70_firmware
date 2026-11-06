@@ -97,7 +97,11 @@ else
 fi
 {
     if [[ "$board" == gmk70_wired ]]; then
-        printf 'EXPERIMENTAL UNLOCKED DEVELOPMENT: actual ZMK %s; never a normal release asset.\n' "$variant"
+        if [[ "$variant" == wired-studio-updater ]]; then
+            printf 'ZMK Studio universal distribution; explicitly unlocked updater.\n'
+        else
+            printf 'EXPERIMENTAL UNLOCKED DEVELOPMENT: actual ZMK %s; never a normal release asset.\n' "$variant"
+        fi
         printf 'Universal board: gmk70_wired; role B9; wired C14/C15; 10x9 combined matrix.\n'
         if [[ "$variant" == wired-qualification ]]; then
             printf 'Staging qualification at 0x08020000; no watchdog feed, running-code writes or durable install.\n'
@@ -138,4 +142,4 @@ if [[ "$board" == gmk70_wired ]]; then
         (cd "$output" && sha256sum application.bin resident.bin update.json package-info.json >> SHA256SUMS)
     fi
 fi
-printf '\nBuilt experimental actual ZMK in %s\n' "$output"
+printf '\nBuilt ZMK %s in %s\n' "$variant" "$output"

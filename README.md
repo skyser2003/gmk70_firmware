@@ -43,8 +43,8 @@ and RGB. Four Windows/Mac layers, lighting, battery actions, stock-radio
 selection and function/media flip are implemented. All 288 saved bindings are
 preserved, and normal Studio is connected with four layers.
 
-ZMK remains an explicitly unlocked development build with no permanent hardware
-watchdog. Both universal updates returned automatically through joined LEFT USB,
+ZMK is distributed with an explicitly unlocked updater and no permanent hardware
+watchdog. At the universal-image qualification checkpoint, both updates returned automatically through joined LEFT USB,
 without physical reconnect or pad recovery. Five 70-second both-half health
 windows passed with unchanged residents and zero retries/reconnects/feeds.
 See the [validation and coverage limits](docs/validation/2026-10-30-zmk-universal/README.md).
@@ -77,6 +77,7 @@ Choose a build target:
 | `make build-vial-radio-diagnostic` | Optional Vial updater with RAM radio capture |
 | `make build-zmk-wired-studio-updater` | LEFT Studio central, persistent settings and Feature updater |
 | `make build-zmk-wired-updater` | Native permanent wired ZMK application/updater A |
+| `make build-zmk-release` | Universal ZMK Studio release package and matching sources |
 | `make build-zmk-wired-update-test` | Different native wired update-test image B |
 | `make build-zmk-wired-qualification` | Bounded no-feed staging Q; trial packages only |
 | `make build-zmk` | Experimental left ZMK staging trial; requires `make setup-zmk` |
@@ -99,10 +100,12 @@ make test         # firmware regression tests
 make check-tools  # Python formatting, lint, type checks and tests
 ```
 
-GitHub Actions runs only on pushes to `release/via` or `release/vial`. Each push
-runs the general checks, then builds and publishes only that family's firmware,
-with independent `via-vX.X.X` and `vial-X.X.X` patch versions. Pushes to `main`,
-PRs and tags do not start checks or builds. See [release instructions](docs/RELEASING.md).
+GitHub Actions runs general checks and firmware builds only on pushes to
+`release/via`, `release/vial` or `release/zmk`. Each branch publishes its own family,
+with independent `via-vX.X.X`, `vial-X.X.X` and `zmk-vX.X.X` patch versions. ZMK
+publishes the universal Studio/updater image; trials and diagnostic images are
+excluded. Pushes to `main` or other branches, PRs, tags and manual events do not
+start the workflow. See [release instructions](docs/RELEASING.md).
 
 ## Using the firmware
 

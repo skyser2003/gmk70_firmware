@@ -2,6 +2,7 @@
 
 import hashlib
 import importlib.util
+import json
 import subprocess
 import tarfile
 import tempfile
@@ -18,6 +19,7 @@ VARIANTS = {
     "vial": ("vial", "vial", "normal"),
     "vial-updater": ("vial", "vial", "updater"),
     "vial-unlocked-updater": ("vial", "vial", "unlocked-updater"),
+    "zmk": ("zmk", "wired-studio-updater", "normal"),
 }
 
 
@@ -50,7 +52,25 @@ class GitHubPackageTests(unittest.TestCase):
             "ldflags.txt",
             "vial.json" if platform == "vial" else "ZUOYA_GMK70.json",
         ]
-        if mode != "normal":
+        if platform == "zmk":
+            names = [
+                "zmk.bin",
+                "zmk.hex",
+                "zmk.elf",
+                "zmk.map",
+                "zmk.config",
+                "zephyr.dts",
+                "compile_commands.json",
+                "image-check.json",
+                "package-info.json",
+                "application.bin",
+                "resident.bin",
+                "update.json",
+                "source.tar.gz",
+                "sources.lock.json",
+                "build-info.txt",
+            ]
+        elif mode != "normal":
             names += [
                 "application.bin",
                 "application.hex",
@@ -63,10 +83,26 @@ class GitHubPackageTests(unittest.TestCase):
             ]
         else:
             names += [f"{target}.bin", f"{target}.hex"]
-        if platform == "vial":
+        if platform in ("vial", "zmk"):
             names += [f"gmk70-{variant}.zip", "README.txt", "FIRMWARE-SHA256SUMS"]
         for name in names:
             (output / name).write_text(f"{variant}: {name}\n")
+        if platform == "zmk":
+            application = (output / "application.bin").read_bytes()
+            (output / "zmk.bin").write_bytes(application)
+            (output / "image-check.json").write_text(
+                json.dumps(
+                    {
+                        "board": "gmk70_wired",
+                        "variant": "wired-studio-updater",
+                        "runtime_roles": ["left", "right"],
+                        "sha256": hashlib.sha256(application).hexdigest(),
+                        "bytes": len(application),
+                        "main_wrapper": "absent",
+                        "trial_backend": "absent",
+                    }
+                )
+            )
         manifest = "".join(
             f"{hashlib.sha256((output / name).read_bytes()).hexdigest()}  {name}\n"
             for name in names
@@ -89,7 +125,13 @@ class GitHubPackageTests(unittest.TestCase):
                     self.assertIn("SHA256SUMS", names)
                     self.assertIn("build.log", names)
                     self.assertNotIn("stale-image.bin", names)
-                    if mode != "normal":
+                    if platform == "zmk":
+                        self.assertIn("application.bin", names)
+                        self.assertIn("update.json", names)
+                        self.assertIn("image-check.json", names)
+                        self.assertNotIn("install.bin", names)
+                        self.assertFalse((dist / "gmk70-zmk.bin").exists())
+                    elif mode != "normal":
                         self.assertIn("install.bin", names)
                         self.assertIn("application.bin", names)
                         self.assertIn("update.json", names)
@@ -98,7 +140,7 @@ class GitHubPackageTests(unittest.TestCase):
                             (dist / f"gmk70-{variant}.bin").read_bytes(),
                             (source / f"zuoya_gmk70_{keymap}.bin").read_bytes(),
                         )
-                if platform == "vial":
+                if platform in ("vial", "zmk"):
                     self.assertEqual(
                         (dist / f"gmk70-{variant}.zip").read_bytes(),
                         (source / f"gmk70-{variant}.zip").read_bytes(),
@@ -108,7 +150,61 @@ class GitHubPackageTests(unittest.TestCase):
                     self.assertEqual(
                         hashlib.sha256((dist / name).read_bytes()).hexdigest(), digest
                     )
-        self.assertEqual(len(list((self.root / "dist").glob("*.tar.gz"))), 8)
+        self.assertEqual(len(list((self.root / "dist").glob("*.tar.gz"))), 9)
+
+    def test_zmk_rejects_noncanonical_role_or_trial_report(self) -> None:
+        source = self.fixture("zmk")
+        original = (source / "image-check.json").read_text()
+        for field, value in (
+            ("variant", "wired-studio-native-bridge"),
+            ("runtime_roles", ["left"]),
+            ("trial_backend", "present"),
+            ("bytes", 0),
+        ):
+            report = json.loads(original)
+            report[field] = value
+            path = source / "image-check.json"
+            path.write_text(json.dumps(report))
+            lines = (source / "SHA256SUMS").read_text().splitlines()
+            (source / "SHA256SUMS").write_text(
+                "\n".join(
+                    f"{hashlib.sha256(path.read_bytes()).hexdigest()}  image-check.json"
+                    if line.endswith("  image-check.json")
+                    else line
+                    for line in lines
+                )
+                + "\n"
+            )
+            with (
+                self.subTest(field=field),
+                self.assertRaisesRegex(ValueError, "validated universal Studio"),
+            ):
+                self.build.package_variant(self.root, "zmk")
+        self.assertFalse((self.root / "dist").exists())
+
+    def test_zmk_release_requires_portable_zip_and_source_archive(self) -> None:
+        source = self.fixture("zmk")
+        manifest = source / "SHA256SUMS"
+        original = manifest.read_text()
+        for missing in (
+            "gmk70-zmk.zip",
+            "source.tar.gz",
+            "update.json",
+            "image-check.json",
+        ):
+            manifest.write_text(
+                "\n".join(
+                    line
+                    for line in original.splitlines()
+                    if not line.endswith(f"  {missing}")
+                )
+                + "\n"
+            )
+            with (
+                self.subTest(missing=missing),
+                self.assertRaisesRegex(ValueError, "Missing required"),
+            ):
+                self.build.package_variant(self.root, "zmk")
 
     def test_unlocked_updater_cannot_publish_without_its_own_archive(self) -> None:
         source = self.fixture("vial-unlocked-updater")

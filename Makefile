@@ -116,6 +116,9 @@ build-zmk-wired-qualification:
 
 build-zmk-wired-studio-updater:
 	bash ./scripts/build_zmk.sh wired-studio-updater
+build-zmk-release:
+	bash ./scripts/build_zmk_release.sh
+.PHONY: build-zmk-release
 build-zmk-wired-studio-native-bridge:
 	bash ./scripts/build_zmk.sh wired-studio-native-bridge
 .PHONY: build-zmk-wired-studio-native-bridge

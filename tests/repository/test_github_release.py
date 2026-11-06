@@ -2,7 +2,10 @@
 
 import hashlib
 import importlib.util
+import os
+import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -26,6 +29,8 @@ class ReleaseTests(unittest.TestCase):
     def test_release_branch_pushes_build_only_their_family(self) -> None:
         via = self.release.plan("push", "refs/heads/release/via")
         vial = self.release.plan("push", "refs/heads/release/vial")
+        zmk = self.release.plan("push", "refs/heads/release/zmk")
+        self.assertEqual(zmk, {"family": "zmk", "variants": ("zmk",), "publish": True})
         self.assertTrue(via["publish"])
         self.assertTrue(vial["publish"])
         self.assertEqual(via["family"], "via")
@@ -39,44 +44,75 @@ class ReleaseTests(unittest.TestCase):
         )
         self.assertTrue(set(via["variants"]).isdisjoint(vial["variants"]))
 
-    def test_only_push_events_can_start_release_pipeline(self) -> None:
-        for family in ("via", "vial"):
+    def test_non_push_events_cannot_plan_checks_or_builds(self) -> None:
+        for family in ("via", "vial", "zmk"):
             for event in (
                 "pull_request",
+                "pull_request_target",
                 "workflow_dispatch",
+                "schedule",
                 "release",
                 "workflow_run",
             ):
                 with (
                     self.subTest(family=family, event=event),
-                    self.assertRaises(ValueError),
+                    self.assertRaisesRegex(ValueError, "Only pushes"),
                 ):
                     self.release.plan(event, f"refs/heads/release/{family}")
 
-    def test_other_branches_and_tags_cannot_start_release_pipeline(self) -> None:
+    def test_main_tags_and_other_refs_cannot_plan_checks_or_builds(self) -> None:
         for ref in (
             "refs/heads/main",
-            "refs/heads/codex/test",
-            "refs/heads/release/via-next",
-            "refs/heads/release/vial-next",
+            "refs/heads/codex/work",
             "refs/heads/release/other",
-            "release/via",
-            "release/vial",
+            "refs/heads/release/zmk/extra",
+            "release/zmk",
+            "refs/pull/42/merge",
             "refs/tags/via-v1.2.3",
             "refs/tags/vial-4.5.6",
-            "refs/pull/42/merge",
+            "refs/tags/zmk-v1.2.3",
+            "refs/tags/zmk-v1.2.3-trial",
         ):
-            with self.subTest(ref=ref), self.assertRaises(ValueError):
+            with (
+                self.subTest(ref=ref),
+                self.assertRaisesRegex(ValueError, "Only pushes"),
+            ):
                 self.release.plan("push", ref)
+
+    def test_cli_emits_no_job_plan_for_an_unsupported_context(self) -> None:
+        for event, ref in (
+            ("push", "refs/heads/main"),
+            ("push", "refs/tags/zmk-v0.1.0"),
+            ("workflow_dispatch", "refs/heads/release/zmk"),
+        ):
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(PROJECT / "tools/build-support/github_release.py"),
+                    "plan",
+                ],
+                env=dict(os.environ, GITHUB_EVENT_NAME=event, GITHUB_REF=ref),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            with self.subTest(event=event, ref=ref):
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("Only pushes", result.stderr)
 
     def test_unmatched_publication_cannot_read_or_write_release_assets(self) -> None:
         for family, ref in (
             ("via", "refs/heads/main"),
             ("vial", "refs/heads/main"),
+            ("zmk", "refs/heads/main"),
             ("via", "refs/tags/via-v1.2.3"),
             ("vial", "refs/tags/vial-1.2.3"),
+            ("zmk", "refs/tags/zmk-v1.2.3"),
             ("via", "refs/heads/release/vial"),
             ("vial", "refs/heads/release/via"),
+            ("zmk", "refs/heads/release/vial"),
+            ("via", "refs/heads/release/zmk"),
         ):
             with (
                 self.subTest(family=family, ref=ref),
@@ -96,6 +132,20 @@ class ReleaseTests(unittest.TestCase):
                 verify.assert_not_called()
                 read.assert_not_called()
                 write.assert_not_called()
+
+    def test_workflow_triggers_only_on_release_branch_pushes(self) -> None:
+        workflow = (PROJECT / ".github/workflows/release.yaml").read_text()
+        triggers = workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertEqual(re.findall(r"^  ([a-z_]+):", triggers, re.MULTILINE), ["push"])
+        self.assertEqual(
+            re.findall(r"^    ([a-z_]+):", triggers, re.MULTILINE), ["branches"]
+        )
+        self.assertIn("branches: [release/via, release/vial, release/zmk]", triggers)
+        self.assertIn("needs: plan", workflow)
+        self.assertIn("needs: [plan, checks]", workflow)
+        self.assertIn("needs: [plan, checks, build]", workflow)
+        self.assertNotIn("inputs.family", workflow)
+        self.assertNotIn("plan --family", workflow)
 
     def test_experimental_trial_and_diagnostic_builds_are_not_releases(self) -> None:
         vial = self.release.plan("push", "refs/heads/release/vial")
@@ -124,17 +174,37 @@ class ReleaseTests(unittest.TestCase):
                 self.assertFalse((output / "SHA256SUMS").exists())
                 artifact.unlink()
 
+    def test_trial_and_bridge_artifacts_block_zmk_publication(self) -> None:
+        output = self.assets("zmk")
+        for variant in (
+            "wired-studio-update-test",
+            "wired-studio-radio-qualification",
+            "wired-studio-native-bridge",
+            "left-trial",
+            "right-trial",
+        ):
+            with self.subTest(variant=variant):
+                artifact = output / f"gmk70-zmk-{variant}.zip"
+                artifact.write_text("not a canonical release")
+                with self.assertRaisesRegex(ValueError, "Unexpected release assets"):
+                    self.release.verify_assets(output, "zmk")
+                artifact.unlink()
+
     def test_patch_versions_are_independent_and_sorted_numerically(self) -> None:
         tags = [
             ("via-v1.2.9", "old"),
             ("via-v1.2.10", "other"),
             ("vial-9.9.9", "other"),
+            ("zmk-v0.2.9", "other"),
+            ("zmk-v0.2.10", "other"),
             ("via-v01.2.99", "other"),
         ]
         self.assertEqual(self.release.choose_tag("via", tags, "new"), "via-v1.2.11")
         self.assertEqual(self.release.choose_tag("vial", tags, "new"), "vial-9.9.10")
         self.assertEqual(self.release.choose_tag("via", [], "new"), "via-v0.1.0")
         self.assertEqual(self.release.choose_tag("vial", [], "new"), "vial-0.1.0")
+        self.assertEqual(self.release.choose_tag("zmk", tags, "new"), "zmk-v0.2.11")
+        self.assertEqual(self.release.choose_tag("zmk", [], "new"), "zmk-v0.1.0")
 
     def test_retry_reuses_tag_for_the_same_family_and_commit(self) -> None:
         tags = [("via-v0.1.0", "same"), ("vial-0.1.9", "same"), ("via-v0.1.3", "newer")]
@@ -152,7 +222,7 @@ class ReleaseTests(unittest.TestCase):
         return output
 
     def test_verified_release_contains_only_selected_family(self) -> None:
-        for family in ("via", "vial"):
+        for family in ("via", "vial", "zmk"):
             with self.subTest(family=family):
                 output = self.assets(family)
                 self.release.verify_assets(output, family)
@@ -204,7 +274,11 @@ class ReleaseTests(unittest.TestCase):
         )
 
     def test_successful_publication_tags_the_built_commit_for_each_family(self) -> None:
-        for family, expected_tag in (("via", "via-v0.1.0"), ("vial", "vial-0.1.0")):
+        for family, expected_tag in (
+            ("via", "via-v0.1.0"),
+            ("vial", "vial-0.1.0"),
+            ("zmk", "zmk-v0.1.0"),
+        ):
             with self.subTest(family=family):
                 output = self.assets(family)
                 with (
@@ -226,6 +300,10 @@ class ReleaseTests(unittest.TestCase):
                 create = commands[1]
                 self.assertEqual(create[create.index("--target") + 1], "a" * 40)
                 self.assertIn("--draft", create)
+                if family == "zmk":
+                    self.assertEqual(
+                        create[create.index("--title") + 1], "GMK70 ZMK zmk-v0.1.0"
+                    )
                 self.assertEqual(commands[2][:2], ["release", "upload"])
                 self.assertEqual(commands[3][:2], ["release", "edit"])
                 self.assertIn("--draft=false", commands[3])

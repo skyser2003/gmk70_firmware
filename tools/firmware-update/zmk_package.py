@@ -1,4 +1,4 @@
-"""Offline experimental permanent-ZMK packaging. Never builds a resident or opens HID."""
+"""Offline permanent-ZMK packaging. Never builds a resident or opens HID."""
 
 import argparse
 import hashlib
@@ -89,9 +89,13 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
     (output / "package-info.json").write_text(
         json.dumps(
             {
-                "development": "EXPERIMENTAL unlocked; not a normal release asset",
+                "development": (
+                    "unlocked universal Studio distribution"
+                    if variant == "wired-studio-updater" and roles == ["left", "right"]
+                    else "EXPERIMENTAL unlocked; not a normal release asset"
+                ),
                 "variant": checked["variant"],
-                "resident_prerequisite": str(resident),
+                "resident_prerequisite": "exact reviewed resident identified by update.json boot_sha256",
                 "resident_padded_sha256": ZMK_BOOT_SHA256,
                 "package": "application-only; no direct-USB installer generated",
             },

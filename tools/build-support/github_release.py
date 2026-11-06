@@ -1,4 +1,4 @@
-"""Route and publish independent, automatically versioned VIA/Vial releases."""
+"""Route and publish independent, automatically versioned firmware releases."""
 
 import argparse
 import hashlib
@@ -7,13 +7,15 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 FAMILIES = {
     "via": ("via-release", "via-debug", "via-release-updater", "via-debug-updater"),
     "vial": ("vial", "vial-updater", "vial-unlocked-updater"),
+    "zmk": ("zmk",),
 }
-PREFIXES = {"via": "via-v", "vial": "vial-"}
+PREFIXES = {"via": "via-v", "vial": "vial-", "zmk": "zmk-v"}
+TITLES = {"via": "VIA", "vial": "Vial", "zmk": "ZMK"}
 VERSION = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
 
 
@@ -21,6 +23,22 @@ class Plan(TypedDict):
     family: str
     variants: tuple[str, ...]
     publish: bool
+
+
+class GitHubCommit(TypedDict):
+    sha: str
+
+
+class GitHubAsset(TypedDict):
+    name: str
+
+
+class GitHubRecord(TypedDict, total=False):
+    name: str
+    commit: GitHubCommit
+    tag_name: str
+    draft: bool
+    assets: list[GitHubAsset]
 
 
 def tag_version(family: str, tag: str) -> tuple[int, int, int] | None:
@@ -35,7 +53,9 @@ def plan(event: str, ref: str) -> Plan:
         for family, variants in FAMILIES.items():
             if ref == f"refs/heads/release/{family}":
                 return {"family": family, "variants": variants, "publish": True}
-    raise ValueError("Firmware workflows require a push to release/via or release/vial")
+    raise ValueError(
+        "Only pushes to supported release branches can run firmware checks or builds"
+    )
 
 
 def choose_tag(family: str, tags: list[tuple[str, str]], commit: str) -> str:
@@ -90,11 +110,11 @@ def verify_assets(directory: Path, family: str) -> None:
     (directory / "SHA256SUMS").write_text("".join(lines))
 
 
-def github_pages(endpoint: str) -> list[dict[str, Any]]:
+def github_pages(endpoint: str) -> list[GitHubRecord]:
     output = subprocess.check_output(
         ["gh", "api", "--paginate", "--slurp", endpoint], text=True
     )
-    pages = cast(list[list[dict[str, Any]]], json.loads(output))
+    pages = cast(list[list[GitHubRecord]], json.loads(output))
     return [item for page in pages for item in page]
 
 
@@ -164,7 +184,7 @@ def publish(
                 commit,
                 "--draft",
                 "--title",
-                f"GMK70 {'VIA' if family == 'via' else 'Vial'} {tag}",
+                f"GMK70 {TITLES[family]} {tag}",
                 "--notes-file",
                 str(notes),
                 "--generate-notes",

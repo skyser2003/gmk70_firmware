@@ -36,6 +36,8 @@ Builds, tests and packaging never control the keyboard.
 
 The package is `artifacts/zmk/wired-studio-updater/`. Build it with
 `make build-zmk-wired-studio-updater` after loading `scripts/project.sh`.
+For portable ZIP and matching source distribution, use `make build-zmk-release`
+or `bash scripts/github-build.sh zmk`; see [release instructions](RELEASING.md).
 The smaller `wired-peripheral` image remains available for compatibility and
 recovery; it is not required by the universal distribution.
 

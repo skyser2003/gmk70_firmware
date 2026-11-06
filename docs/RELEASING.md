@@ -1,30 +1,34 @@
 # GitHub firmware builds and releases
 
-The **Firmware** workflow runs only on pushes to `release/via` or `release/vial`
-and selects its build family from that branch. Pushes to `main` or other branches,
-pull requests and tag pushes do not start the workflow. There is no manual trigger.
-Tests, Python checks and dependency verification must pass before builds begin.
+The **Firmware** workflow runs only on pushes to supported release branches.
+The branch selects its firmware family. General tests, Python checks and
+dependency verification run on those release pushes and must pass before builds begin.
 All builds retain the pinned compiler, frameworks, libraries and external-source
 adapter.
 
 | Branch | Firmware packages | Automatic release tags |
 | --- | --- | --- |
 | `release/via` | VIA release/debug, each with a normal and updater package | `via-v0.1.0`, `via-v0.1.1`, ... |
-| `release/vial` | Vial normal, updater and unlocked-updater packages | `vial-0.1.0`, `vial-0.1.1`, ... |
+| `release/vial` | Vial normal, secure updater and unlocked updater packages | `vial-0.1.0`, `vial-0.1.1`, ... |
+| `release/zmk` | Universal ZMK Studio application/updater | `zmk-v0.1.0`, `zmk-v0.1.1`, ... |
+| `main` or any other branch | No workflow, including general checks | None |
 
 Every successful push to a release branch publishes that family's next patch
 version. Version counters are independent and compare numeric version parts.
 Returning to an already tagged commit reuses its existing release.
 Tags point to the exact commit that was built. They are created by the workflow
-using `GITHUB_TOKEN`; they do not trigger another build. VIA and Vial have separate
+using `GITHUB_TOKEN`; they do not trigger another build. VIA, Vial and ZMK have separate
 release entries, notes and assets. No combined firmware release is published.
 
-Run artifacts are also available under **Actions → Firmware**: select a successful
-release-branch run and download the desired `gmk70-firmware-*` artifact. Artifacts
-expire after 30 days. General tests and tooling checks run on both release
-branches before the selected family's builds; they do not run automatically on
-`main`. For development validation without publishing, use the local commands
-below.
+PRs, tag pushes and manual events do not start this workflow, even when they
+refer to a release branch. The planner also rejects those contexts instead of
+producing a build matrix. For a download, open the family's release or select a
+successful release-branch run under **Actions → Firmware**. Its
+`gmk70-firmware-*` artifacts expire after 30 days.
+
+Shared checks run for each release family. ZMK dependency setup and native ZMK
+tests additionally run on `release/zmk`; the build matrix publishes only that
+branch's family. VIA/Vial release pushes do not initialize or build ZMK.
 
 To promote current `main` to a release branch, for example:
 
@@ -35,9 +39,11 @@ git merge --ff-only origin/main
 git push origin release/via
 ```
 
-Use `release/vial` instead to promote Vial. There is no version file to edit or
-tag to push: the successful release-branch workflow creates the next patch tag.
-Manually pushing a tag does not start checks, builds or publication.
+Use `release/vial` or `release/zmk` instead to promote that family. For the first
+ZMK release, create `release/zmk` at the intended committed revision and push it.
+There is no version file to edit.
+Version tags are publication outputs, not workflow triggers. Pushing a tag
+alone never runs checks, builds or publication.
 
 After the selected builds succeed, publication verifies all download hashes and
 rejects files from another family. It serializes version allocation per family,
@@ -50,10 +56,27 @@ per-family queue allows up to 100 pending jobs.
 
 Each variant has a full `.tar.gz` bundle with firmware, checksums, metadata and
 matching sources. Normal images also have uniquely named `.bin` and `.hex`
-downloads. Vial includes its existing portable `.zip`. Updater images remain
+downloads. Vial and ZMK include portable `.zip` packages. Updater images remain
 inside separate packages so their `application.bin`, `install.bin` and
 `update.json` cannot collide across variants. The release includes an aggregate
 `SHA256SUMS` for download verification.
+
+ZMK publishes only `wired-studio-updater`, packaged as `gmk70-zmk`. Its identical
+application serves both halves and includes the unlocked native updater. The
+ZIP contains `application.bin`, `update.json`, the pinned resident reference,
+image validation and instructions. It deliberately has no direct-install image
+or loose binary that could be mistaken for a factory-bootloader image. Legacy
+QMK/Vial migrations require the separately built native-update bridge; see the
+[ZMK release notes](RELEASE-NOTES-zmk.md). Trials, bridges and qualification
+variants are excluded. CI builds the QMK debug-updater resident prerequisite
+separately, then the ZMK packager requires its exact reviewed hash. That QMK
+prerequisite is not published as part of the ZMK family.
+
+The ZMK source bundle extends the shared source exporter with pinned
+ZMK/Zephyr/modules and a separate integrity manifest. Upstream internal source
+symlinks are preserved; escaping links and Git metadata are excluded. Extracted
+sources can be verified and built without fetching firmware source repositories.
+Build/test commands never access the keyboard.
 
 GitHub Actions must be enabled for the repository. The workflow uses the
 automatic `GITHUB_TOKEN`; only the publication job requests `contents:
@@ -62,15 +85,21 @@ Actions are pinned to commit SHAs, and tool caches are keyed by the dependency
 lockfile, setup script and Python lockfiles. Cached tools still go through setup
 and dependency verification. No keyboard is flashed by this workflow.
 
-For the same packages locally, after `make setup setup-vial`:
+Local commands remain available independently of the Actions trigger policy.
+For the same packages locally, after `make setup setup-vial setup-zmk`:
 
 ```sh
-make test
+make test test-zmk
 make check-tools
-bash scripts/github-build.sh                 # all eight variants
+make build-updater-debug                    # reviewed resident prerequisite
+bash scripts/github-build.sh                 # all nine variants
 bash scripts/github-build.sh vial-updater    # one variant
+bash scripts/github-build.sh zmk             # universal Studio release bundle
 ```
 
 Packages are written to `dist/`. Packaging verifies the build's `SHA256SUMS`
 and requires its firmware images, update metadata where applicable, and source
 archive. Unmanifested stale images are excluded.
+`make build-zmk-release` produces the release-ready ZMK files under
+`artifacts/zmk/wired-studio-updater/`; the GitHub wrapper additionally writes
+the public ZIP, full TAR bundle and download checksums under `dist/`.
