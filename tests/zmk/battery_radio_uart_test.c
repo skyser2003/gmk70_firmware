@@ -435,6 +435,7 @@ static void test_usb_selection_allows_module_sleep_before_telemetry_resumes(void
     gmk_battery_poll();
     const uint8_t usb[] = {0xa6, 0x11, 0xb7};
     expect_bytes(0, usb, sizeof(usb));
+    wired = true; /* Cancel the periodic query queued before wired selection. */
     ack();
     assert(tx_count == 3 && !snapshot().queries && gmk_radio_core_control_busy(&radio));
     for (battery_test_time = 1; battery_test_time < 5500; ++battery_test_time) {
@@ -445,12 +446,14 @@ static void test_usb_selection_allows_module_sleep_before_telemetry_resumes(void
     const uint8_t charging[] = {0xa6, 0x64, 0x0a};
     expect_bytes(3, charging, sizeof(charging));
     ack();
+    assert(tx_count == 6 && snapshot().queries == 0);
+    gmk_battery_request();
+    gmk_battery_poll();
     const uint8_t query[] = {0xa6, 0x53, 0xf9};
     expect_bytes(6, query, sizeof(query));
     ack();
-    ack(); /* The original overdue query can be followed by the current query cycle. */
     uint32_t queries = snapshot().queries;
-    assert(queries && !radio.waiting && !state.waiting_ack);
+    assert(queries == 1 && !radio.waiting && !state.waiting_ack);
     for (unsigned heartbeat = 1; heartbeat <= 11; ++heartbeat) {
         battery_test_time = 5500 + heartbeat * 1000;
         size_t before     = tx_count;
@@ -460,7 +463,7 @@ static void test_usb_selection_allows_module_sleep_before_telemetry_resumes(void
             ack();
         assert(!radio.waiting && !state.waiting_ack);
     }
-    assert(snapshot().queries >= queries + 3);
+    assert(snapshot().queries == queries); /* Heartbeats do not schedule wired queries. */
     const uint8_t increased[] = {0x5c, 67, 0x9f};
     feed(increased, sizeof(increased));
     assert(snapshot().valid && snapshot().percentage == 67);

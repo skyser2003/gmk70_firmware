@@ -72,7 +72,7 @@ static bool hid_idle(void) {
     return true;
 }
 static bool marker_ready_locked(void) {
-    return available && core.selected && core.active == core.selected && core.connection == GMK_RADIO_CONNECTED && !core.count && !core.release && !core.waiting && !core.pending_select && !core.pending_pair && !core.inflight && !mailbox.pending;
+    return available && core.selected && core.active == core.selected && core.connection == GMK_RADIO_CONNECTED && gmk_radio_core_idle(&core) && !mailbox.pending;
 }
 static void emit_marker(void) {
     uint8_t          raw   = gmk_host_switch();
@@ -80,12 +80,14 @@ static void emit_marker(void) {
     bool             ready = marker_ready_locked() && valid_mode(raw);
     k_spin_unlock(&lock, key);
     if (!ready || !hid_idle()) return;
-    struct zmk_keycode_state_changed event   = {.usage_page = 7, .keycode = 0x73, .state = true, .timestamp = k_uptime_get()};
-    int                              pressed = raise_zmk_keycode_state_changed(event);
-    event.state                              = false;
-    event.timestamp                          = k_uptime_get();
-    int released                             = raise_zmk_keycode_state_changed(event);
-    if (pressed < 0 || released < 0) gmk_radio_clear_hid();
+    struct zmk_keycode_state_changed event  = {.usage_page = 7, .keycode = 0x73};
+    bool                             failed = false;
+    for (unsigned edge = 0; edge < 2; ++edge) {
+        event.state     = edge == 0;
+        event.timestamp = k_uptime_get();
+        if (raise_zmk_keycode_state_changed(event) < 0) failed = true;
+    }
+    if (failed) gmk_radio_clear_hid();
 }
 int gmk_radio_test_marker(void) {
     if (!hid_idle()) return -EBUSY;

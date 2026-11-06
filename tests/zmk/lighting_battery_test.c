@@ -30,6 +30,7 @@ void gmk_controls_overlay(uint8_t *rgb, size_t count, uint32_t now, bool left, b
 int64_t                          fake_ms;
 static struct gmk_battery_status status = {.valid = true, .percentage = 50, .cable = true};
 static unsigned                  writes;
+static unsigned                  battery_requests;
 static int                       write_result;
 static bool                      test_left = true;
 static uint8_t                   last_pixels[123];
@@ -51,6 +52,9 @@ bool gmk_split_available(void) {
 void gmk_battery_get(struct gmk_battery_status *out) {
     *out = status;
 }
+void gmk_battery_request(void) {
+    ++battery_requests;
+}
 int gmk_pixels_init(void) {
     return 0;
 }
@@ -71,6 +75,7 @@ int main(void) {
     memset(colors, 7, sizeof(colors));
     assert(!update_rgb(NULL, colors, 77) && writes == 1);
     assert(!gmk_lighting_battery_set(GMK_BATTERY_LEVEL, 55, true));
+    assert(battery_requests == 1);
     gmk_lighting_poll();
     assert(writes == 2 && last_pixels[15] == 0 && last_pixels[16] == 80);
     for (unsigned i = 0; i < sizeof(colors); ++i)
@@ -78,6 +83,7 @@ int main(void) {
     memset(colors, 0, sizeof(colors)); /* Native RGB off, while the query stays held. */
     assert(!update_rgb(NULL, colors, 77) && writes == 3 && last_pixels[16] == 80);
     assert(!gmk_lighting_battery_set(GMK_BATTERY_LEVEL, 55, false));
+    assert(battery_requests == 1);
     gmk_lighting_poll();
     assert(writes == 4);
     for (unsigned i = 0; i < 108; ++i)
@@ -85,6 +91,7 @@ int main(void) {
     for (unsigned i = 0; i < 123; ++i)
         assert(!frame.rgb[i]);
     assert(!gmk_lighting_battery_set(GMK_BATTERY_CHARGING, 3, true));
+    assert(battery_requests == 1);
     gmk_lighting_poll();
     assert(writes == 5 && last_pixels[99] == 80 && last_pixels[100] == 0);
     gmk_lighting_poll();

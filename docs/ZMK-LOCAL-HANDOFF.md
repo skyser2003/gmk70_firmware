@@ -1,5 +1,37 @@
 # Local continuation: updater-preserving ZMK development
 
+## Wired battery background polling removed — 2026-11-06, not installed
+
+The user clarified that removal concerns the automatic three-second radio
+percentage inquiry while wired. It is now wireless-only. The battery-level key
+queues one coalesced refresh using the existing UART worker and bounded retry;
+charging-status presses and releases do not request percentages. Native sensor
+reads remain cache-only, and the ten-second freshness limit remains. Queued
+periodic work is canceled on wired entry without cutting off a partial frame
+or reassigning its ACK. Charger maintenance and the USB sampler-recovery quiet
+interval are unchanged. The radio estimator's transient high reading is not
+claimed fixed.
+
+Canonical source builds to 106,044 bytes, SHA256
+`f39ec4977db0c85aad56cc9f83307ab558fe6e0a9513f4534e8c8fd58e0ea0b4`.
+RAM is 28,170 / 28,544 bytes; stack reservations remain 14,336 bytes. The
+temporary F24 qualification image is exactly 106,496 bytes, leaving no flash
+margin. Compact private battery-field ordering and reuse of the radio-idle
+predicate/marker edge loop keep it within the existing boundary.
+
+All eight wired ZMK builds, `make test`, `make test-zmk`, `make check-tools`,
+strict compiler warnings and edited-C formatting checks pass. Regression tests
+cover zero wired background queries, cache-only native sampling, coalesced
+press requests, one retry, cancellation on wired entry, partial-frame/ACK
+ownership, quiescence, right-role isolation and ongoing charger heartbeats.
+The F24 tests cover pending controls and cleanup after either edge fails.
+
+No device operation was performed for this change. Both halves remain on the
+last verified 105,996-byte image below; the resident, saved layout and radio
+firmware have not been modified. No user answer or physical test is pending.
+See [battery policy](ZMK-BATTERY-LAYOUT.md) and the
+[repository audit](CUSTOM-FEATURE-PARITY.md).
+
 ## Last battery trial rolled back — 2026-11-05
 
 The user requested removal of the last attempted battery correction, a renewed

@@ -31,20 +31,22 @@ struct battery_parser {
 };
 enum battery_transmission { BATTERY_TX_NONE, BATTERY_TX_QUERY, BATTERY_TX_ACK, BATTERY_TX_RADIO };
 struct battery_state {
-    struct gmk_battery_status status;
+    /* Private worker state: short offsets keep Cortex-M3 byte loads compact. */
     struct battery_parser     parser;
-    uint32_t                  sample_ms, cycle_ms, ack_ms, tx_ms;
+    uint8_t                   tx_offset, acknowledgements;
+    bool                      initialized, have_cycle, waiting_ack, retry_used, query_pending, quiesced, demand;
     enum battery_transmission transmitting;
+    struct gmk_battery_status status;
+    uint32_t                  sample_ms, cycle_ms, ack_ms, tx_ms;
 #ifdef CONFIG_GMK70_RADIO
     struct gmk_radio_frame radio_frame;
 #endif
-    uint8_t tx_offset, acknowledgements;
-    bool    initialized, have_cycle, waiting_ack, retry_used, query_pending, quiesced;
 };
 static struct battery_state state;
 static struct {
     struct gmk_battery_status status;
     uint32_t                  sample_ms;
+    bool                      requested;
 } cache;
 static struct k_spinlock cache_lock;
 
@@ -74,6 +76,11 @@ void gmk_battery_get(struct gmk_battery_status *out) {
     k_spin_unlock(&cache_lock, key);
     out->age_ms = out->valid || out->replies ? k_uptime_get_32() - sample_ms : UINT32_MAX;
     out->valid  = out->valid && out->age_ms <= BATTERY_FRESH_MS;
+}
+void gmk_battery_request(void) {
+    k_spinlock_key_t key = k_spin_lock(&cache_lock);
+    cache.requested      = true;
+    k_spin_unlock(&cache_lock, key);
 }
 bool gmk_battery_idle(void) {
     if (!state.initialized || !gmk_wired_is_left()) return true;
@@ -208,16 +215,27 @@ static void drain_rx(uint32_t now) {
     }
 }
 static void schedule_query(uint32_t now) {
+    bool automatic = !gmk_wired_mode();
+    bool allowed   = automatic || state.demand;
+    /* Cancel queued periodic work on wired entry, without interrupting a
+     * partially transmitted frame or stealing its outstanding ACK. */
+    if (!allowed) state.query_pending = false;
     if (state.waiting_ack && (uint32_t)(now - state.ack_ms) >= BATTERY_TIMEOUT_MS) {
         state.waiting_ack = false;
-        if (!state.retry_used) {
+        if (!state.retry_used && allowed) {
             state.retry_used    = true;
             state.query_pending = true;
         } else {
             ++state.status.errors;
         }
     }
-    if (!state.query_pending && !state.waiting_ack && state.transmitting != BATTERY_TX_QUERY && (!state.have_cycle || (uint32_t)(now - state.cycle_ms) >= BATTERY_QUERY_MS)) {
+    if (!state.query_pending && !state.waiting_ack && state.transmitting != BATTERY_TX_QUERY) {
+        k_spinlock_key_t key       = k_spin_lock(&cache_lock);
+        bool             requested = cache.requested;
+        cache.requested            = false;
+        k_spin_unlock(&cache_lock, key);
+        if (!requested && (!automatic || (state.have_cycle && (uint32_t)(now - state.cycle_ms) < BATTERY_QUERY_MS))) return;
+        state.demand        = requested;
         state.have_cycle    = true;
         state.cycle_ms      = now;
         state.retry_used    = false;
@@ -302,6 +320,7 @@ void gmk_battery_poll(void) {
 }
 static int battery_init(void) {
     memset(&state, 0, sizeof(state));
+    cache.requested = false;
     publish();
     if (!gmk_wired_is_left()) return 0;
     sys_set_bits(WB32_RCC_BASE + 0x48, (1U << 15) | (1U << 5) | (1U << 7));

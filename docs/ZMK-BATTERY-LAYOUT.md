@@ -1,8 +1,25 @@
 # Battery indicators and saved Vial layout migration
 
-The user requested [rollback of the November 5 trial](validation/2026-11-05-zmk-battery-rollback/README.md).
-Source, all eight distributions and the installed LEFT application are restored
-to the exact pre-trial implementation. RIGHT already had that image and was not
+## Current refresh policy — 2026-11-06, not installed
+
+Automatic three-second percentage inquiries now run only in wireless mode.
+Pressing the held battery-level action queues one coalesced refresh through the
+existing UART worker, with one bounded retry. This preserves wired level display
+without background wired queries. Charging-status presses and releases do not
+request percentages. Native ZMK sensor reads remain cache-only; unknown or
+expired data stays purple until a valid reply arrives. A hold longer than the
+ten-second freshness limit requires another press to refresh.
+
+Wired entry cancels queued periodic queries. A frame already being transmitted
+finishes without losing ACK ownership, but does not trigger a periodic retry.
+The charger notifications and USB sampler-recovery interval remain unchanged.
+This change does not alter the radio estimator and has not been flashed.
+All eight wired ZMK builds and `make test test-zmk check-tools` pass. The normal
+image is 106,044 bytes with 28,170 bytes of RAM; stack reservations are unchanged.
+
+The user previously requested [rollback of the November 5 trial](validation/2026-11-05-zmk-battery-rollback/README.md).
+At that checkpoint, source, all eight distributions and the installed LEFT
+application were restored to the pre-trial implementation. RIGHT already had that image and was not
 written. Both-half health, unchanged residents and the saved four-layer Studio
 keymap are verified. The 1,000 ms full-input qualifier, operation
 `0x23` transition trace and CLI `--trace` are removed. The earlier three-second
@@ -29,7 +46,8 @@ with ordinary RGB off and can be held together.
 Only LEFT uses UART3, PC10/PC11 AF7 at 115200 baud. The existing worker polls a
 bounded parser and transmitter without a new thread, interrupt or blocking wait.
 Battery inquiries use `A6 53 F9` and acknowledgments use `61 0D 0A`.
-Queries run every three seconds with one bounded retry.
+Automatic queries run every three seconds in wireless mode; the level action
+also requests a refresh on press. Either query cycle permits one bounded retry.
 Checksummed percentages must be in 0..100. The parser consumes other status/raw
 frames so their embedded bytes cannot become battery samples. A timed-out raw
 frame retains a finite discard budget; truncation can delay recovery of valid

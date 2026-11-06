@@ -13,6 +13,7 @@ static bool                           left         = true, in_work;
 static unsigned                       clears, events;
 static bool                           inject;
 static bool                           inject_release;
+static unsigned                       fail_marker_edge;
 static struct zmk_hid_keyboard_report keyboard;
 static struct zmk_hid_consumer_report consumer;
 static uint8_t                        explicit_mods;
@@ -87,6 +88,7 @@ int raise_zmk_keycode_state_changed(struct zmk_keycode_state_changed event) {
     assert(!event.implicit_modifiers && !event.explicit_modifiers);
     assert(event.state == (events % 2 == 0));
     ++events;
+    if (events == fail_marker_edge) return -EIO;
     uint8_t report[8] = {0};
     if (event.state) report[2] = 0x73;
     return gmk_radio_submit_keyboard(report);
@@ -105,6 +107,7 @@ static void start(bool is_left) {
     physical_raw    = 3;
     radio_test_time = 0;
     clears = events = explicit_mods = 0;
+    fail_marker_edge                = 0;
     inject = inject_release = false;
     keyboard                = (struct zmk_hid_keyboard_report){0};
     consumer                = (struct zmk_hid_consumer_report){0};
@@ -461,6 +464,22 @@ static void qualification_marker_is_only_fixed_f24_and_respects_held_input(void)
     run_work();
     assert(events == 2);
 }
+static void qualification_marker_waits_for_control_and_releases_after_failure(void) {
+    start(true);
+    connect_radio();
+    gmk_radio_charger_state(true, false);
+    assert(gmk_radio_test_marker() == -ENOTCONN && events == 0);
+    settle();
+    for (unsigned edge = 1; edge <= 2; ++edge) {
+        start(true);
+        connect_radio();
+        unsigned before  = clears;
+        fail_marker_edge = edge;
+        assert(gmk_radio_test_marker() == 0);
+        run_work();
+        assert(events == 2 && clears == before + 1);
+    }
+}
 #endif
 #ifdef CONFIG_GMK70_NATIVE_KEYMAP_TEST
 #    include "radio_native_keymap_fixture.h"
@@ -551,6 +570,7 @@ int main(void) {
 #endif
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION
     qualification_marker_is_only_fixed_f24_and_respects_held_input();
+    qualification_marker_waits_for_control_and_releases_after_failure();
 #endif
     puts("Radio kernel: deferred HID, latest mailbox, hold cancellation, core FIFO and role gates passed");
     return 0;

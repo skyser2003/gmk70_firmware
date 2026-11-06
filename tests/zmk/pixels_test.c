@@ -416,6 +416,7 @@ bool gmk_split_available(void) {
 void gmk_battery_get(struct gmk_battery_status *status) {
     *status = (struct gmk_battery_status){.valid = true, .percentage = 100, .cable = true};
 }
+void gmk_battery_request(void) {}
 bool __wrap_gmk_protocol_lighting(const struct gmk_wire_io *io, const uint8_t packet[16]) {
     (void)io;
     assert(peer_packets_count < GMK_LIGHT_CHUNKS);

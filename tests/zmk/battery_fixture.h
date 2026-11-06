@@ -10,8 +10,12 @@
 uint32_t    battery_test_time;
 unsigned    battery_test_locks;
 static bool left = true;
+static bool wired;
 bool        gmk_wired_is_left(void) {
     return left;
+}
+bool gmk_wired_mode(void) {
+    return wired;
 }
 #include "../../firmware/zmk/battery/battery.c"
 #include "../../firmware/zmk/battery/battery_sensor.c"
@@ -90,6 +94,7 @@ static void reset_model(bool is_left) {
     gpio_registers[0][0x10 / 4] = 0; /* Unplugged charger inputs, independent of GPIO modes. */
     battery_test_time           = 0;
     left                        = is_left;
+    wired                       = false;
     rx_count = rx_cursor = tx_count = 0;
     mmio_reads = mmio_writes = receive_reads = 0;
     line_error                               = 0;

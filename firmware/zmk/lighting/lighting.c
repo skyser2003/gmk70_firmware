@@ -84,6 +84,7 @@ int gmk_lighting_battery_set(enum gmk_battery_indicator kind, uint32_t position,
     int result = gmk_battery_view_set(&battery_view, kind, position, pressed);
     if (!result) display_dirty = true;
     k_mutex_unlock(&render_lock);
+    if (!result && pressed && kind == GMK_BATTERY_LEVEL) gmk_battery_request();
     return result;
 }
 

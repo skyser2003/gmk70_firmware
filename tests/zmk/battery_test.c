@@ -48,6 +48,80 @@ static void test_query_and_single_retry(void) {
     assert(tx_count == 9 && !snapshot().valid);
     assert_only_approved_messages();
 }
+static void test_wired_has_no_background_queries(void) {
+    reset_model(true);
+    wired = true;
+    for (battery_test_time = 0; battery_test_time < 30000; battery_test_time += 100) {
+        gmk_battery_poll();
+        assert(battery_sample_fetch(NULL, SENSOR_CHAN_GAUGE_STATE_OF_CHARGE) == -ENODATA);
+        assert(snapshot().queries == 0 && tx_count == 0);
+    }
+}
+static void test_wired_refresh_is_requested_coalesced_and_bounded(void) {
+    reset_model(true);
+    wired          = true;
+    unsigned reads = mmio_reads, writes = mmio_writes;
+    gmk_battery_request();
+    gmk_battery_request();
+    assert(mmio_reads == reads && mmio_writes == writes);
+    gmk_battery_poll();
+    assert(snapshot().queries == 1);
+    const uint8_t ack[] = {0x61, 0x0d, 0x0a};
+    feed(ack, sizeof(ack));
+    const uint8_t reply[] = {0x5c, 67, 0x9f};
+    feed(reply, sizeof(reply));
+    struct sensor_value value;
+    assert(!battery_sample_fetch(NULL, SENSOR_CHAN_GAUGE_STATE_OF_CHARGE));
+    assert(!battery_channel_get(NULL, SENSOR_CHAN_GAUGE_STATE_OF_CHARGE, &value) && value.val1 == 67);
+    for (battery_test_time = 100; battery_test_time <= 30000; battery_test_time += 100)
+        gmk_battery_poll();
+    assert(snapshot().queries == 1 && !snapshot().valid);
+    assert(battery_sample_fetch(NULL, SENSOR_CHAN_GAUGE_STATE_OF_CHARGE) == -ENODATA);
+    gmk_battery_request();
+    gmk_battery_poll();
+    assert(snapshot().queries == 2);
+    battery_test_time += 10;
+    gmk_battery_poll();
+    assert(snapshot().queries == 3);
+    battery_test_time += 10000;
+    gmk_battery_poll();
+    assert(snapshot().queries == 3 && snapshot().errors == 1);
+    wired = false;
+    gmk_battery_poll();
+    assert(snapshot().queries == 4); /* Wireless cadence resumes. */
+}
+static void test_wired_entry_finishes_partial_frame_without_periodic_retry(void) {
+    reset_model(true);
+    tx_allowance = 1;
+    gmk_battery_poll();
+    assert(tx_count == 1 && snapshot().queries == 0);
+    wired        = true;
+    tx_allowance = UINT32_MAX;
+    gmk_battery_poll();
+    assert(tx_count == 3 && snapshot().queries == 1);
+    battery_test_time = 10;
+    gmk_battery_poll();
+    assert(tx_count == 3 && snapshot().errors == 1);
+    battery_test_time = 30000;
+    gmk_battery_poll();
+    assert(tx_count == 3);
+    assert_only_approved_messages();
+}
+static void test_refresh_defers_during_quiescence_and_never_uses_right_uart(void) {
+    reset_model(true);
+    wired = true;
+    assert(gmk_battery_power_quiesce(true));
+    gmk_battery_request();
+    gmk_battery_poll();
+    assert(!tx_count);
+    assert(gmk_battery_power_quiesce(false));
+    gmk_battery_poll();
+    assert(snapshot().queries == 1);
+    reset_model(false);
+    gmk_battery_request();
+    gmk_battery_poll();
+    assert(!tx_count && !mmio_reads && !mmio_writes);
+}
 static void test_percentage_freshness_and_gpio_cache(void) {
     reset_model(true);
     gpio_registers[0][0x10 / 4] = (1U << 7) | (1U << 15);
@@ -296,6 +370,10 @@ static void test_stale_sample_never_revives_without_another_reply(void) {
 int main(void) {
     assert(!snapshot().valid && mmio_reads == 0 && mmio_writes == 0);
     test_role_guard_and_pin_isolation();
+    test_wired_has_no_background_queries();
+    test_wired_refresh_is_requested_coalesced_and_bounded();
+    test_wired_entry_finishes_partial_frame_without_periodic_retry();
+    test_refresh_defers_during_quiescence_and_never_uses_right_uart();
     test_query_and_single_retry();
     test_percentage_freshness_and_gpio_cache();
     test_rejects_bad_percentage_and_checksum();
