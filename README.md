@@ -99,10 +99,10 @@ make test         # firmware regression tests
 make check-tools  # Python formatting, lint, type checks and tests
 ```
 
-GitHub Actions checks all seven variants on `main`. Pushes to `release/via` and
-`release/vial` build and publish only that family's firmware, with independent
-`via-vX.X.X` and `vial-X.X.X` patch versions. PRs and manual runs provide build
-artifacts. See [release instructions](docs/RELEASING.md).
+GitHub Actions runs only on pushes to `release/via` or `release/vial`. Each push
+runs the general checks, then builds and publishes only that family's firmware,
+with independent `via-vX.X.X` and `vial-X.X.X` patch versions. Pushes to `main`,
+PRs and tags do not start checks or builds. See [release instructions](docs/RELEASING.md).
 
 ## Using the firmware
 

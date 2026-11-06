@@ -39,36 +39,63 @@ class ReleaseTests(unittest.TestCase):
         )
         self.assertTrue(set(via["variants"]).isdisjoint(vial["variants"]))
 
-    def test_pull_requests_and_manual_runs_cannot_publish(self) -> None:
+    def test_only_push_events_can_start_release_pipeline(self) -> None:
         for family in ("via", "vial"):
-            with self.subTest(family=family):
-                pull_request = self.release.plan(
-                    "pull_request", "refs/pull/42/merge", f"release/{family}"
-                )
-                manual = self.release.plan(
-                    "workflow_dispatch", f"refs/heads/release/{family}"
-                )
-                self.assertEqual(pull_request["family"], family)
-                self.assertEqual(manual["family"], family)
-                self.assertFalse(pull_request["publish"])
-                self.assertFalse(manual["publish"])
+            for event in (
+                "pull_request",
+                "workflow_dispatch",
+                "release",
+                "workflow_run",
+            ):
+                with (
+                    self.subTest(family=family, event=event),
+                    self.assertRaises(ValueError),
+                ):
+                    self.release.plan(event, f"refs/heads/release/{family}")
 
-    def test_version_tags_route_to_the_matching_family(self) -> None:
-        self.assertEqual(
-            self.release.plan("push", "refs/tags/via-v1.2.3")["family"], "via"
-        )
-        self.assertEqual(
-            self.release.plan("push", "refs/tags/vial-4.5.6")["family"], "vial"
-        )
-        for invalid in ("v1.2.3", "via-vlatest", "vial-v1.2.3", "vial-01.2.3"):
-            with self.subTest(tag=invalid), self.assertRaises(ValueError):
-                self.release.plan("push", f"refs/tags/{invalid}")
+    def test_other_branches_and_tags_cannot_start_release_pipeline(self) -> None:
+        for ref in (
+            "refs/heads/main",
+            "refs/heads/codex/test",
+            "refs/heads/release/via-next",
+            "refs/heads/release/vial-next",
+            "refs/heads/release/other",
+            "release/via",
+            "release/vial",
+            "refs/tags/via-v1.2.3",
+            "refs/tags/vial-4.5.6",
+            "refs/pull/42/merge",
+        ):
+            with self.subTest(ref=ref), self.assertRaises(ValueError):
+                self.release.plan("push", ref)
 
-    def test_main_builds_every_variant_without_publication(self) -> None:
-        main = self.release.plan("push", "refs/heads/main")
-        self.assertEqual(len(main["variants"]), 8)
-        self.assertIn("qmk-default", main["variants"])
-        self.assertFalse(main["publish"])
+    def test_unmatched_publication_cannot_read_or_write_release_assets(self) -> None:
+        for family, ref in (
+            ("via", "refs/heads/main"),
+            ("vial", "refs/heads/main"),
+            ("via", "refs/tags/via-v1.2.3"),
+            ("vial", "refs/tags/vial-1.2.3"),
+            ("via", "refs/heads/release/vial"),
+            ("vial", "refs/heads/release/via"),
+        ):
+            with (
+                self.subTest(family=family, ref=ref),
+                patch.object(self.release, "verify_assets") as verify,
+                patch.object(self.release, "github_pages") as read,
+                patch.object(self.release, "run_gh") as write,
+            ):
+                with self.assertRaises(ValueError):
+                    self.release.publish(
+                        family,
+                        ref,
+                        "a" * 40,
+                        "owner/repo",
+                        self.root / "not-built",
+                        self.root / "notes.md",
+                    )
+                verify.assert_not_called()
+                read.assert_not_called()
+                write.assert_not_called()
 
     def test_experimental_trial_and_diagnostic_builds_are_not_releases(self) -> None:
         vial = self.release.plan("push", "refs/heads/release/vial")

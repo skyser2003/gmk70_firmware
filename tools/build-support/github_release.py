@@ -30,28 +30,12 @@ def tag_version(family: str, tag: str) -> tuple[int, int, int] | None:
     return int(match[1]), int(match[2]), int(match[3])
 
 
-def plan(event: str, ref: str, base_ref: str = "", requested: str = "all") -> Plan:
-    if requested not in ("all", *FAMILIES):
-        raise ValueError(f"Unknown firmware family: {requested}")
-    branch = base_ref if event == "pull_request" else ref.removeprefix("refs/heads/")
-    family = next((name for name in FAMILIES if branch == f"release/{name}"), "all")
-    publish = event == "push" and family != "all"
-    if event == "push" and ref.startswith("refs/tags/"):
-        tag = ref.removeprefix("refs/tags/")
-        family = next(
-            (name for name in FAMILIES if tag_version(name, tag) is not None), ""
-        )
-        if not family:
-            raise ValueError(f"Unsupported firmware release tag: {tag}")
-        publish = True
-    elif event == "workflow_dispatch" and family == "all":
-        family = requested
-    variants = (
-        FAMILIES[family]
-        if family != "all"
-        else ("qmk-default", *FAMILIES["via"], *FAMILIES["vial"])
-    )
-    return {"family": family, "variants": variants, "publish": publish}
+def plan(event: str, ref: str) -> Plan:
+    if event == "push":
+        for family, variants in FAMILIES.items():
+            if ref == f"refs/heads/release/{family}":
+                return {"family": family, "variants": variants, "publish": True}
+    raise ValueError("Firmware workflows require a push to release/via or release/vial")
 
 
 def choose_tag(family: str, tags: list[tuple[str, str]], commit: str) -> str:
@@ -123,9 +107,7 @@ def publish(
 ) -> str:
     selected = plan("push", ref)
     if selected["family"] != family or not selected["publish"]:
-        raise ValueError(
-            "Publication requires the matching release branch or version tag"
-        )
+        raise ValueError("Publication requires the matching release branch")
     if not re.fullmatch(r"[0-9a-f]{40}", commit) or not re.fullmatch(
         r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository
     ):
@@ -135,11 +117,7 @@ def publish(
         (str(item["name"]), str(item["commit"]["sha"]))
         for item in github_pages(f"repos/{repository}/tags?per_page=100")
     ]
-    tag = (
-        ref.removeprefix("refs/tags/")
-        if ref.startswith("refs/tags/")
-        else choose_tag(family, tags, commit)
-    )
+    tag = choose_tag(family, tags, commit)
     existing_sha = next((sha for name, sha in tags if name == tag), None)
     if existing_sha is not None and existing_sha != commit:
         raise ValueError(f"Release tag {tag} points to a different commit")
@@ -221,8 +199,7 @@ def publish(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    route = commands.add_parser("plan")
-    route.add_argument("--family", choices=("all", *FAMILIES), default="all")
+    commands.add_parser("plan")
     release = commands.add_parser("publish")
     release.add_argument("--family", choices=tuple(FAMILIES), required=True)
     args = parser.parse_args()
@@ -231,8 +208,6 @@ def main() -> None:
             result = plan(
                 os.environ["GITHUB_EVENT_NAME"],
                 os.environ["GITHUB_REF"],
-                os.environ.get("GITHUB_BASE_REF", ""),
-                args.family,
             )
             print(f"family={result['family']}")
             print(f"variants={json.dumps(result['variants'])}")

@@ -1,6 +1,8 @@
 # GitHub firmware builds and releases
 
-The **Firmware** workflow selects its build family from the branch or tag.
+The **Firmware** workflow runs only on pushes to `release/via` or `release/vial`
+and selects its build family from that branch. Pushes to `main` or other branches,
+pull requests and tag pushes do not start the workflow. There is no manual trigger.
 Tests, Python checks and dependency verification must pass before builds begin.
 All builds retain the pinned compiler, frameworks, libraries and external-source
 adapter.
@@ -8,8 +10,7 @@ adapter.
 | Branch | Firmware packages | Automatic release tags |
 | --- | --- | --- |
 | `release/via` | VIA release/debug, each with a normal and updater package | `via-v0.1.0`, `via-v0.1.1`, ... |
-| `release/vial` | Vial normal and updater packages | `vial-0.1.0`, `vial-0.1.1`, ... |
-| `main` | All seven variants, including fixed-keymap QMK | Build artifacts only |
+| `release/vial` | Vial normal, updater and unlocked-updater packages | `vial-0.1.0`, `vial-0.1.1`, ... |
 
 Every successful push to a release branch publishes that family's next patch
 version. Version counters are independent and compare numeric version parts.
@@ -18,12 +19,12 @@ Tags point to the exact commit that was built. They are created by the workflow
 using `GITHUB_TOKEN`; they do not trigger another build. VIA and Vial have separate
 release entries, notes and assets. No combined firmware release is published.
 
-For a development download, open **Actions → Firmware**, select a successful
-run, and download the desired `gmk70-firmware-*` artifact. Pull requests to the
-release branches build only that family; pull requests to `main` build all seven.
-**Run workflow** builds without publishing: release branches select their own
-family, while other branches allow an `all`, `via`, or `vial` choice. Run artifacts
-expire after 30 days.
+Run artifacts are also available under **Actions → Firmware**: select a successful
+release-branch run and download the desired `gmk70-firmware-*` artifact. Artifacts
+expire after 30 days. General tests and tooling checks run on both release
+branches before the selected family's builds; they do not run automatically on
+`main`. For development validation without publishing, use the local commands
+below.
 
 To promote current `main` to a release branch, for example:
 
@@ -34,10 +35,9 @@ git merge --ff-only origin/main
 git push origin release/via
 ```
 
-Use `release/vial` instead to promote Vial. There is no version file to edit.
-For a deliberate major/minor version, push a signed tag such as `via-v1.0.0` or
-`vial-1.0.0` at the intended commit; this builds and publishes only the matching
-family. Legacy `v*` tags and `vial-v*` tags do not publish releases.
+Use `release/vial` instead to promote Vial. There is no version file to edit or
+tag to push: the successful release-branch workflow creates the next patch tag.
+Manually pushing a tag does not start checks, builds or publication.
 
 After the selected builds succeed, publication verifies all download hashes and
 rejects files from another family. It serializes version allocation per family,
@@ -67,7 +67,7 @@ For the same packages locally, after `make setup setup-vial`:
 ```sh
 make test
 make check-tools
-bash scripts/github-build.sh                 # all seven variants
+bash scripts/github-build.sh                 # all eight variants
 bash scripts/github-build.sh vial-updater    # one variant
 ```
 
