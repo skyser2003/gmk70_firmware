@@ -1,8 +1,59 @@
-# Experimental Vial port, 2026-10-09
+# GMK70 Vial firmware
+
+Current keyboard state (2026-11-07): both halves have returned to
+[ZMK Studio](ZMK-STUDIO.md), with the previous Studio map preserved. The Vial
+installation checkpoint below is historical; its configuration was backed up
+privately before the return to ZMK.
+
+## Previous Vial checkpoint (2026-11-06)
+
+Both joined halves ran the separately labelled `vial-unlocked-updater`
+application built locally from `fbcaa1d`, using upstream `VIAL_INSECURE=yes`.
+It remains unlocked across resets. This is a current-source build, not a new
+published version tag. Its application is 93,856 bytes, CRC32 `1914891421`,
+SHA256 `719a0f1b1165a4d0252ea4bda6670a447609d42f1b92896a7cc9ecedc93a8b23`.
+Both resident CRCs remain `1770733249`; only application updates were used.
+
+The initial transition from native-only ZMK installed the separately labelled
+migration bridge on LEFT, verified both halves for 70 seconds before and after that step,
+then installed Vial on RIGHT followed by LEFT through joined LEFT USB. The
+original four-layer Studio map was backed up privately and compared equal after
+the bridge. The Vial image ends below the ZMK settings banks; the Studio map is
+not automatically translated into Vial's separate settings format.
+
+During that initial transition, RIGHT's INSTALL acknowledgement did not validate.
+Independent INFO readback
+confirmed the exact new application and unchanged resident before proceeding
+to LEFT. INSTALL was not replayed. LEFT's updater completed running-image
+verification, and final independent INFO queries matched the Vial application,
+physical role and resident on both idle halves.
+
+Initial secure-build USB checks verified Vial protocol 6, VIA protocol 9, the
+expected GMK70 UID and locked state with Escape + left Shift as the physical unlock
+combination. An initial native-protocol check overlapped an updater inspection
+and was rejected; a subsequent isolated check passed. Physical typing, RGB,
+wireless and sleep behavior were not exercised in this installation check.
+Frozen packages, single-attempt markers, readback logs and private Studio
+snapshots remain in ignored `.work/vial-flash/` storage.
+
+The subsequent secure-to-unlocked update installed RIGHT before LEFT through
+joined LEFT USB. The first RIGHT attempt left the original secure image running;
+independent readback confirmed it was idle before a fresh staging session.
+That session and the LEFT update both returned valid sealed/committed replies.
+Independent INFO then verified the exact unlocked image, roles and unchanged
+resident installers on both halves. Native Vial reported unlocked after boot
+and remained unlocked after its Lock command, with no physical unlock keys.
+A fresh native Vial configuration backup was restored afterward. Full settings
+readback matched the pre-flash snapshot exactly, including a fresh USB connection.
+The user confirmed normal typing on both halves after restoration.
+The frozen package, attempt markers, readback logs and private configuration
+backup are under ignored `.work/vial-unlocked-flash/` storage.
+
+## Initial port (2026-10-09)
 
 The first GMK70 Vial application builds from the shared board/radio sources.
-This is an initial port with software validation; it has not been installed or
-validated on a keyboard. `make build-vial` produces normal images under
+At this initial checkpoint, the port had software validation and had not been
+installed on a keyboard. `make build-vial` produces normal images under
 `artifacts/vial/vial/`; `make build-vial-updater` produces an application for
 the existing resident split updater under `artifacts/vial/vial-updater/`.
 
@@ -31,7 +82,9 @@ command; all other messages reach the native Vial handler.
 
 Project UID: `b691d7277fc88251`, generated once for this port. Physical unlock
 requires holding **Escape + left Shift**, matrix positions `(0,1)` and `(3,1)`,
-as requested by the Vial GUI. Insecure unlock is not enabled. The embedded
+as requested by the Vial GUI. Secure builds retain this protection. The separate
+`vial-unlocked-updater` build uses upstream `VIAL_INSECURE` and remains unlocked
+across resets. The embedded
 layout is derived from the unchanged stock VIA definition. Stock custom slots
 cover every value `0x7E00` through `0x7E21`, retaining reserved gaps. Vial-only
 manual-control aliases follow at `0x7E22` through `0x7E2E`. Known
@@ -152,6 +205,7 @@ make setup        # existing compiler and Python tools, official QMK sources
 make setup-vial   # explicitly initialize the independently pinned Vial sources
 make build-vial   # normal Vial image; no keyboard access
 make build-vial-updater # resident-compatible Vial application; no keyboard access
+make build-vial-unlocked-updater # permanently unlocked updater; no keyboard access
 make test
 make check-tools
 ```
@@ -226,12 +280,15 @@ resets dynamic mappings and macros, even with the same schema. Export your
 configuration in Vial before updating; preserving maps across builds is not
 part of this updater-only change.
 
-On Vial, INFO/STATUS are available while locked. Firmware writes require native
-Vial unlock: open the Vial GUI, hold **Escape + left Shift** when prompted, then
+On secure Vial builds, INFO/STATUS are available while locked. Firmware writes
+require native Vial unlock: open the Vial GUI, hold **Escape + left Shift** when prompted, then
 close Vial without unplugging or resetting. Authorization is checked on the left
 USB master before local staging or peer relay; the right inherits it over the
 split link. Wireless-delivered updater requests and USB requests with the mode
-switch in wireless mode are rejected. No insecure-unlock build option is used.
+switch in wireless mode are rejected. The separately labelled unlocked updater
+uses upstream `VIAL_INSECURE` to omit the physical unlock requirement; its wired,
+USB and role gates remain active. Installing it from a secure build still requires
+unlocking the currently installed firmware first.
 
 ```sh
 bash scripts/update-device.sh artifacts/vial/vial-updater --target both --inspect
