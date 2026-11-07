@@ -7,22 +7,25 @@ from decimal import Decimal
 import json
 from pathlib import Path
 import re
-from typing import cast
+
+type JsonValue = (
+    str | int | float | Decimal | bool | None | list[JsonValue] | dict[str, JsonValue]
+)
 
 
-def mapping(value: object) -> dict[str, object]:
+def mapping(value: JsonValue) -> dict[str, JsonValue]:
     if not isinstance(value, dict):
         raise ValueError("expected an object")
-    return cast(dict[str, object], value)
+    return value
 
 
-def sequence(value: object) -> list[object]:
+def sequence(value: JsonValue) -> list[JsonValue]:
     if not isinstance(value, list):
         raise ValueError("expected an array")
-    return cast(list[object], value)
+    return value
 
 
-def centi(value: object, *, positive: bool = False) -> int:
+def centi(value: JsonValue, *, positive: bool = False) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, Decimal)):
         raise ValueError("expected numeric key geometry")
     scaled = Decimal(value) * 100
@@ -35,18 +38,22 @@ def centi(value: object, *, positive: bool = False) -> int:
 
 
 def generate(keyboard: Path, via: Path) -> str:
-    board = mapping(json.loads(keyboard.read_text()))
+    raw_board: JsonValue = json.loads(keyboard.read_text())
+    board = mapping(raw_board)
     layout = mapping(mapping(board["layouts"])["LAYOUT"])["layout"]
     order: list[tuple[int, int]] = []
     for entry in sequence(layout):
         pair = sequence(mapping(entry)["matrix"])
-        if len(pair) != 2 or any(type(n) is not int for n in pair):
+        if len(pair) != 2:
             raise ValueError("invalid matrix position")
-        row, col = cast(tuple[int, int], tuple(pair))
+        row, col = pair
+        if type(row) is not int or type(col) is not int:
+            raise ValueError("invalid matrix position")
         if not (0 <= row < 10 and 0 <= col < 9) or (row, col) in order:
             raise ValueError("duplicate or out-of-range matrix position")
         order.append((row, col))
-    data = mapping(json.loads(via.read_text(), parse_float=Decimal))
+    raw_via: JsonValue = json.loads(via.read_text(), parse_float=Decimal)
+    data = mapping(raw_via)
     rows = sequence(mapping(data["layouts"])["keymap"])
     positions: dict[tuple[int, int], tuple[int, int, int, int]] = {}
     y = 0
@@ -78,6 +85,12 @@ def generate(keyboard: Path, via: Path) -> str:
         y += 100
     if not order or set(order) != positions.keys():
         raise ValueError("VIA and firmware matrix positions do not match")
+    # Studio sizes its canvas from (0, 0). Reserve room above the knob without
+    # changing physical key spacing or the saved binding order.
+    _, _, knob_x, knob_y = positions[(0, 0)]
+    y_offset = max(0, 100 - knob_y)
+    if knob_x > 32667 or any(p[3] + y_offset > 32767 for p in positions.values()):
+        raise ValueError("no room for encoder virtual-key geometry")
     lines = [
         "/* Generated from unchanged VIA geometry and maintained matrix order. */",
         "/* SPDX-License-Identifier: GPL-2.0-or-later */",
@@ -96,16 +109,15 @@ def generate(keyboard: Path, via: Path) -> str:
     ]
     for coord in order:
         w, h, x, y = positions[coord]
-        lines.append(f"            <&key_physical_attrs {w} {h} {x} {y} 0 0 0>,")
-    # Preserve all existing geometry and indices. Two ordinary editable slots
-    # below the knob column represent CCW (left) and CW (right).
-    y = max(p[3] + p[1] for p in positions.values())
-    if y > 32667:
-        raise ValueError("no room for encoder virtual-key geometry")
+        lines.append(
+            f"            <&key_physical_attrs {w} {h} {x} {y + y_offset} 0 0 0>,"
+        )
+    # Appended CCW (left) and CW (right) controls sit above the knob press.
+    y = knob_y + y_offset - 100
     lines.extend(
         [
-            f"            <&key_physical_attrs 100 100 0 {y} 0 0 0>,",
-            f"            <&key_physical_attrs 100 100 100 {y} 0 0 0>;",
+            f"            <&key_physical_attrs 100 100 {knob_x} {y} 0 0 0>,",
+            f"            <&key_physical_attrs 100 100 {knob_x + 100} {y} 0 0 0>;",
         ]
     )
     return "\n".join([*lines, "    };", "};", ""])

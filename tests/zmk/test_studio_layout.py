@@ -123,14 +123,14 @@ class StudioLayoutTests(unittest.TestCase):
             )
         ]
         self.assertEqual(len(attrs), 74)
-        self.assertEqual(attrs[-2:], [(100, 100, 0, 500), (100, 100, 100, 500)])
+        self.assertEqual(attrs[-2:], [(100, 100, 0, 0), (100, 100, 100, 0)])
         self.assertEqual(
-            attrs[:3], [(100, 100, 0, 0), (100, 100, 125, 0), (100, 100, 225, 0)]
+            attrs[:3], [(100, 100, 0, 100), (100, 100, 125, 100), (100, 100, 225, 100)]
         )
-        self.assertEqual(attrs[16], (100, 100, 0, 100))
-        self.assertEqual(attrs[33], (100, 100, 300, 200))
-        self.assertEqual(attrs[63], (125, 100, 250, 400))
-        self.assertEqual(attrs[66], (275, 100, 900, 400))
+        self.assertEqual(attrs[16], (100, 100, 0, 200))
+        self.assertEqual(attrs[33], (100, 100, 300, 300))
+        self.assertEqual(attrs[63], (125, 100, 250, 500))
+        self.assertEqual(attrs[66], (275, 100, 900, 500))
 
     def test_source_geometry_changes_and_matrix_reordering_are_reflected(self) -> None:
         inputs = LayoutInputs.load()
@@ -140,8 +140,20 @@ class StudioLayoutTests(unittest.TestCase):
         result = self.generate(inputs)
         self.assertEqual(result.returncode, 0, result.stderr)
         attrs = re.findall(r"<&key_physical_attrs\s+([\d ]+)>", result.stdout)
-        self.assertEqual(tuple(map(int, attrs[0].split())), (100, 100, 175, 0, 0, 0, 0))
-        self.assertEqual(tuple(map(int, attrs[1].split())), (150, 100, 0, 0, 0, 0, 0))
+        self.assertEqual(
+            tuple(map(int, attrs[0].split())), (100, 100, 175, 100, 0, 0, 0)
+        )
+        self.assertEqual(tuple(map(int, attrs[1].split())), (150, 100, 0, 100, 0, 0, 0))
+
+    def test_rotation_controls_follow_knob_position(self) -> None:
+        inputs = LayoutInputs.load()
+        inputs.first_via_properties().update({"x": 0.5, "y": 1})
+        order = inputs.matrix_order()
+        order[:2] = order[1::-1]
+        result = self.generate(inputs)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("<&key_physical_attrs 100 100 50 0 0 0 0>,", result.stdout)
+        self.assertIn("<&key_physical_attrs 100 100 150 0 0 0 0>;", result.stdout)
 
     def test_invalid_geometry_or_coordinate_sets_are_rejected(self) -> None:
         for change in InvalidGeometry:

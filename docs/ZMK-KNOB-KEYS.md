@@ -1,19 +1,23 @@
 # Remapping GMK70 knob rotation in Studio
 
 The firmware exposes two extra ordinary keys in unchanged ZMK Studio. They
-appear below the main layout at the bottom left:
+appear directly above the knob's click button, with the same left/right
+direction order as Vial:
 
 | Position | Rotation | Default on Windows/Mac base layers |
 | --- | --- | --- |
-| 72, left extra key | Counterclockwise | Volume down |
-| 73, right extra key | Clockwise | Volume up |
+| 72, upper-left extra key | Counterclockwise | Volume down |
+| 73, upper-right extra key | Clockwise | Volume up |
 
 Select either extra key, choose a binding and save as for any other key.
 Assignments are independent on each of the four layers. The Fn defaults are
 transparent, so they inherit the base rotation action. The existing knob press
-and all original physical positions 0–71 retain their assignments and geometry.
+and all original physical positions 0–71 retain their assignments and relative
+spacing.
 A firmware update is needed to add the positions; later edits need only Studio.
 No Studio source changes or sideloaded layout are required.
+The layout reserves a top row for the rotation controls. Existing physical and
+rotation assignments keep their positions and values.
 
 ## Implementation
 
