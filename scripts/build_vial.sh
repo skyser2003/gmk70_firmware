@@ -61,14 +61,13 @@ make -C "$framework_root" -r -R -f "$project_root/tools/build-support/external.m
     QMK_BIN="python3 $project_root/tools/build-support/qmk_generate.py" \
     KEYBOARD=zuoya/gmk70 KEYMAP=vial SKIP_VERSION=yes SKIP_GIT=yes SILENT=false DEBUG_ENABLE=yes \
     "${update_flags[@]}" \
-    elf hex "$build_root/.build/$target.bin" sizeafter \
+    elf "$build_root/.build/$target.bin" sizeafter \
     2>&1 | tee "$output/build.log"
-for extension in bin hex elf map; do
+for extension in bin elf map; do
     cp "$build_root/.build/$target.$extension" "$output/"
 done
-arm-none-eabi-objcopy -I ihex -O binary "$output/$target.hex" "$output/from-hex.bin"
-cmp "$output/$target.bin" "$output/from-hex.bin"
-rm "$output/from-hex.bin"
+rm -f "$build_root/.build/$target.hex" "$output/$target.hex" \
+    "$output/application.hex" "$output/install.hex" "$output/from-hex.bin"
 cp "$build_root/.build/obj_$target/"{cflags,ldflags}.txt "$output/"
 grep -q -- '-DVIAL_ENABLE' "$output/cflags.txt"
 for feature in VIALRGB_ENABLE QMK_SETTINGS TAP_DANCE_ENABLE COMBO_ENABLE KEY_OVERRIDE_ENABLE \
@@ -208,14 +207,14 @@ EOF_UNLOCKED
 else
     printf '\nUnlock by holding Escape + left Shift when prompted by Vial.\n' >> "$output/README.txt"
 fi
-images=("$target.bin" "$target.hex")
+images=("$target.bin")
 extras=()
 support=()
 archive=gmk70-vial.zip
 if [[ "$mode" != normal ]]; then
     archive="gmk70-vial-$mode.zip"
     archive="${archive%.zip}$profile_suffix.zip"
-    images=(application.bin application.hex resident.bin install.bin install.hex update.json)
+    images=(application.bin resident.bin install.bin update.json)
     extras=(update.py requirements.txt)
     if [[ "$mode" == radio-diagnostic-updater ]]; then
         extras+=(read_radio.py)
@@ -230,9 +229,9 @@ if [[ "$mode" != normal ]]; then
     cat >> "$output/README.txt" <<'EOF'
 
 Updater images:
-- application.bin/.hex at 0x08002000: subsequent resident split updates.
+- application.bin at 0x08002000: subsequent resident split updates.
 - update.json + resident.bin: checked by update.py before any write.
-- install.bin/.hex at 0x08000000: initial direct installation on each half,
+- install.bin at 0x08000000: initial direct installation on each half,
   requiring a verified 256 KB WB32FQ95 MCU. Do not use as application.bin.
 
 With an existing compatible debug USB updater, select wired mode, connect only
@@ -270,7 +269,7 @@ EOF
 else
     cat >> "$output/README.txt" <<'EOF'
 
-zuoya_gmk70_vial.hex and .bin are the same normal image at 0x08000000.
+zuoya_gmk70_vial.bin is the normal image; flash it at 0x08000000.
 Use the separate gmk70-vial-updater.zip for the resident split updater.
 Do not submit this normal image as application.bin to that updater.
 EOF

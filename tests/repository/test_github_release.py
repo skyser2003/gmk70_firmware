@@ -240,6 +240,21 @@ class ReleaseTests(unittest.TestCase):
             self.release.verify_assets(output, "via")
         self.assertFalse((output / "SHA256SUMS").exists())
 
+    def test_checksummed_hex_asset_blocks_publication(self) -> None:
+        for family in ("via", "vial", "zmk"):
+            with self.subTest(family=family):
+                output = self.assets(family)
+                variant = self.release.FAMILIES[family][0]
+                artifact = output / f"gmk70-{variant}.hex"
+                artifact.write_bytes(b"obsolete HEX firmware")
+                with (output / f"gmk70-{variant}.sha256").open("a") as manifest:
+                    manifest.write(
+                        f"{hashlib.sha256(artifact.read_bytes()).hexdigest()}  {artifact.name}\n"
+                    )
+                with self.assertRaisesRegex(ValueError, "HEX firmware"):
+                    self.release.verify_assets(output, family)
+                self.assertFalse((output / "SHA256SUMS").exists())
+
     def test_corrupt_release_asset_blocks_publication(self) -> None:
         output = self.assets("vial")
         (output / "gmk70-vial.tar.gz").write_text("corrupt")

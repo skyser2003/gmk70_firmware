@@ -55,7 +55,6 @@ class GitHubPackageTests(unittest.TestCase):
         if platform == "zmk":
             names = [
                 "zmk.bin",
-                "zmk.hex",
                 "zmk.elf",
                 "zmk.map",
                 "zmk.config",
@@ -65,6 +64,7 @@ class GitHubPackageTests(unittest.TestCase):
                 "package-info.json",
                 "application.bin",
                 "resident.bin",
+                "install.bin",
                 "update.json",
                 "source.tar.gz",
                 "sources.lock.json",
@@ -73,16 +73,14 @@ class GitHubPackageTests(unittest.TestCase):
         elif mode != "normal":
             names += [
                 "application.bin",
-                "application.hex",
                 "resident.bin",
                 "resident.elf",
                 "resident.map",
                 "install.bin",
-                "install.hex",
                 "update.json",
             ]
         else:
-            names += [f"{target}.bin", f"{target}.hex"]
+            names += [f"{target}.bin"]
         if platform in ("vial", "zmk"):
             names += [f"gmk70-{variant}.zip", "README.txt", "FIRMWARE-SHA256SUMS"]
         for name in names:
@@ -117,19 +115,24 @@ class GitHubPackageTests(unittest.TestCase):
                 source = self.fixture(variant)
                 # Stale, unmanifested files must not enter a release bundle.
                 (source / "stale-image.bin").write_text("old firmware")
-                self.build.package_variant(self.root, variant)
+                (source / "stale-image.hex").write_text("old HEX firmware")
                 dist = self.root / "dist"
+                dist.mkdir(exist_ok=True)
+                (dist / f"gmk70-{variant}.hex").write_text("old loose HEX firmware")
+                self.build.package_variant(self.root, variant)
+                self.assertFalse((dist / f"gmk70-{variant}.hex").exists())
                 with tarfile.open(dist / f"gmk70-{variant}.tar.gz") as bundle:
                     names = bundle.getnames()
                     self.assertIn("source.tar.gz", names)
                     self.assertIn("SHA256SUMS", names)
                     self.assertIn("build.log", names)
                     self.assertNotIn("stale-image.bin", names)
+                    self.assertFalse(any(name.endswith(".hex") for name in names))
                     if platform == "zmk":
                         self.assertIn("application.bin", names)
                         self.assertIn("update.json", names)
                         self.assertIn("image-check.json", names)
-                        self.assertNotIn("install.bin", names)
+                        self.assertIn("install.bin", names)
                         self.assertFalse((dist / "gmk70-zmk.bin").exists())
                     elif mode != "normal":
                         self.assertIn("install.bin", names)
@@ -191,6 +194,7 @@ class GitHubPackageTests(unittest.TestCase):
             "source.tar.gz",
             "update.json",
             "image-check.json",
+            "install.bin",
         ):
             manifest.write_text(
                 "\n".join(
@@ -205,6 +209,18 @@ class GitHubPackageTests(unittest.TestCase):
                 self.assertRaisesRegex(ValueError, "Missing required"),
             ):
                 self.build.package_variant(self.root, "zmk")
+
+    def test_manifested_hex_is_rejected_before_packaging(self) -> None:
+        source = self.fixture("via-release")
+        obsolete = source / "zuoya_gmk70_release.hex"
+        obsolete.write_bytes(b"old HEX firmware")
+        with (source / "SHA256SUMS").open("a") as manifest:
+            manifest.write(
+                f"{hashlib.sha256(obsolete.read_bytes()).hexdigest()}  {obsolete.name}\n"
+            )
+        with self.assertRaisesRegex(ValueError, "HEX firmware"):
+            self.build.package_variant(self.root, "via-release")
+        self.assertFalse((self.root / "dist").exists())
 
     def test_unlocked_updater_cannot_publish_without_its_own_archive(self) -> None:
         source = self.fixture("vial-unlocked-updater")

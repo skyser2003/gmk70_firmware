@@ -16,4 +16,4 @@ Each artifact folder includes its exact dependency lockfile, source origins, che
 
 ## Updating dependencies
 
-Choose an explicit upstream release tag, resolve its commit, and update the submodule gitlink and lockfile together. Update the selected library pins to match that release; never use `--remote` during a build or silently follow `master`. Run regressions and both firmware variants, verify firmware size and BIN/HEX agreement, then verify clean rebuilds and a standalone source export. Keep future Vial and ZMK sources in the folders described by [the architecture](FIRMWARE-ARCHITECTURE.md).
+Choose an explicit upstream release tag, resolve its commit, and update the submodule gitlink and lockfile together. Update the selected library pins to match that release; never use `--remote` during a build or silently follow `master`. Run regressions and both firmware variants, verify firmware size and BIN package checksums, then verify clean rebuilds and a standalone source export. Keep future Vial and ZMK sources in the folders described by [the architecture](FIRMWARE-ARCHITECTURE.md).

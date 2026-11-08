@@ -60,9 +60,8 @@ class VialBuildTests(unittest.TestCase):
                     sys.exit(7)
             elif sys.argv[1].endswith('update_package.py'):
                 output = pathlib.Path(sys.argv[3])
-                for name in ('application.bin', 'application.hex', 'resident.bin',
-                             'resident.elf', 'resident.map', 'install.bin',
-                             'install.hex', 'update.json'):
+                for name in ('application.bin', 'resident.bin',
+                             'resident.elf', 'resident.map', 'install.bin', 'update.json'):
                     (output / name).write_text(name)
             elif sys.argv[1].endswith('check_trial_elf.py'):
                 pathlib.Path('trial-elf-check-arguments.json').write_text(
@@ -80,6 +79,7 @@ class VialBuildTests(unittest.TestCase):
             build = pathlib.Path(arguments['BUILD_DIR'])
             build.mkdir(parents=True, exist_ok=True)
             target = 'zuoya_gmk70_vial'
+            assert 'hex' not in sys.argv, 'HEX build target must not be requested'
             for extension in ('bin', 'hex', 'elf', 'map'):
                 (build / f'{target}.{extension}').write_text('compiled image')
             obj = build / f'obj_{target}'
@@ -143,6 +143,26 @@ class VialBuildTests(unittest.TestCase):
             text=True,
             check=False,
         )
+
+    def test_normal_and_updater_packages_remove_stale_hex(self) -> None:
+        for mode in ("normal", "updater", "unlocked-updater"):
+            with self.subTest(mode=mode):
+                folder = "vial" if mode == "normal" else f"vial-{mode}"
+                output = self.root / "artifacts/vial" / folder
+                output.mkdir(parents=True)
+                for name in ("zuoya_gmk70_vial.hex", "application.hex", "install.hex"):
+                    (output / name).write_text("obsolete HEX firmware")
+                result = self.build(mode)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(list(output.glob("*.hex")), [])
+                with zipfile.ZipFile(output / f"gmk70-{folder}.zip") as package:
+                    names = package.namelist()
+                    self.assertFalse(any(name.endswith(".hex") for name in names))
+                    if mode == "normal":
+                        self.assertIn("zuoya_gmk70_vial.bin", names)
+                    else:
+                        self.assertIn("application.bin", names)
+                        self.assertIn("install.bin", names)
 
     def test_runtime_watchdog_has_separate_cache_artifacts_and_labels(self) -> None:
         for mode in ("trial-updater", "unlocked-trial-updater"):
@@ -248,6 +268,10 @@ class VialBuildTests(unittest.TestCase):
                     self.assertIn("application.bin", package.namelist())
                     self.assertIn("update.json", package.namelist())
                     self.assertIn("FIRMWARE-SHA256SUMS", package.namelist())
+                    self.assertFalse(
+                        any(name.endswith(".hex") for name in package.namelist())
+                    )
+                    self.assertEqual(list(output.glob("*.hex")), [])
                     if mode == "unlocked-trial-updater":
                         self.assertIn("trial.py", package.namelist())
                         self.assertIn("TRIAL-LAUNCHER.md", package.namelist())

@@ -75,10 +75,9 @@ def build(framework_root: Path, output: Path, profile: str) -> None:
     )
     for object_path in objects:
         Path(object_path).unlink()
-    for extension in ("bin", "hex"):
-        (output / f"zuoya_gmk70_{profile}.{extension}").replace(
-            output / f"application.{extension}"
-        )
+    (output / f"zuoya_gmk70_{profile}.bin").replace(output / "application.bin")
+    for name in (f"zuoya_gmk70_{profile}.hex", "application.hex", "install.hex"):
+        (output / name).unlink(missing_ok=True)
     application = (output / "application.bin").read_bytes()
     resident = (output / "resident.bin").read_bytes()
     symbols = subprocess.check_output(
@@ -106,19 +105,6 @@ def build(framework_root: Path, output: Path, profile: str) -> None:
     boot = resident.ljust(BOOT_SIZE, b"\xff")
     initial = (boot + application).ljust(FLASH_SIZE, b"\xff")
     (output / "install.bin").write_bytes(initial)
-    subprocess.run(
-        [
-            "arm-none-eabi-objcopy",
-            "-I",
-            "binary",
-            "-O",
-            "ihex",
-            "--change-addresses=0x08000000",
-            str(output / "install.bin"),
-            str(output / "install.hex"),
-        ],
-        check=True,
-    )
     manifest = {
         "format": 1,
         "board": "zuoya/gmk70",

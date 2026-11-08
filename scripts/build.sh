@@ -49,14 +49,13 @@ make -C "$qmk_root" -r -R -f "$project_root/tools/build-support/external.mk" -j"
     QMK_BIN="python3 $project_root/tools/build-support/qmk_generate.py" \
     KEYBOARD=zuoya/gmk70 KEYMAP="$keymap" SKIP_VERSION=yes SKIP_GIT=yes SILENT=false \
     "${update_flags[@]}" \
-    elf hex "$build_root/.build/$target.bin" sizeafter \
+    elf "$build_root/.build/$target.bin" sizeafter \
     2>&1 | tee "$output/build.log"
-for extension in bin hex elf map; do
+for extension in bin elf map; do
     cp "$build_root/.build/$target.$extension" "$output/"
 done
-arm-none-eabi-objcopy -I ihex -O binary "$output/$target.hex" "$output/from-hex.bin"
-cmp "$output/$target.bin" "$output/from-hex.bin"
-rm "$output/from-hex.bin"
+rm -f "$build_root/.build/$target.hex" "$output/$target.hex" \
+    "$output/application.hex" "$output/install.hex" "$output/from-hex.bin"
 cp "$build_root/.build/obj_$target/cflags.txt" "$output/"
 cp "$build_root/.build/obj_$target/ldflags.txt" "$output/"
 if [[ "$mode" == updater ]]; then
@@ -103,9 +102,9 @@ cp "$build_root/gmk70-source-origins.json" "$output/"
 rm -f "$output/UPSTREAM-SOURCES.tsv" "$output/source-sha256.txt"
 (
     cd "$output"
-    images=("$target.bin" "$target.hex")
+    images=("$target.bin")
     if [[ "$mode" == updater ]]; then
-        images=(application.bin application.hex resident.bin resident.elf resident.map install.bin install.hex update.json)
+        images=(application.bin resident.bin resident.elf resident.map install.bin update.json)
     fi
     sha256sum "${images[@]}" "$target.elf" "$target.map" ZUOYA_GMK70.json \
         sources.lock.json gmk70-source-origins.json build-info.txt cflags.txt ldflags.txt source.tar.gz > SHA256SUMS

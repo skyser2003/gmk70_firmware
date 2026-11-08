@@ -49,11 +49,15 @@ resolve to canonical no-watchdog builds.
 
 Permanent applications link at `0x08002000`. Studio reserves 104 KiB for the
 application and two 8 KiB settings banks at `0x0801c000..0x0801ffff`.
-Packages require the existing 8 KiB resident: padded SHA256
+Packages use the reviewed 8 KiB resident: padded SHA256
 `be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a`,
 CRC32 `1770733249`. Packaging reads the reviewed
-`artifacts/qmk/debug-updater/resident.bin`; ZMK does not rebuild or replace it.
-There is no generated full initial installer.
+`artifacts/qmk/debug-updater/resident.bin`; ZMK does not rebuild it. The canonical
+universal build emits `install.bin` at `0x08000000` containing
+the resident, application and erased settings/staging space for first installation
+on each verified 256 KiB half. Application updates retain the existing resident
+and settings. Development/bridge variants remain application-only. See
+[first installation](../../docs/ZMK-PERMANENT-WIRED.md#first-installation).
 
 The universal package uses `profile=zmk-studio-universal`; static A/B packages
 use `profile=zmk`. Permanent firmware never initializes or feeds a hardware

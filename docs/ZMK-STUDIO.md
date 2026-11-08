@@ -10,9 +10,11 @@ See [knob remapping](ZMK-KNOB-KEYS.md) and
 
 Run `make setup-zmk` to initialize locked dependencies, then
 `make build-zmk-wired-studio-updater`. Build/test commands never access the
-keyboard. The application-only package is in
+keyboard. The first-install and application-update package is in
 `artifacts/zmk/wired-studio-updater/`, with profile
-`zmk-studio-universal`. It requires the existing pinned resident.
+`zmk-studio-universal`. First installation uses `install.bin` at `0x08000000`;
+later application updates retain the pinned resident. See the
+[installation guide](ZMK-PERMANENT-WIRED.md#first-installation).
 
 With the halves joined and USB on LEFT, open ZMK Studio and select the keyboard's
 USB serial port. The keyboard identifies as **GMK70 ZMK Studio**. Changes take

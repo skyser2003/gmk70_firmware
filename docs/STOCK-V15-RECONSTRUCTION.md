@@ -73,7 +73,7 @@ The original VIA definition remains unchanged. Standard QMK rendering/framework 
 
 ## Verification and remaining work
 
-`make test` runs ASan/UBSan native tests for the actual radio queue/parser, power state machine, held-key counter, stock EEPROM wrappers using the pinned QMK types, secondary lighting cycle/frame routing, VIA behavior, reports, battery, split roles, diagnostics and updater. Repository tests compare all 360 compiled default assignments, eight encoder values, all 77 LED points/flags and the lookup against binary-derived fixtures. `make check-tools` checks formatting, lint, strict typing and tooling tests. Both normal release and debug must build, and exported HEX/BIN payloads must agree.
+`make test` runs ASan/UBSan native tests for the actual radio queue/parser, power state machine, held-key counter, stock EEPROM wrappers using the pinned QMK types, secondary lighting cycle/frame routing, VIA behavior, reports, battery, split roles, diagnostics and updater. Repository tests compare all 360 compiled default assignments, eight encoder values, all 77 LED points/flags and the lookup against binary-derived fixtures. `make check-tools` checks formatting, lint, strict typing and tooling tests. Both normal release and debug must build, and exported BIN package checksums must verify.
 
 The official locked compiler download redirected to a host blocked by the cloud network policy. Validation uses checksum-verified xPack ARM GCC 14.2.1-1.1 (the same GCC version, a different distribution); the dependency lock remains unchanged. Actual compiler information is recorded in each build's `build-info.txt`. This is not a claim that the locked official compiler archive was used.
 

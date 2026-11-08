@@ -68,12 +68,14 @@ cmake -S dependencies/zmk/app -B "$build_dir" -G Ninja \
     -DPYTHON_EXECUTABLE="$zmk_tools/python" \
     -DUSER_CACHE_DIR="$user_cache" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+    -DCONFIG_BUILD_OUTPUT_HEX=n \
     "${extra[@]}" \
     2>&1 | tee "$output/configure.log"
 cmake --build "$build_dir" --parallel "${JOBS:-8}" 2>&1 | tee "$output/build.log"
-for extension in bin hex elf map; do
+for extension in bin elf map; do
     cp "$build_dir/zephyr/zmk.$extension" "$output/zmk.$extension"
 done
+rm -f "$build_dir/zephyr/zmk.hex" "$output/zmk.hex" "$output/install.hex" "$output/from-install-hex.bin"
 cp "$build_dir/zephyr/.config" "$output/zmk.config"
 cp "$build_dir/compile_commands.json" "$output/"
 cp "$build_dir/zephyr/zephyr.dts" "$output/"
@@ -99,6 +101,7 @@ fi
     if [[ "$board" == gmk70_wired ]]; then
         if [[ "$variant" == wired-studio-updater ]]; then
             printf 'ZMK Studio universal distribution; explicitly unlocked updater.\n'
+            printf 'install.bin: full 256 KiB first install at 0x08000000 on each half; clears ZMK settings.\n'
         else
             printf 'EXPERIMENTAL UNLOCKED DEVELOPMENT: actual ZMK %s; never a normal release asset.\n' "$variant"
         fi
@@ -134,12 +137,15 @@ fi
     arm-none-eabi-gcc --version
     arm-none-eabi-size "$output/zmk.elf"
 } > "$output/build-info.txt"
-(cd "$output" && sha256sum zmk.bin zmk.hex zmk.elf zmk.map zmk.config zephyr.dts compile_commands.json sources.lock.json image-check.json build-info.txt > SHA256SUMS)
+(cd "$output" && sha256sum zmk.bin zmk.elf zmk.map zmk.config zephyr.dts compile_commands.json sources.lock.json image-check.json build-info.txt > SHA256SUMS)
 if [[ "$board" == gmk70_wired ]]; then
     if [[ "$variant" == wired-qualification ]]; then
         (cd "$output" && sha256sum left/trial.bin left/trial.json right/trial.bin right/trial.json >> SHA256SUMS)
     else
         (cd "$output" && sha256sum application.bin resident.bin update.json package-info.json >> SHA256SUMS)
+        if [[ "$variant" == wired-studio-updater ]]; then
+            (cd "$output" && sha256sum install.bin >> SHA256SUMS)
+        fi
     fi
 fi
 printf '\nBuilt ZMK %s in %s\n' "$variant" "$output"

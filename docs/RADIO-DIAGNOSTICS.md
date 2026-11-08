@@ -56,7 +56,7 @@ uv run --no-project --isolated --python cpython-3.12-windows-x86_64-none --no-bu
 uv run --no-project --isolated --python cpython-3.12-windows-x86_64-none --no-build --with hidapi==0.15.0 python update.py . --target both --install
 ```
 
-Use `application.bin` through the resident updater. `install.bin/.hex` is for
+Use `application.bin` through the resident updater. `install.bin` is for
 initial direct installation, not an application update. The updater checks
 resident compatibility and updates/verifies the right half before the left.
 Builds and tests never perform these device operations.

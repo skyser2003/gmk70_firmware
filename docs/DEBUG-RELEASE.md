@@ -4,8 +4,8 @@
 
 | Build | Command | Firmware | Extra features |
 | --- | --- | --- | --- |
-| Release | `make build-release` | `artifacts/qmk/release/zuoya_gmk70_release.bin` or `.hex` | Stock ordinary VIA commands; no diagnostics |
-| Debug | `make build-debug` | `artifacts/qmk/debug/zuoya_gmk70_debug.bin` or `.hex` | Stock ordinary VIA commands plus split/sleep RAM logger |
+| Release | `make build-release` | `artifacts/qmk/release/zuoya_gmk70_release.bin` | Stock ordinary VIA commands; no diagnostics |
+| Debug | `make build-debug` | `artifacts/qmk/debug/zuoya_gmk70_debug.bin` | Stock ordinary VIA commands plus split/sleep RAM logger |
 
 Debug retains the same compiler optimization level as release. It is a feature selection, not a global switch to slower unoptimized code. Only its rules enable `GMK70_SPLIT_DIAGNOSTICS` and `GMK70_DEBUG_USB_BOOTLOADER`. Normal key handling, mode selection, sleep policy, and LED output are shared. The original VIA JSON stays unchanged.
 
@@ -21,4 +21,4 @@ The previous debug-only command, its 100 ms wait and release rejection are super
 
 Native tests compile the actual VIA adapter and radio raw-HID path in release/debug configurations. They check ordinary command support in both distributions, request/echo ordering, accepted stock padding, invalid lengths and radio delivery. Immediate reset is forbidden in the handler fixture. Existing lighting, battery, report-routing and diagnostic tests remain required. Tests never access a keyboard.
 
-Builds inspect the compiled adapter and flags to require the deferred stock bootloader request and reject debug flags in release. Each package includes BIN/HEX (identical application payload), ELF/MAP, compiler flags, checksums and a full source archive. CI distributes uniquely named release/debug archives so their manifests cannot collide in GitHub's flat asset namespace.
+Builds inspect the compiled adapter and flags to require the deferred stock bootloader request and reject debug flags in release. Each package includes BIN firmware, ELF/MAP, compiler flags, checksums and a full source archive. CI distributes uniquely named release/debug archives so their manifests cannot collide in GitHub's flat asset namespace.

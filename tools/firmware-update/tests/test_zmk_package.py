@@ -147,6 +147,7 @@ class ZmkPackageTests(unittest.TestCase):
                 Package.load(root / "native-bridge").manifest["profile"],
                 "zmk-studio-universal",
             )
+            self.assertFalse((root / "native-bridge/install.bin").exists())
             report.write_text(
                 json.dumps(
                     checked
@@ -159,10 +160,68 @@ class ZmkPackageTests(unittest.TestCase):
                 Package.load(root / "universal").manifest["profile"],
                 "zmk-studio-universal",
             )
+            self.assertTrue((root / "universal/install.bin").is_file())
             for roles in (["left"], ["right"], ["left", "right", "other"]):
                 report.write_text(json.dumps(checked | {"runtime_roles": roles}))
                 with self.subTest(roles=roles), self.assertRaises(ValueError):
                     build(image, resident, report, root / "bad")
+
+    def test_initial_image_layout_erases_settings_and_pending_update(self) -> None:
+        with synthetic_resident_identity(), tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            image, resident, report = (
+                root / name for name in ("app.bin", "boot.bin", "report.json")
+            )
+            resident.write_bytes(SYNTHETIC_RESIDENT)
+            for size in (1024, 0x1A000, 0x1A004):
+                with self.subTest(size=size):
+                    payload = package("zmk").image.ljust(size, b"\x5a")
+                    image.write_bytes(payload)
+                    checked: dict[str, JsonValue] = {
+                        "board": "gmk70_wired",
+                        "variant": "wired-studio-updater",
+                        "load_address": 0x08002000,
+                        "bytes": len(payload),
+                        "image_end": 0x08002000 + len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                        "main_wrapper": "absent",
+                        "trial_backend": "absent",
+                        "runtime_roles": ["left", "right"],
+                    }
+                    report.write_text(json.dumps(checked))
+                    output = root / str(size)
+                    if size > 0x1A000:
+                        with self.assertRaisesRegex(ValueError, "settings reservation"):
+                            build(image, resident, report, output)
+                        self.assertFalse(output.exists())
+                        continue
+                    build(image, resident, report, output)
+                    initial = (output / "install.bin").read_bytes()
+                    self.assertEqual(len(initial), 256 * 1024)
+                    self.assertEqual(initial[:8192], SYNTHETIC_BOOT)
+                    self.assertEqual(initial[8192 : 8192 + size], payload)
+                    self.assertEqual(
+                        initial[8192 + size :], b"\xff" * (256 * 1024 - 8192 - size)
+                    )
+                    # Both Studio settings banks and the pending-install record
+                    # must be erased, including the very last flash word.
+                    self.assertEqual(initial[0x1C000:0x20000], b"\xff" * 0x4000)
+                    self.assertEqual(initial[0x3FF00:], b"\xff" * 0x100)
+                    update_package = Package.load(output)
+                    self.assertEqual(update_package.image, payload)
+                    self.assertEqual(
+                        update_package.manifest["install_sha256"],
+                        hashlib.sha256(initial).hexdigest(),
+                    )
+                    # Reusing an output directory for a development variant must
+                    # not leave a stale first-install image available.
+                    (output / "install.hex").write_text("stale first-install image")
+                    report.write_text(
+                        json.dumps(checked | {"variant": "wired-studio-update-test"})
+                    )
+                    build(image, resident, report, output)
+                    self.assertFalse((output / "install.bin").exists())
+                    self.assertFalse((output / "install.hex").exists())
 
     def test_production_pins_are_the_reviewed_resident_identity(self) -> None:
         expected_sha = (

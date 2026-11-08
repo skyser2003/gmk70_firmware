@@ -153,7 +153,7 @@ make test
 make check-tools
 ```
 
-The distribution contains a firmware ZIP with BIN/HEX, the embedded definition,
+The distribution contains a firmware ZIP with BIN firmware, the embedded definition,
 installation/storage notes and checksums. It also exports ELF/map, source
 origins, flags, checksums and a complete source archive with the selected Vial
 framework and libraries. An exported Vial source archive verifies its own
@@ -174,11 +174,11 @@ IDs, shared-memory size/offsets and RPC buffers also match the QMK updater:
 This supports the protocol transition during an update; physical QMK-to-Vial
 relay installation is still unverified. Both halves must end on Vial updater.
 
-`gmk70-vial-updater.zip` contains `application.bin/.hex` at `0x08002000`,
-`update.json`, the matching `resident.bin`, initial `install.bin/.hex`, Vial's
+`gmk70-vial-updater.zip` contains `application.bin` at `0x08002000`,
+`update.json`, the matching `resident.bin`, initial `install.bin`, Vial's
 definition, a standalone host script, dependency requirements and checksums.
 Use `application.bin` for an existing compatible resident updater. Initial
-`install.*` installation requires separate direct access to each 256 KB half;
+`install.bin` installation requires separate direct access to each 256 KB half;
 see [the updater guide](SPLIT-UPDATER.md). The normal Vial image is not an updater
 application. Vial normal/updater builds share schema `0x564D4702`; migrating from
 stock/VIA still resets settings and requires a backup before installation.

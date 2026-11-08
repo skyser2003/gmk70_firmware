@@ -26,5 +26,5 @@ adapter automatically.
 Repository tests exercise upstream generators with both pins, retain Vial's
 keymap feature rules, and check source collisions, cache isolation and safe
 cleanup. Firmware validation covers all seven normal/updater targets, embedded
-Vial definitions, BIN/HEX agreement and package checksums. Repeated QMK builds
+Vial definitions, BIN outputs and package checksums. Repeated QMK builds
 reuse objects; upstream Vial's per-build EEPROM magic remains unchanged.

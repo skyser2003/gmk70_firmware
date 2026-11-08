@@ -41,16 +41,17 @@ non-updater release/debug distributions.
 
 Each updater directory contains:
 
-- `install.bin` / `install.hex`: equivalent full 256 KB initial-install images,
+- `install.bin`: full 256 KB initial-install image at **0x08000000**,
   including the resident installer, application and empty staging/commit area.
 - `application.bin` and `update.json`: subsequent update payload and manifest.
-- `application.hex`: application at **0x08002000**; not an initial-install image.
+  The application is linked at **0x08002000**, not the start of flash.
 - Resident/application ELF and maps, checksums and matching source archive.
 
 The initial installation requires direct USB access to **each half separately**,
 using the factory WB32 DFU bootloader. The prior installed firmware cannot relay
-an update. Verify the device reports **256 KB flash** before using `install.*`.
-Do not use these images on 128 KB units. Initial installation itself is not
+an update. Verify the device reports **256 KB flash** before using `install.bin`.
+Do not use these images on 128 KB units. BIN files carry no address; the
+flashing tool must use the address above. Initial installation itself is not
 power-fail tolerant.
 
 The inspected Westberry CLI's `write_fm_to_flash` has an unconditional final

@@ -55,18 +55,26 @@ Publication retains queued jobs instead of replacing pending releases; GitHub's
 per-family queue allows up to 100 pending jobs.
 
 Each variant has a full `.tar.gz` bundle with firmware, checksums, metadata and
-matching sources. Normal images also have uniquely named `.bin` and `.hex`
+matching sources. Normal images also have uniquely named `.bin`
 downloads. Vial and ZMK include portable `.zip` packages. Updater images remain
 inside separate packages so their `application.bin`, `install.bin` and
 `update.json` cannot collide across variants. The release includes an aggregate
 `SHA256SUMS` for download verification.
 
+All firmware families distribute BIN only. Normal VIA/Vial images and full
+`install.bin` images start at `0x08000000`; `application.bin` starts at
+`0x08002000` and is used with `update.json` by the resident updater. HEX files
+are excluded from build manifests and packages; publication rejects obsolete
+HEX assets. Existing published releases are unchanged.
+
 ZMK publishes only `wired-studio-updater`, packaged as `gmk70-zmk`. Its identical
 application serves both halves and includes the unlocked native updater. The
-ZIP contains `application.bin`, `update.json`, the pinned resident reference,
-image validation and instructions. It deliberately has no direct-install image
-or loose binary that could be mistaken for a factory-bootloader image. Legacy
-QMK/Vial migrations require the separately built native-update bridge; see the
+ZIP contains `install.bin` for first installation on each verified
+256 KiB half, plus `application.bin`, `update.json`, the pinned resident reference,
+image validation and instructions. Full installers erase ZMK settings; routine
+application updates preserve them. Images stay inside the named package.
+Legacy QMK/Vial migrations through the split updater require the separately
+built native-update bridge; direct installation on each half does not. See the
 [ZMK release notes](RELEASE-NOTES-zmk.md). Trials, bridges and qualification
 variants are excluded. CI builds the QMK debug-updater resident prerequisite
 separately, then the ZMK packager requires its exact reviewed hash. That QMK

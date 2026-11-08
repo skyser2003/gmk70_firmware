@@ -60,6 +60,8 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
         raise ValueError(
             "Missing or wrong pinned resident prerequisite; never rebuild it during ZMK packaging"
         )
+    initial = (boot + payload).ljust(0x40000, b"\xff")
+    initial_install = variant == "wired-studio-updater" and roles == ["left", "right"]
     manifest: Manifest = {
         "format": 1,
         "board": "zuoya/gmk70",
@@ -77,14 +79,19 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
         "app_sha256": hashlib.sha256(payload).hexdigest(),
         "boot_crc": ZMK_BOOT_CRC,
         "boot_sha256": ZMK_BOOT_SHA256,
-        "install_sha256": hashlib.sha256(
-            (boot + payload).ljust(0x40000, b"\xff")
-        ).hexdigest(),
+        "install_sha256": hashlib.sha256(initial).hexdigest(),
     }
     Package(payload, manifest).validate_application()
     output.mkdir(parents=True, exist_ok=True)
     (output / "application.bin").write_bytes(payload)
     (output / "resident.bin").write_bytes(raw)
+    (output / "install.hex").unlink(missing_ok=True)
+    if initial_install:
+        # Full first installation, including erased settings, staging and commit.
+        # Application updates continue to use only application.bin + update.json.
+        (output / "install.bin").write_bytes(initial)
+    else:
+        (output / "install.bin").unlink(missing_ok=True)
     (output / "update.json").write_text(json.dumps(manifest, indent=2) + "\n")
     (output / "package-info.json").write_text(
         json.dumps(
@@ -97,7 +104,11 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
                 "variant": checked["variant"],
                 "resident_prerequisite": "exact reviewed resident identified by update.json boot_sha256",
                 "resident_padded_sha256": ZMK_BOOT_SHA256,
-                "package": "application-only; no direct-USB installer generated",
+                "package": (
+                    "application update and full 256 KiB direct-USB initial installer"
+                    if initial_install
+                    else "application-only; no direct-USB installer generated"
+                ),
             },
             indent=2,
         )

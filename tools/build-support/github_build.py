@@ -68,6 +68,10 @@ def package_variant(root: Path, variant: str) -> None:
         if entry is None or entry[2] in files:
             raise ValueError(f"Invalid checksum entry: {line}")
         digest, name = entry.groups()
+        if name.endswith(".hex"):
+            raise ValueError(
+                "HEX firmware is no longer distributed; rebuild this variant"
+            )
         path = source / name
         if path.is_symlink() or not path.is_file():
             raise ValueError(f"Missing or redirected artifact: {name}")
@@ -80,7 +84,6 @@ def package_variant(root: Path, variant: str) -> None:
         required.update(
             {
                 "zmk.bin",
-                "zmk.hex",
                 "zmk.elf",
                 "zmk.map",
                 "zmk.config",
@@ -90,6 +93,7 @@ def package_variant(root: Path, variant: str) -> None:
                 "package-info.json",
                 "application.bin",
                 "resident.bin",
+                "install.bin",
                 "update.json",
             }
         )
@@ -108,17 +112,15 @@ def package_variant(root: Path, variant: str) -> None:
         required.update(
             {
                 "application.bin",
-                "application.hex",
                 "resident.bin",
                 "resident.elf",
                 "resident.map",
                 "install.bin",
-                "install.hex",
                 "update.json",
             }
         )
     elif platform != "zmk":
-        required.update({f"{target}.bin", f"{target}.hex"})
+        required.add(f"{target}.bin")
     if platform in ("vial", "zmk"):
         required.update({f"{stem}.zip", "README.txt", "FIRMWARE-SHA256SUMS"})
     if missing := required - files:
@@ -137,10 +139,7 @@ def package_variant(root: Path, variant: str) -> None:
             for name in sorted(files):
                 bundle.add(source / name, arcname=name, recursive=False)
         if mode == "normal" and platform != "zmk":
-            for extension in ("bin", "hex"):
-                shutil.copyfile(
-                    source / f"{target}.{extension}", staging / f"{stem}.{extension}"
-                )
+            shutil.copyfile(source / f"{target}.bin", staging / f"{stem}.bin")
         if platform in ("vial", "zmk"):
             shutil.copyfile(source / f"{stem}.zip", staging / f"{stem}.zip")
         checksums = []
@@ -150,6 +149,7 @@ def package_variant(root: Path, variant: str) -> None:
                     f"{hashlib.file_digest(handle, 'sha256').hexdigest()}  {path.name}\n"
                 )
         (staging / f"{stem}.sha256").write_text("".join(checksums))
+        (destination / f"{stem}.hex").unlink(missing_ok=True)
         for path in staging.iterdir():
             path.replace(destination / path.name)
     print(f"Packaged {variant} in {destination}")

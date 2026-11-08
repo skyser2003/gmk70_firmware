@@ -16,7 +16,7 @@ QMK's EEPROM core layout and validity marker changed in this upgrade. A future f
 
 ## Build checks
 
-Builds verify BIN/HEX agreement and dependency pins. Repository tests cover
+Builds verify BIN package checksums and dependency pins. Repository tests cover
 source origins, dependency cleanliness, variant isolation and safe cleanup.
 Native regressions exercise radio reports, role selection, stock/legacy
 keycodes and VIA lighting routes. Run `make test`, `make check-tools` and the

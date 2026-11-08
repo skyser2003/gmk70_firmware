@@ -7,15 +7,47 @@ development targets. See the [build guide](../firmware/zmk/README.md).
 
 Packages require resident CRC32 `1770733249`, padded SHA256
 `be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a`.
-Packaging reads `artifacts/qmk/debug-updater/resident.bin`; it does not
-rebuild or replace the resident. No full initial installer is generated.
+Packaging reads `artifacts/qmk/debug-updater/resident.bin`; it never rebuilds
+the resident. The canonical universal package includes full first-install
+images; application updates preserve the installed resident.
 The universal package uses `profile=zmk-studio-universal`, with a 104 KiB
 application limit and separate 16 KiB settings reservation.
 
 The updater is explicitly unlocked. Permanent firmware never initializes or
 feeds a hardware watchdog. Update admission retains service, wired, USB, role
 and storage gates. Migration from legacy QMK/Vial transport requires the
-[separate native bridge](ZMK-NATIVE-UPDATER-WIRE.md).
+[separate native bridge](ZMK-NATIVE-UPDATER-WIRE.md) when using the split update
+route. Direct first installation on each half does not need that bridge.
+
+## First installation
+
+The canonical universal package includes `install.bin`, a complete 256 KiB
+flash image: the exact reviewed resident
+in the first 8 KiB, the universal application at `0x08002000`, and `0xff` in
+the remaining space, including both Studio settings banks and all staging and
+commit data. Flash this BIN at `0x08000000`.
+Both halves use the same image. Experimental/bridge packages remain
+application-only.
+
+Use first-install images for installing the complete firmware through the
+factory WB32 USB bootloader on **each half separately**, after verifying
+**256 KiB flash** on each MCU. This does not require an existing resident or a
+QMK/Vial installation. It clears saved ZMK settings, so back up first. Use
+`application.bin` and `update.json` for routine updates that preserve settings.
+
+Follow the [direct-USB installation procedure](SPLIT-UPDATER.md#build-and-first-installation)
+with the ZMK package's `install.bin`. In particular, the inspected WB32 CLI
+overruns its erase boundary with a single exact 256 KiB transfer: write the
+first 262140 bytes at `0x08000000`, then the final four at `0x0803FFFC`, without
+resetting between transfers. Read back all 262144 bytes and compare with
+`install.bin` before resetting. Do not omit the final bytes. First installation
+is not power-fail tolerant. Do not use these images on a 128 KiB MCU.
+
+After both installations, join the halves, select wired mode and connect LEFT
+USB. Check both roles, typing and Studio before using the normal updater.
+Image layout, resident identity, settings boundaries and package checksums
+are checked offline; the new direct-install package has not yet been tested
+on physical hardware. Build/package commands never operate on a device.
 
 ## Manual updater workflow
 

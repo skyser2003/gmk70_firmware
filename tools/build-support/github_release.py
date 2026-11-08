@@ -93,6 +93,8 @@ def verify_assets(directory: Path, family: str) -> None:
             ):
                 raise ValueError(f"Invalid release checksum entry: {line}")
             digest, name = entry.groups()
+            if name.endswith(".hex"):
+                raise ValueError("HEX firmware is no longer a supported release asset")
             path = directory / name
             if path.is_symlink() or not path.is_file():
                 raise ValueError(f"Missing or redirected release asset: {name}")

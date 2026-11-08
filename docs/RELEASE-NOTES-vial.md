@@ -38,7 +38,7 @@ tooltips. All existing custom-key numbers are preserved.
 
 Verify downloads with `sha256sum -c SHA256SUMS`. The Vial definition is embedded; secure normal/updater builds use Escape + left Shift for physical unlock. Install the same build on both halves and export your settings before updating. Rebuilt Vial images reset dynamic mappings and macros. Unlocked builds retain the same native settings schema and per-build EEPROM magic behavior.
 
-Updater `install.bin`/`.hex` is for initial direct installation on each verified 256 KB half. `application.bin` + `update.json` is for subsequent compatible resident updates through left USB. Secure Vial update writes require physical unlock, including when installing an unlocked image from secure firmware. EEPROM backups and diagnostics are excluded. Follow `docs/SPLIT-UPDATER.md`.
+Updater `install.bin` at `0x08000000` is for initial direct installation on each verified 256 KB half. `application.bin` + `update.json` is for subsequent compatible resident updates through left USB. Secure Vial update writes require physical unlock, including when installing an unlocked image from secure firmware. EEPROM backups and diagnostics are excluded. Follow `docs/SPLIT-UPDATER.md`.
 
 Build the permanently unlocked distribution with `make build-vial-unlocked-updater`;
 artifacts are isolated under `artifacts/vial/vial-unlocked-updater/` and build
