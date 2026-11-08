@@ -30,7 +30,6 @@ class BasicParityImageTests(unittest.TestCase):
             "__wrap_zmk_endpoint_send_mouse_report",
             "gmk_recovery_startup_poll",
             "__wrap_zmk_settings_erase",
-            "__wrap_raise_zmk_activity_state_changed",
         }
         check_image.validate_basic_parity_linking(symbols)
         for symbol in symbols - {"gmk_controls_poll"}:
@@ -38,6 +37,10 @@ class BasicParityImageTests(unittest.TestCase):
                 check_image.validate_basic_parity_linking(symbols - {symbol})
         with self.assertRaises(ValueError):
             check_image.validate_basic_parity_linking(symbols | {"input_thread_id"})
+        with self.assertRaises(ValueError):
+            check_image.validate_basic_parity_linking(
+                symbols | {"__wrap_raise_zmk_activity_state_changed"}
+            )
 
     def test_nonstudio_image_has_no_parity_requirement(self) -> None:
         check_image.validate_basic_parity_linking({"gmk_wired_scan"})

@@ -75,10 +75,13 @@ selection and USB-sleep preference. `GMK70 sleep timeout` selects never,
 1/3/5/10/20/30 minutes, or the five-minute default. These are native behavior
 metadata and settings; no separate configuration application is required.
 
-Native RGB idle-off runs at 30 seconds. Its temporary off state is projected
-back to the user's saved on/off choice when the native settings image arrives.
-Sleep waits for pending native settings snapshots; the native 60-second debounce
-can delay a requested one-minute sleep until approximately 90 seconds.
+RGB stays on during ordinary idle, including active USB use. Both halves blank
+their LEDs when the board sleep coordinator quiesces them, using the saved
+sleep timeout (five minutes by default). The saved RGB on/off choice is retained;
+waking restores lighting only when enabled. Native activity still becomes idle
+after 30 seconds, without a separate RGB cutoff.
+Sleep waits for pending native settings snapshots and their existing
+60-second debounce.
 Critical entry starts after 60 seconds of qualified 0% readings and also waits
 for the pending native settings snapshot to finish.
 Held battery indicators take precedence over ordinary status/warning overlays;

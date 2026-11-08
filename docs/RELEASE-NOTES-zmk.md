@@ -38,6 +38,11 @@ presses request a fresh radio reading; automatic three-second radio queries run
 only in wireless mode. The stock estimator can temporarily report a high value
 during charging transitions; this release does not claim to fix that estimate.
 
+RGB follows the QMK sleep policy: ordinary idle no longer turns it off after
+30 seconds, and it stays on with an active USB host. Wireless sleep uses the
+saved timeout (five minutes by default) and blanks both halves. The saved RGB
+on/off preference is preserved across sleep and wake.
+
 Permanent firmware does not use a hardware watchdog. A hung application can
 require a physical power cycle; that is not automatic rollback. Battery
 endurance and runtime stack watermarks remain unqualified. Builds verify flash,

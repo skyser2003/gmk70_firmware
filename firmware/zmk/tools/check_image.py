@@ -470,12 +470,13 @@ def validate_basic_parity_linking(symbols: set[str]) -> None:
         "__wrap_zmk_endpoint_send_mouse_report",
         "gmk_recovery_startup_poll",
         "__wrap_zmk_settings_erase",
-        "__wrap_raise_zmk_activity_state_changed",
     }
     if missing := required - symbols:
         raise ValueError(f"Missing native basic-feature integration: {sorted(missing)}")
     if "input_thread_id" in symbols:
         raise ValueError("Pointing must use synchronous input without another stack")
+    if "__wrap_raise_zmk_activity_state_changed" in symbols:
+        raise ValueError("RGB must follow board sleep without a separate idle cutoff")
 
 
 def check_wired(
