@@ -25,7 +25,7 @@ for scenario in gates peer-traffic native-stop critical manual new-input usb-sha
     .work/zmk/tests/power-native "$scenario"
 done
 cc -std=c11 -Wall -Wextra -Werror -O1 -g -fno-pie -no-pie -fsanitize=address,undefined \
-    -DTEST_NATIVE_RGB=1 -DCONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE=1 \
+    -DTEST_NATIVE_RGB=1 -DCONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE=0 \
     -DCONFIG_GMK70_BATTERY=1 -DCONFIG_GMK70_RADIO=1 -DCONFIG_GMK70_CONTROLS=1 \
     -DCONFIG_GMK70_FUNCTION_FLIP=1 -DCONFIG_GMK70_NKRO=1 -DCONFIG_GMK70_WB32_RGB=1 \
     -DCONFIG_GMK70_ZMK_STUDIO_SETTINGS=1 -DCONFIG_ZMK_IDLE_TIMEOUT=30000 -DCONFIG_ZMK_POINTING=1 \
@@ -34,7 +34,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 -g -fno-pie -no-pie -fsanitize=address,und
     -Ifirmware/qmk-common/keyboards/zuoya/gmk70/update -Ifirmware/qmk-common/drivers/wireless -Ifirmware/zmk/wired \
     "${sources[@]}" firmware/zmk/lighting/rgb_settings.c tests/zmk/power_rgb_fixture.c \
     -Wl,--wrap=zmk_pm_suspend_devices -Wl,--wrap=zmk_pm_resume_devices -Wl,--wrap=zmk_pm_soft_off \
-    -Wl,--wrap=zmk_usb_get_conn_state -Wl,--wrap=raise_zmk_activity_state_changed -Wl,--wrap=settings_save_one \
+    -Wl,--wrap=zmk_usb_get_conn_state -Wl,--wrap=settings_save_one \
     -Wl,--wrap=zmk_rgb_underglow_set_hsb -Wl,--wrap=zmk_rgb_underglow_on -Wl,--wrap=zmk_rgb_underglow_off \
     -Wl,--wrap=zmk_rgb_underglow_toggle -o .work/zmk/tests/power-critical-settings
 .work/zmk/tests/power-critical-settings critical-settings

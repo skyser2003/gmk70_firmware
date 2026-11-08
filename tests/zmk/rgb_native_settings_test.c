@@ -164,6 +164,7 @@ int main(int argc, char **argv) {
     assert(!pthread_create(&thread, NULL, storage_worker, NULL));
     assert(!zmk_rgb_underglow_set_hsb((struct zmk_led_hsb){.h = 130, .s = 80, .b = 30}));
     assert(native_save->work.pending && native_save->due == 60000);
+    assert(gmk_rgb_settings_dirty()); /* Sleep must wait for the native debounce. */
     if (argc > 1 && !strcmp(argv[1], "usb-gate")) atomic_store(&wired, true);
     rgb_test_time = 60000;
     system_work();
@@ -251,6 +252,23 @@ int main(int argc, char **argv) {
     poll();
     system_work();
     reload(250, 75);
+    /* With idle cutoff disabled, explicit on/off/toggle must still keep sleep
+     * blocked until the native snapshot is durable, including an off state. */
+    int (*const actions[])(void) = {zmk_rgb_underglow_off, zmk_rgb_underglow_on, zmk_rgb_underglow_toggle, zmk_rgb_underglow_toggle};
+    const bool expected[]        = {false, true, false, true};
+    for (size_t i = 0; i < sizeof(actions) / sizeof(actions[0]); ++i) {
+        assert(!actions[i]() && gmk_rgb_settings_dirty());
+        rgb_test_time += 60000;
+        system_work();
+        poll();
+        system_work();
+        assert(!gmk_rgb_settings_dirty());
+        loaded = false;
+        assert(!backend->cs_itf->csi_load(backend, NULL) && loaded);
+        bool enabled = false;
+        assert(!zmk_rgb_underglow_get_state(&enabled));
+        assert(enabled == expected[i] && saved[8] == (expected[i] ? 1 : 0));
+    }
     /* Native behavior-ID startup policy is intentionally independent of USB. */
     atomic_store(&usb_ready, false);
     assert(!__wrap_settings_save_one("behavior/local_id/1", "kp", 2));

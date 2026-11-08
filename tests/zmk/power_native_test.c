@@ -15,6 +15,9 @@
 #include <zmk/pm.h>
 #include <zmk/usb.h>
 #include <zephyr/input/input.h>
+#ifdef TEST_NATIVE_RGB
+#    include <zmk/rgb_underglow.h>
+#endif
 
 static struct k_thread         service_thread = {1}, activity_thread = {2};
 k_tid_t                        test_power_thread = &service_thread;
@@ -487,6 +490,7 @@ int                   k_work_submit(struct k_work *work) {
 }
 int gmk_zmk_settings_save_runtime(const char *name, const void *value, size_t size) {
     assert(!strcmp(name, "rgb/underglow/state") && value && size == 10);
+    assert(((const uint8_t *)value)[8] == 1);
     assert(lease && gmk_power_runtime_storage_safe());
     ++runtime_rgb_writes;
     return 0;
@@ -501,7 +505,8 @@ static void test_critical_save_flushes_actual_rgb_dirt_while_keys_are_held(void)
     assert(!gmk_power_runtime_storage_safe());
     lease          = false;
     test_power_now = 60000;
-    gmk_power_poll(true); /* Forced native SLEEP marks the actual RGB adapter dirty. */
+    assert(!zmk_rgb_underglow_set_hsb((struct zmk_led_hsb){.h = 0, .s = 100, .b = 20}));
+    gmk_power_poll(true); /* Critical sleep must wait for the user's RGB snapshot. */
     assert(gmk_rgb_settings_dirty() && report_clears == 1 && claims == 0);
     lease = true;
     assert(gmk_power_runtime_storage_safe());
@@ -533,7 +538,7 @@ static void test_critical_save_flushes_actual_rgb_dirt_while_keys_are_held(void)
     /* Supply the native debounce callback's pinned ten-byte snapshot at its
      * existing60-second deadline, then execute the actual board runtime save. */
     test_power_now             = 120000;
-    const uint8_t snapshot[10] = {0, 0, 100, 20, 1, 0, 0, 0, 0, 0};
+    const uint8_t snapshot[10] = {0, 0, 100, 20, 1, 0, 0, 0, 1, 0};
     assert(settings_save_one("rgb/underglow/state", snapshot, sizeof(snapshot)) == 0);
     gmk_rgb_settings_poll(true);
     assert(runtime_rgb_save);

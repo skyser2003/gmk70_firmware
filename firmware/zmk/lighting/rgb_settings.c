@@ -7,29 +7,33 @@
 #    include <zephyr/kernel.h>
 static struct k_spinlock save_lock;
 #endif
-#if defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
-#    include <zmk/events/activity_state_changed.h>
-static bool inactive, have_user_state, user_on;
-#    ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 static bool native_snapshot_pending;
 static void mark_native_pending(void) {
     k_spinlock_key_t key    = k_spin_lock(&save_lock);
     native_snapshot_pending = true;
     k_spin_unlock(&save_lock, key);
 }
-#    endif
+#endif
+#if defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
+#    include <zmk/events/activity_state_changed.h>
+static bool inactive, have_user_state, user_on;
+int         __real_raise_zmk_activity_state_changed(struct zmk_activity_state_changed event);
+#endif
 
+#if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) || (defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE)
 int __real_zmk_rgb_underglow_on(void);
 int __real_zmk_rgb_underglow_off(void);
 int __real_zmk_rgb_underglow_toggle(void);
-int __real_raise_zmk_activity_state_changed(struct zmk_activity_state_changed event);
 
 static void remember_user_state(void) {
     bool state;
     if (zmk_rgb_underglow_get_state(&state)) return;
     k_spinlock_key_t key = k_spin_lock(&save_lock);
-    user_on              = state;
-    have_user_state      = true;
+#    if defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
+    user_on         = state;
+    have_user_state = true;
+#    endif
 #    ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
     native_snapshot_pending = true;
 #    endif
@@ -46,13 +50,19 @@ int __wrap_zmk_rgb_underglow_off(void) {
     return result;
 }
 int __wrap_zmk_rgb_underglow_toggle(void) {
+#    if defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
     k_spinlock_key_t key      = k_spin_lock(&save_lock);
     bool             sleeping = inactive && have_user_state, target = user_on;
     k_spin_unlock(&save_lock, key);
     int result = sleeping ? (target ? __real_zmk_rgb_underglow_off() : __real_zmk_rgb_underglow_on()) : __real_zmk_rgb_underglow_toggle();
+#    else
+    int result = __real_zmk_rgb_underglow_toggle();
+#    endif
     remember_user_state();
     return result;
 }
+#endif
+#if defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
 int __wrap_raise_zmk_activity_state_changed(struct zmk_activity_state_changed event) {
     bool             native_on = false;
     bool             valid     = !zmk_rgb_underglow_get_state(&native_on);
@@ -98,7 +108,7 @@ int __wrap_zmk_rgb_underglow_set_hsb(struct zmk_led_hsb color) {
     int result = __real_zmk_rgb_underglow_set_hsb(color);
     if (result) return result;
     result = zmk_rgb_underglow_save_state();
-#if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) && defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
     if (!result) mark_native_pending();
 #endif
     return result;
@@ -146,9 +156,9 @@ int __wrap_settings_save_one(const char *name, const void *value, size_t size) {
     /* This is the pinned native image, including its animation/padding bytes.
      * Only temporary automatic off is projected back to the user's on flag. */
     if (inactive && have_user_state) latest[RGB_NATIVE_ON_OFFSET] = user_on ? 1 : 0;
-    native_snapshot_pending = false;
 #    endif
-    dirty = true;
+    native_snapshot_pending = false;
+    dirty                   = true;
     k_spin_unlock(&save_lock, key);
     /* Native RGB ignores the callback's result. Retain its debounced snapshot
      * without blocking system work on an ineligible storage transaction. */
@@ -174,10 +184,7 @@ void gmk_rgb_settings_poll(bool writes_allowed) {
 }
 bool gmk_rgb_settings_dirty(void) {
     k_spinlock_key_t key     = k_spin_lock(&save_lock);
-    bool             pending = dirty || saving;
-#    if defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
-    pending = pending || native_snapshot_pending;
-#    endif
+    bool             pending = dirty || saving || native_snapshot_pending;
     k_spin_unlock(&save_lock, key);
     return pending;
 }
