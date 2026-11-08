@@ -1,10 +1,8 @@
 # Volatile radio trial
 
-This document describes the initial canary tool. The later physically verified
-native Web Vial experiment is recorded in the
-[radio payload README](../../firmware/qmk-common/radio/ram-vial-trial/README.md)
-and [trial notes](../../docs/superpowers/plans/2026-10-23-gmk70-ram-trial.md).
-The scripts here remain separate from that experiment's local installation tools.
+This document describes the canary tool. The native Web Vial payload is described
+in the [radio payload README](../../firmware/qmk-common/radio/ram-vial-trial/README.md).
+The scripts here remain separate from that payload's local installation tools.
 
 `ram-trial.ps1` is a separate physical-device tool. It uses Windows PowerShell
 5.1 and the existing WinRT collection/buffer adapters. Loading its helper files,

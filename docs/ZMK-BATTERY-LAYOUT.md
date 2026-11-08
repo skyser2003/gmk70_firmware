@@ -1,6 +1,6 @@
 # Battery indicators and saved Vial layout migration
 
-## Current refresh policy — 2026-11-06, not installed
+## Refresh policy
 
 Automatic three-second percentage inquiries now run only in wireless mode.
 Pressing the held battery-level action queues one coalesced refresh through the
@@ -13,21 +13,9 @@ ten-second freshness limit requires another press to refresh.
 Wired entry cancels queued periodic queries. A frame already being transmitted
 finishes without losing ACK ownership, but does not trigger a periodic retry.
 The charger notifications and USB sampler-recovery interval remain unchanged.
-This change does not alter the radio estimator and has not been flashed.
-All eight wired ZMK builds and `make test test-zmk check-tools` pass. The normal
-image is 106,044 bytes with 28,170 bytes of RAM; stack reservations are unchanged.
+The radio estimator is unchanged.
 
-The user previously requested [rollback of the November 5 trial](validation/2026-11-05-zmk-battery-rollback/README.md).
-At that checkpoint, source, all eight distributions and the installed LEFT
-application were restored to the pre-trial implementation. RIGHT already had that image and was not
-written. Both-half health, unchanged residents and the saved four-layer Studio
-keymap are verified. The 1,000 ms full-input qualifier, operation
-`0x23` transition trace and CLI `--trace` are removed. The earlier three-second
-wired percentage reporting, charger notifications and 5.5-second USB sampler
-recovery remain. The [trial investigation](validation/2026-11-05-zmk-battery-transition/README.md)
-is retained as historical evidence, not a claimed battery-estimation fix.
-
-The Studio central now implements two held actions under **GMK70 Battery /
+The Studio central implements two held actions under **GMK70 Battery /
 Charging**: parameter 0 displays battery level; parameter 1 displays charging
 status. They can be assigned in Studio. The compiled factory keymap is unchanged.
 The right peripheral displays the central's existing RGB frames and needs no
@@ -67,23 +55,11 @@ frame queue and ACK owner. A missing charger ACK gets one bounded retry and then
 returns to the periodic refresh without disconnecting typing or keeping sleep
 busy. State changes during a partial frame preserve that frame's original bytes.
 
-The 2026-11-03 correction passes actual battery/radio UART regression tests,
-including an incremental 3-to-67% cache/sensor update without reset, full/unplug
-transitions, ACK isolation, retries, timer wrap and quiescence. It is included in
-the [basic-parity build](ZMK-BASIC-PARITY.md), now installed on both halves.
-Fresh hardware replies and zero radio errors verify; the observed percentage
-remained 60%, so a charging increase and Windows battery refresh remain unverified.
+### Fresh replies can contain an old measurement
 
-### Follow-up: fresh replies can contain an old measurement
-
-The charging-heartbeat change alone did not resolve the user's report. A later
-USB capture held at 30% for five minutes despite advancing query/reply counters
-and zero radio errors. Briefly selecting the already paired Bluetooth slot
-produced 49% without power cycling; returning to USB held that value again.
-
-Offline execution and disassembly of the captured stock radio image
+The stock radio image
 (`100e2ecdad6d253ea6d177d91579c2e22ea8d5968d3f09d691ed599f7fe7512c`)
-identify a second requirement. USB selection (`A6 11`) posts its deep-power
+has a sampler-recovery requirement. USB selection (`A6 11`) posts its deep-power
 event and stops the ADC sampler, even when USB was already selected. Ordinary
 queries and charging commands only reset a four-second inactivity counter.
 Physical UART wake restarts sampling, with the first conversion ten seconds
@@ -97,14 +73,7 @@ An explicit wireless selection bypasses the interval. Native USB typing uses a
 separate transport and continues normally. The existing heartbeat/query cadence
 then keeps the radio awake long enough for its ten-second sampler to run.
 No radio flash, invented percentage, pairing operation or hardware watchdog is
-involved. See the [follow-up validation](validation/2026-11-03-zmk-battery-refresh/README.md)
-for the distinction between offline proof and physical results.
-
-The follow-up is installed on both halves. Charging telemetry advanced from 58%
-to 73% with continuous LEFT uptime and USB selection; three uncached Windows
-Bluetooth Battery Service reads subsequently matched the radio at 79%. Saved
-Studio layers and both residents verify unchanged. Actual battery endurance is
-not established by these observations.
+involved.
 
 The stock estimator also uses different charging and discharging curves and
 directional hysteresis. Executing its actual mapper with an initial 3,792 mV
@@ -112,8 +81,7 @@ sample gives 60% in discharge mode and 12% in charging mode. A reboot jump is
 therefore not a measurement of consumed charge. A7/A15 and percentage telemetry
 do not measure current or establish battery endurance.
 
-The [November 4 estimator investigation](validation/2026-11-04-zmk-battery-estimator/README.md)
-executes stateful captured-instruction cases: a discharge drop larger than five
+The stock estimator's captured-instruction behavior shows that a discharge drop larger than five
 points is held for 360 sampler calls, with acceptance on call 361. At the nominal
 ten-second cadence this is roughly an hour of active sampling. Discharge rejects
 increases and charging rejects decreases, so mode changes can retain an old
@@ -146,7 +114,7 @@ firmware-update uv project after loading `scripts/project.sh`.
 maintained 72-position matrix geometry, preserves all four source layers and
 translates supported HID, modifier, layer, lighting, OS-selection and battery
 actions into symbolic ZMK behaviors. Unsupported actions are reported explicitly;
-`--unsupported=unassigned` is the user's selected policy for this import. Active
+`--unsupported=unassigned` permits an explicit unassigned result. Active
 unsupported macros or other auxiliary features still block conversion. Vial
 tuning settings are not imported.
 
@@ -157,56 +125,3 @@ and order, writes bindings, saves, reloads and compares the complete result.
 Failures attempt to restore and verify the fresh original map. There is no
 automatic reconnect or firmware update in this client. Personal exports, plans,
 backups and full readbacks stay outside version control.
-
-## Build and verification
-
-Source `74f1012c493f2bae6b2efaeffb3b235e8cfe964b` builds with
-`make build-zmk-wired-studio-updater`. The canonical peripheral and qualification
-variants also compile. Permanent watchdog removal, residents, settings banks,
-thread stacks and the factory keymap are unchanged.
-
-The Studio application is 74,020 bytes, CRC32 `3805544436`, SHA256
-`d6226bdcef65c3539972c4b49575ca1034ffa6b67d3610e691347ce7eabdf695`.
-Linked static RAM is 27,560 of 27,648 bytes. Existing thread stacks are retained;
-conservative compiler stack analysis estimates about 640 bytes including an
-exception frame in the 768-byte low-priority queue. Actual hardware stack
-watermarks remain unmeasured. Existing upstream KSCAN deprecation and RWX linker
-warnings remain.
-
-`make test test-zmk check-tools` passes repository, migration, native firmware,
-protocol, Studio persistence/rollback and strict Python checks. Dedicated tests
-cover malformed and delayed raw frames, UART/GPIO isolation, stale samples,
-overlapping holds, released/reassigned keys, RGB-off restoration, split slicing
-and read-only packet admission. Device validation is recorded separately.
-
-## Installed result — 2026-10-29
-
-LEFT received one INSTALL request and returned automatically on the exact
-74,020-byte image above. RIGHT remains 43,752 bytes/CRC32 `2368050678`; both
-resident CRCs remain `1770733249`. No physical reconnect, right-only connection
-or recovery pads were needed. Post-install both-half health passed 70.110 seconds;
-after the layout save it passed another 70.203 seconds, with zero transport/relay
-retries, reconnects or watchdog feeds throughout.
-
-Read-only battery telemetry reports a fresh 100% reading, cable present and the
-full-status input asserted. The final sample had 111 replies to 111 queries,
-with age 1,056 ms. The user confirmed both visible held indicators and normal
-lighting restoration on release. Low percentages, stale/unknown indication and
-RGB-off operation have dedicated native tests; hardware checking covered the
-full-charge point, with no separate RGB-off confirmation or complete charge/
-discharge cycle. No charge-current or battery-capacity accuracy claim is made.
-
-Before importing, all 288 existing saved bindings and four layer names/order
-matched the fresh pre-update snapshot exactly. The user then selected importing
-275 supported bindings and leaving 13 unsupported bindings unassigned. Those 13
-are eight wireless selectors, function/media flip, a logo effect, one reserved
-custom slot and two QMK settings resets. The converter also records 27 Vial
-tuning settings as excluded; the export has no active unsupported auxiliary
-features.
-
-All 288 resulting bindings were saved, reloaded and compared through Studio RPC.
-An independent new serial connection resolved the runtime behavior IDs and
-matched the entire imported map and physical geometry, with no unsaved changes.
-Original layer names/order and the source export are preserved. The compiled
-factory keymap is unchanged. The normal local Studio app is connected on COM3
-and displays all four layers. See the [sanitized validation](validation/2026-10-29-zmk-battery-layout/README.md).

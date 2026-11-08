@@ -1,11 +1,8 @@
 # Left USB connection firmware updater
 
-Experimental, opt-in implementation. Direct DFU installation and first boot have
-been verified on both halves (2026-10-03), including right-side updater INFO
-through the left USB bridge. Application-controlled flash programming, image
-relay and interrupted update recovery still require hardware validation. The
-existing, hardware-tested
-normal firmware packages remain separate.
+Opt-in resident/application updater for joined halves through LEFT USB.
+Normal firmware packages remain separate. Physical flash interruption and
+recovery require hardware qualification.
 
 ## What it does
 
@@ -53,9 +50,8 @@ Each updater directory contains:
 The initial installation requires direct USB access to **each half separately**,
 using the factory WB32 DFU bootloader. The prior installed firmware cannot relay
 an update. Verify the device reports **256 KB flash** before using `install.*`.
-Both units in the saved 2026-10-03 DFU logs reported 256 KB flash and 36 KB SRAM;
-this does not establish capacity for every GMK70 revision. Do not use these
-images on 128 KB units. Initial installation itself is not power-fail tolerant.
+Do not use these images on 128 KB units. Initial installation itself is not
+power-fail tolerant.
 
 The inspected Westberry CLI's `write_fm_to_flash` has an unconditional final
 partial-page branch even when no bytes remain. A single exact 256 KB transfer
@@ -172,14 +168,3 @@ real brownout behavior and the vendor flash routine still require hardware tests
 Before recommending daily use, validate direct initial boot, typing/VIA/maps,
 the software DFU command, a right-only relay update, then both halves updating;
 repeat the sleep/wake and battery-indicator checks afterwards.
-
-The 2026-10-03 initial installation verified the entire 256 KB flash on each
-half against `install.bin`, preserving all 360 matrix and eight encoder
-assignments on each. Both returned the expected application and resident CRCs
-through updater INFO using only the left USB connection; the right reported its
-correct slave role. The user confirmed that both halves typed normally after
-reconnection. The new debug application's software DFU command and return to the
-application also worked on each half. No EEPROM reset or read-protection change
-was performed. The local record and backups are under
-`artifacts/recovery/2026-10-03-split-updater-installation.json`. These checks do
-not establish successful relay programming or real power-loss recovery.

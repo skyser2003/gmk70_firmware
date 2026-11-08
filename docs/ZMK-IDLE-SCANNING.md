@@ -63,5 +63,3 @@ ARM builds/image checks must pass for the supported ZMK variants. They check
 the resident prerequisite, application bounds and retained RAM boundaries.
 Physical wake/typing/RGB/USB/Studio/updater checks and battery-current
 measurements remain pending; native tests are not hardware confirmation.
-
-See the [offline validation results](validation/2026-10-31-zmk-idle-scanning/README.md).

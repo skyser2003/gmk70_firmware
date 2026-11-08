@@ -1,13 +1,8 @@
 # GMK70 basic feature parity
 
-Implementation specification, 2026-11-03. This continues the audited basic
-feature list, using pinned native ZMK implementations and the existing GMK70
-hardware/protocol wherever available. The signed starting point is `e5e8a8d`.
-
-The [battery-refresh follow-up](validation/2026-11-03-zmk-battery-refresh/README.md)
-supersedes the installed image identity below. It fixes USB sampler recovery and
-radio faults that stranded battery-query and sleep work; RAM reservations and
-saved bindings remain unchanged.
+Native ZMK implementations and the existing GMK70 hardware/protocol provide
+these board features. See [battery behavior](ZMK-BATTERY-LAYOUT.md) for radio
+sampler recovery and stale-reading limits.
 
 ## Required behavior
 
@@ -57,12 +52,7 @@ saved bindings remain unchanged.
 
 One identical universal application, runtime PB9 roles, no permanent watchdog,
 unchanged pinned dependencies/resident, saved layouts and 74-position geometry.
-No new repository. Work continues on a dedicated branch in the existing checkout
-to retain the pinned build workspace and private device evidence.
-
-The previous application uses 28,322 of 28,544 admitted RAM bytes, including
-14,336 bytes of reserved stacks. New native functionality must fit the admitted
-region. Prefer synchronous native input and shared workers/storage; do not lower
+Native functionality must fit the 28,544-byte admitted RAM region. Prefer synchronous native input and shared workers/storage; do not lower
 stack reservations without measured or defensible compiled call-chain evidence.
 Record all RAM, stack, application-bound and resident checks before device writes.
 
@@ -129,6 +119,3 @@ Older images limited to 328 entries cannot load a bank that exceeds that count.
 Historical behavior IDs remain reserved through the native settings handler,
 so a newly added behavior cannot take over an unavailable behavior's old ID.
 An unavailable historical binding retains native transparent fallback semantics.
-
-See the [validation record](validation/2026-11-03-zmk-basic-parity/README.md) for
-final build sizes, checks and installation status.

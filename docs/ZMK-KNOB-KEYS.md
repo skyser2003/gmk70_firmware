@@ -23,9 +23,9 @@ rotation assignments keep their positions and values.
 
 Pins B7/B6 come from the authoritative QMK board JSON through the existing pin
 generator, using QMK's four-edge resolution when none is specified. The left half samples quadrature
-transitions through GPIO edge interrupts. A bounded 16-detent queue preserves
-opposite-direction ordering; overflow drops the newest complete turn. Invalid
-two-bit transitions discard an ambiguous partial turn. If IRQ setup fails, the
+transitions through the pinned native EC11 driver and GPIO edge interrupts.
+A bounded 16-detent queue preserves opposite-direction ordering; overflow drops
+the newest complete turn. Invalid transitions contribute no native tick. If IRQ setup fails, the
 existing maintenance cycle supplies a polling fallback.
 
 The scanner emits press/release events on virtual row 10, columns 0/1, which
@@ -46,8 +46,8 @@ confirmation.
 The map grows from 72 to 74 positions per layer; the first 72 never move. The
 compiled defaults initialize the new positions before existing saved bindings
 load. The settings schema and flash partitions do not change. New position
-names use the already supported literal encoding; existing record encodings stay unchanged.
-the in-RAM settings index gains eight entries for the eight new bindings.
+names use the already supported literal encoding; existing record encodings
+stay unchanged. The settings capacity includes eight additional bindings.
 Existing VIA-to-ZMK conversion still imports the 72 physical positions and
 leaves the added rotation positions alone.
 
@@ -61,5 +61,3 @@ Native tests cover decoding, bounce, opposite turns, queue overflow, actual
 GPIO callbacks, queued pulses, disable/mode releases and timestamp wraparound.
 Settings tests append the rotation bindings to an existing four-layer store,
 reload the original bindings, and exercise subsequent compactions.
-
-See the [offline validation](validation/2026-10-31-zmk-knob-keys/README.md).

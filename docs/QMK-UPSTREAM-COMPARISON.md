@@ -81,9 +81,3 @@ The initial migration composed a disposable build tree from the pinned framework
 A conversion must update project paths, build/clean/test/format scripts, CI checkout, source packaging and the current vendoring policy in `AGENTS.md`. It should initially retain the tested QMK revision, run the existing regression tests, and compare clean VIA/default builds with the current firmware payloads. Later upstream updates should advance the recorded pin deliberately and repeat validation; automatically following every upstream commit would make builds less reproducible.
 
 The compiler/include records identify ChibiOS, ChibiOS-Contrib and printf as the required external libraries for this WB32 target. Selectively initializing those dependencies, without the unused nested MCUX SDK, is a candidate for avoiding the pedometer component identified in [the licensing audit](LICENSING.md); it still needs a clean-build check during conversion. Merely changing a directory into a submodule does not resolve licensing of any files subsequently copied into source packages.
-
-## Verification scope
-
-Git trees, blob contents, file modes and nested revision pins were compared using the retained upstream object databases. The working tree has no firmware changes relative to the compared project commit. The comparison helper passed formatting, lint and strict typing checks; detailed local results are under `artifacts/analysis/qmk-upstream-diff-20260924/`.
-
-This is a comparison and migration assessment. No dependency layout, firmware source, submodule configuration or build output was changed, and no new-version or converted-layout build is claimed.

@@ -26,8 +26,8 @@ integration are selected separately from `firmware/qmk-via/` and
 - Five-millisecond key debounce in both VIA and Vial builds.
 - Shared VIA/Vial idle interrupt scanning and physical pairing-hold guards,
   plus ZMK LED supply control. See [custom feature parity](docs/CUSTOM-FEATURE-PARITY.md).
-- A fixed [custom behavior checklist](docs/CUSTOM-BEHAVIOR-CHECKLIST.md) records
-  native integration evidence and hardware limits across VIA, Vial and ZMK.
+- A [custom behavior checklist](docs/CUSTOM-BEHAVIOR-CHECKLIST.md) describes
+  native integration and hardware limits across VIA, Vial and ZMK.
 - Experimental Vial with keymap and knob remapping, macros, tap dances, combos,
   key overrides, live QMK settings and VialRGB. See [Vial features](docs/VIAL-PORT.md).
 - Optional split updater: update both halves through the left half's USB connection.
@@ -35,21 +35,15 @@ integration are selected separately from `firmware/qmk-via/` and
   debug-updater persistent sleep logs. Normal Vial builds exclude backups and diagnostics;
   a separate [radio diagnostic build](docs/RADIO-DIAGNOSTICS.md) provides RAM counters.
 
-Complete stock equivalence and hardware validation of the latest Vial/updater
-changes remain unverified. Both halves now run the same
-[universal ZMK Studio application](docs/ZMK-UNIVERSAL.md), selected by the PB9
-role pin. LEFT owns the saved keymap and host services; RIGHT supplies its keys
-and RGB. Four Windows/Mac layers, lighting, battery actions, stock-radio
-selection and function/media flip are implemented. All 288 saved bindings are
-preserved, and normal Studio is connected with four layers.
+The [universal ZMK Studio application](docs/ZMK-UNIVERSAL.md) serves both halves,
+selected by the PB9 role pin. LEFT owns the saved keymap and host services;
+RIGHT supplies its keys and RGB. Four Windows/Mac layers, lighting, battery
+actions, stock-radio selection and function/media flip are implemented. Studio
+exposes 72 physical keys and two virtual knob-rotation positions.
 
-ZMK is distributed with an explicitly unlocked updater and no permanent hardware
-watchdog. At the universal-image qualification checkpoint, both updates returned automatically through joined LEFT USB,
-without physical reconnect or pad recovery. Five 70-second both-half health
-windows passed with unchanged residents and zero retries/reconnects/feeds.
-See the [validation and coverage limits](docs/validation/2026-10-30-zmk-universal/README.md).
-The [earlier permanent qualification](docs/ZMK-PERMANENT-WIRED.md) records the
-initial wired milestone and its historical restart failures.
+ZMK includes an explicitly unlocked updater and no permanent hardware watchdog.
+See the [updater workflow](docs/ZMK-PERMANENT-WIRED.md) for installation checks
+and recovery limits. Complete stock equivalence remains unverified.
 
 ## Build
 
@@ -75,7 +69,7 @@ Choose a build target:
 | `make build-vial` | Normal Vial firmware |
 | `make build-vial-updater` | Vial firmware with split updater |
 | `make build-vial-radio-diagnostic` | Optional Vial updater with RAM radio capture |
-| `make build-zmk-wired-studio-updater` | LEFT Studio central, persistent settings and Feature updater |
+| `make build-zmk-wired-studio-updater` | Universal Studio image, persistent settings and Feature updater |
 | `make build-zmk-wired-updater` | Native permanent wired ZMK application/updater A |
 | `make build-zmk-release` | Universal ZMK Studio release package and matching sources |
 | `make build-zmk-wired-update-test` | Different native wired update-test image B |
@@ -88,8 +82,9 @@ Builds write firmware, checksums and matching source archives to
 `artifacts/zmk/{wired-studio-updater,wired-updater,wired-update-test,wired-qualification,left-trial,right-trial}/`;
 see the [build instructions](firmware/zmk/README.md). Native A/B packages use
 `profile=zmk`, require the exact existing resident and do not emit a full initial
-installer. The LEFT-only Studio package uses `profile=zmk-studio`, with a 104KiB
-application limit and separate 16KiB settings reservation. Qualification Q emits target-specific staging packages only.
+installer. The universal Studio package uses `profile=zmk-studio-universal`,
+with a 104KiB application limit and separate 16KiB settings reservation.
+Qualification Q emits target-specific staging packages only.
 Builds read `dependencies/` and `firmware/` directly, without copying or symlinking
 source trees. Generated headers and objects live under `.work/`; `make clean`
 removes them. See [external-source builds](docs/EXTERNAL-BUILD.md).
@@ -112,14 +107,12 @@ start the workflow. See [release instructions](docs/RELEASING.md).
 For native ZMK, see the [Studio workflow](docs/ZMK-STUDIO.md) and the
 [wired updater workflow](docs/ZMK-PERMANENT-WIRED.md).
 Transfer and installation verification are separate; never replay INSTALL after a
-restart-verification timeout. The user reports typing seems functional and
-Fn+number sends function keys. A follow-up Windows observation confirmed Fn+Left/Right as
-Home/End without Ctrl held; the input field's word-like navigation is not localized.
+restart-verification timeout.
 
 For QMK/Vial and the universal ZMK Studio package, back up your configuration
-before updating and use the same application build on both halves. The experimental ZMK trials have separate
-[left](docs/ZMK-LEFT-FIRST-TRIAL.md) and [right](docs/ZMK-RIGHT-FIRST-TRIAL.md)
-staging workflows. Stock/VIA and Vial use different EEPROM layouts; independently rebuilt
+before updating and use the same application build on both halves. Experimental
+staging trials use a [separate launcher](docs/ZMK-TRIAL-LAUNCHER.md).
+Stock/VIA and Vial use different EEPROM layouts; independently rebuilt
 Vial images reset dynamic mappings and macros.
 
 - **VIA:** load the [original GMK70 definition](definitions/via/ZUOYA_GMK70.json)

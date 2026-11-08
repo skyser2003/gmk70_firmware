@@ -67,32 +67,3 @@ settings schema, factory keymap and feature mappings are unchanged. The shared
 image retains the existing Studio stack configuration; RIGHT now carries the
 same full image and RAM allocation. Physical power cycling remains a fallback
 for a hung application, without a guarantee of rollback from a faulty image.
-
-## Validation
-
-Dedicated native tests start the peripheral with inaccessible settings memory,
-check immediate rejected saves with no storage claim/write, and retain the
-existing LEFT startup/save/reload/failure tests. Image tests reject missing or
-incorrect role guards. Python tests exercise universal and legacy admission,
-both selected targets, sealed session/peer changes, lost acknowledgments and
-no replay/ABORT behavior.
-
-## Installed result — 2026-10-30
-
-Both halves now run the identical normal application from signed source
-`bf0ccad85030f886e39aa13c0663e8c022aab654`: 79,624 bytes/CRC32 `893851802`,
-package application SHA256
-`1e3cfa64060fbbeb7832dd8f5545d45bdba1cd4c6c212cfb2d38bf633739a1d9`.
-Both resident CRCs remain `1770733249`. LEFT then RIGHT each acknowledged one
-INSTALL and returned automatically through joined LEFT USB, without a physical
-reconnect or pad procedure. Both before/after case qualifications and the final
-both-half health window passed with zero retries/reconnects/watchdog feeds.
-
-All 288 saved bindings and four layer identities/names/order are preserved
-exactly, with physical geometry/runtime metadata verified and no unsaved changes.
-Normal Studio is connected with all four layers visible. Desktop reconnect
-recovery and actual physical coverage are detailed in the
-[sanitized validation](validation/2026-10-30-zmk-universal/README.md).
-The user confirmed keys and RGB work on both halves, including the saved
-lighting-control action. Cold-start behavior and hardware stack watermarks
-remain unmeasured in this validation.

@@ -50,13 +50,11 @@ and restores IRQ/FHSI/PCLK/APB2/RNG clock-gate state. It does not write protecti
 or option bytes. The upstream source remains unchanged and is not linked into
 ZMK; no QMK HAL runtime is required.
 
-`update/wb32_watchdog.c` uses the WB32 register contract and initialization
-ordering documented in the maintained GPL-2.0-or-later
+Permanent ZMK firmware never initializes or feeds a hardware watchdog.
+The separate temporary launcher uses the maintained GPL-2.0-or-later
 `firmware/qmk-common/keyboards/zuoya/gmk70/update/trial_watchdog.c` and Westberry
 EN_RM2905025_WB32FQ95xx_V01, sections 5.4.9/10, 7.2.12, 7.3.11/16, 11.4.6/7,
-18 and 27.4.2. The new adapter retains that GPL identifier. Permanent firmware
-establishes the longest IWDG period for both stopped and inherited running
-watchdogs; staging qualification neither initializes nor feeds IWDG.
+18 and 27.4.2. Staging qualification neither initializes nor feeds IWDG.
 
 `lighting/wb32_pixels.c` adapts WB32 SPIM2 and DMAC2 register programming from
 Westberry's Apache-2.0 SPIv1 and DMAv1 drivers, `wb32_dma.h`, `wb32_rcc.h` and

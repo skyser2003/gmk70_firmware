@@ -47,18 +47,6 @@ diagnostic tests remain part of `make test`; tooling checks use `make check-tool
 Local Capstone/Unicorn comparisons execute the actual stock Thumb instructions
 and the built release/debug ARM routines at bounded I/O boundaries. They are
 not an official device emulator, and do not run physical STOP, USB or RF.
-Follow-up evidence is under `artifacts/analysis/stock-v15-power-followup`;
-the preceding difference report remains under `artifacts/analysis/right-half-sleep`.
-
-Validation on 2026-10-09 passed `make test`, `make check-tools`, all four
-normal/updater release/debug builds and their HEX/BIN checks. The final normal
-release/debug ARM routines passed 1,238 bounded power comparisons against stock
-and 12 broader reconstruction checks covering VIA, lighting controls, state
-assignment, default tables and USB identity. The additional recheck scenarios
-validate all seven fixes against stock, including full STOP sequencing and
-local versus synchronized clock behavior. These checks do not prove complete
-firmware equivalence or physical wake behavior.
-
 Debug-updater retains the persistent recorder and read-only right-half
 settings/log relays. Both halves need matching applications. The resident
 updater is unchanged from the preceding package.

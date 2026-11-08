@@ -6,15 +6,6 @@ reports, forwarding requests through the stock UART32 helper. It preserves the
 stock typing service and the existing FFF0 configuration channel. It contains no
 flash programming, erase, commit, pairing, or radio reset operation.
 
-The 2026-10-23 trial loaded the GMK70 keymap and native extension tabs in the
-unchanged official `https://vial.rocks/` client on Windows. A standard Service
-Changed indication refreshed the GATT list; a link disconnect/reconnect was then
-needed for Windows to expose the second HID device. This reconnect preserved RAM.
-The installed desktop Vial still has its separate BLE serial-discovery limitation;
-the [desktop investigation](../../../../docs/VIAL-BLUETOOTH-DESKTOP.md) records a
-successful original-client HID getter and the current Windows driver blocker.
-Idle main-MCU wake behavior and configuration setters have not been validated.
-
 The [persistent Web Vial assessment](../../../../docs/WEB-VIAL-PERSISTENCE.md)
 records the minimum-radio/MCU-feature split, stock Bluetooth and dongle
 compatibility requirements, and the missing recovery evidence. It is an offline
@@ -25,28 +16,8 @@ HID service share the stock UART response stream, which has no transaction IDs.
 The adapter preserves every correctly framed response while subscribed, including
 late duplicates. It cannot match a delayed response to a particular client retry.
 
-Revision status: the first, 1,176-byte payload was physically validated with
-official Web Vial. Review then reproduced reply loss when two requests overlapped:
-its one-bit pending flag suppressed the second response. The current 1,168-byte
-source removes that gate and passes 22 offline compiled-ARM checks. After a true
-radio power-off and fresh allocation, the corrected revision returned three
-native HID identity replies, including a two-request burst, and loaded the keymap
-and native extension tabs in unchanged official Web Vial. Never overwrite an
-active payload; a fresh physical RAM session and allocation precede installation.
-An earlier USB-mode/unplug sequence retained the exact first payload and ownership
-marker, so that sequence alone is not a reliable radio power-off procedure.
-
-The second installation exposed a separate reconnect limitation: Windows did not
-rewrite the previously enabled notification configuration, while the new RAM
-service had forgotten it. Temporarily restoring the known host's connection and
-subscription bytes made all three requests/replies succeed; restoring those bytes
-to their original values ended that diagnostic. The previously observed state was
-then reapplied in the owned RAM block for the continued Web Vial check. This is a
-one-time trial initialization, not a host transport bridge. The subsequent Web
-Vial keymap readout succeeded with this initialization. Automatic restoration
-of notification configuration for each bonded host remains firmware work; this
-payload clears its subscription on link create/loss. Do not call the trial a
-complete reconnect implementation or general-purpose release.
+This payload clears its subscription on link create/loss. Automatic restoration
+for each bonded host remains incomplete; this is an experimental RAM service.
 
 These bindings support only the captured stock application with SHA256
 `100e2ecdad6d253ea6d177d91579c2e22ea8d5968d3f09d691ed599f7fe7512c` and ROM
@@ -69,8 +40,8 @@ source scripts/project.sh
 bash firmware/qmk-common/radio/ram-vial-trial/build-offline.sh 0x1100C840 2048
 ```
 
-The example address was observed during this specific trial. It is not a free
-RAM address, a default installation address, or a lease for a later session.
+Replace the example with the address and size returned by the actual allocator.
+An address is not a default installation location or a lease for a later session.
 Compilation does not establish current ownership. Output goes only under
 `.work/radio/ram-vial-trial/normal/`; source trees are neither copied nor linked.
 No normal QMK/Vial target includes this experiment, and builds perform no device

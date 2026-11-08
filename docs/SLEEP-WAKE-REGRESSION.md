@@ -4,13 +4,6 @@ For failures that require power-cycling, use the new
 [persistent debug-updater recorder](PERSISTENT-SLEEP-LOG.md). The RAM capture
 procedure below still applies to applications that only have the earlier recorder.
 
-On October 6, 2026, the user reported that the reconstructed V15 firmware turns
-both halves' RGB off after approximately one minute of Bluetooth idle. After
-waking the left half, the right half remains unable to type or light, and its
-own keys do not wake it until power is cycled. The installed package was
-described as the latest stock-behavior build; exact image hashes and matching
-installation on both halves have not been captured.
-
 ## Reproduced source defect
 
 The baseline WB32 PAL wake callback recorded a wake cause, then disabled every

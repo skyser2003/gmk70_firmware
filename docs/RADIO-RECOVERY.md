@@ -2,19 +2,13 @@
 
 The radio modification must preserve a way to restore stock firmware even when
 the modified Bluetooth application cannot connect. OTA is acceptable; USB
-programming is preferred. Vial itself stays unchanged. This document records the
-recovery investigation; **no experimental radio image is ready for installation
+programming is preferred. Vial itself stays unchanged. This document describes the
+recovery constraints; **no experimental radio image is ready for installation
 and no working persistent-update rollback procedure has been demonstrated**.
 
-The later 2026-10-23 RAM-only trial demonstrated native Bluetooth HID and an
-unchanged Web Vial keymap readout without changing stock radio flash. Its sources,
-verification and reconnect limitations are recorded in the
-[radio payload README](../firmware/qmk-common/radio/ram-vial-trial/README.md).
-The subsequent [offline persistence analysis](WEB-VIAL-PERSISTENCE.md) compares
-a stock-radio flash extension with MCU-driven RAM loading and records their
-remaining initialization and recovery requirements; neither route was installed.
-The offline-prototype statements below describe the earlier recovery checkpoint;
-they do not supersede that later volatile trial or establish persistent rollback.
+The [experimental RAM service](../firmware/qmk-common/radio/ram-vial-trial/README.md)
+and [persistence analysis](WEB-VIAL-PERSISTENCE.md) describe separate radio work.
+Neither supplies a verified persistent rollback path.
 
 ## Confirmed behavior
 
@@ -41,29 +35,6 @@ bonding/service addresses include `0x7D000` and `0x7E000`, supporting acquisitio
 of a candidate 512 KiB window; these configured addresses do not prove capacity.
 The SDK documents 128 KiB ROM. Separate OTP trimming/calibration storage is not
 included in either window and must not be erased or programmed.
-
-## Capture received on 2026-10-22
-
-The `gmk70-radio-recovery-20261022-165557-381-analysis.zip` acquisition completed
-with 10,242 read requests and 10,242 responses. The archive contains both ROM
-passes; their lengths, hashes and byte equality were independently verified here.
-
-| Evidence | Result |
-| --- | --- |
-| ROM, two 128 KiB passes | Both SHA256 `a2214bdee4ec073d5800df66025f65f77c43433385f5ed51cdc2bfcff64f0908` |
-| Candidate flash window, two 512 KiB passes | Reported SHA256 `db2924effc06cae742cb6436b79db8270f245f04ea6899fd26cec9d78e3c22a8` |
-| Application prefix of flash capture | Reported SHA256 matches the original stock `0x25000`-byte image above |
-| Uploaded 128-byte header | Independently matches the original stock image |
-| Recovery certification | `complete_recovery_backup = false`, `rollback_verified = false` |
-
-The full flash binaries correctly remain in the private ZIP; only their report
-was available for this analysis. The repeated 512 KiB window does not establish
-physical capacity or rule out address aliases. Keep that private ZIP: it may
-contain bonding keys and is not a general-purpose release image.
-
-The report identifies a locally adjusted collector, `winrt-projections-1`, with
-source hashes different from the earlier distributed scripts. It validates this
-device capture, not an unchanged copy of those earlier Windows WinRT scripts.
 
 ## USB investigation
 
@@ -109,32 +80,14 @@ three header cases, timeout polling for two cases, and the JEDEC command for two
 synthetic IDs. UART/SPI I/O and delay are simulated. This is not an official
 FR8000 emulator, a physical flash identification, or a recovery test.
 
-## RAM-only trial investigation
+## RAM-only trial boundary
 
-A first experiment can avoid replacing the stock application by loading only
-volatile RAM code through stock OTA's memory-write operation. Stock startup
-reloads the original RAM code from flash, so a power cycle would remove such a
-patch if persistent flash remains unchanged. This is the intended recovery
-property of a possible trial, not a demonstrated installation/rollback result.
-
-The stock OTA reassembly buffer is unsuitable for executable staging: its timer
-and disconnect handler can free it. A bounded offline bootstrap instead uses
-the statically owned RAM copy of the OTA commit CRC validator and requests
-owned heap storage through the original allocator. The original validator entry
-returns failure in the experiment; a trial must not perform flash OTA commits.
-This location and its size were checked against the stock application's code.
-
-The 148-byte bootstrap passed eleven bounded Cortex-M CPU simulations, including
-insufficient heap, disconnect, and preserving existing interrupt masks. Stock
-startup uses five of eight user-service slots, leaving space to investigate a
-second HID service without deleting the existing one. Live occupancy still
-needs to be checked.
-
-The bootstrap is still an offline control-flow prototype. Live allocation,
-service registration, Bluetooth sleep/reconnect behavior, and unchanged Windows
-Vial discovery have not been demonstrated. No RAM writer or installable radio
-image is supplied by this recovery stage. Native Vial over Bluetooth remains
-unproven; it has not been ruled out merely by this recovery investigation.
+The stock OTA reassembly buffer is unsuitable for executable staging: disconnect
+and timer handlers can free it. The offline bootstrap uses the statically owned
+RAM copy of the inactive OTA CRC validator to request owned heap storage.
+The experiment makes that validator return failure and must not commit radio
+flash. See the [RAM payload](../firmware/qmk-common/radio/ram-vial-trial/README.md)
+for its exact stock ABI and ownership requirements.
 
 ## Current deliverable
 
@@ -145,8 +98,7 @@ firmware. Hardware-free checks cover read encoding/bounds, destructive-command
 rejection, exact response lengths, partial-file preservation, hash comparison
 and exclusion of private flash data from the analysis archive.
 
-The capture establishes repeatable snapshots and resolves ROM behavior. For a
-persistent update, the remaining recovery evidence is physical flash layout and
+For a persistent update, the remaining recovery evidence is physical flash layout and
 capacity plus an application-independent programming connection that can read
 back stock and restore it. A private backup alone does not establish that path.
 The RAM-only approach can be investigated before replacing stock flash, but

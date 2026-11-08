@@ -28,7 +28,7 @@ Baseline repository: `e281b8e334ccc38a4a98517f18e90e4077b3e2c1`. Official QMK re
 
 Stock observations use Capstone disassembly, binary table extraction and bounded Unicorn execution of the actual Thumb routines, with the startup `.data` copied into simulated RAM. Clock, UART, USB/SPI output, selected GPIO inputs and split replies are intercepted or simulated. This is an instruction-level test harness, **not an official or complete keyboard emulator**. The tests do not emulate the RF stack, host, physical interrupts or electrical timing.
 
-Raw investigation artifacts are local under `artifacts/analysis/stock-v15-sleep`, `stock-v15-comparison` and `stock-v15-full-comparison`. They describe the pre-change baseline unless named `reconstruction-*`. Durable extracted tables are in `tests/fixtures/stock-v15-tables.json`; native production-C tests exercise the reconstructed contracts without needing the proprietary HEX.
+Durable extracted tables are in `tests/fixtures/stock-v15-tables.json`; native production-C tests exercise the reconstructed contracts without needing the proprietary HEX.
 
 ## Implemented behavior
 
@@ -74,8 +74,6 @@ The original VIA definition remains unchanged. Standard QMK rendering/framework 
 ## Verification and remaining work
 
 `make test` runs ASan/UBSan native tests for the actual radio queue/parser, power state machine, held-key counter, stock EEPROM wrappers using the pinned QMK types, secondary lighting cycle/frame routing, VIA behavior, reports, battery, split roles, diagnostics and updater. Repository tests compare all 360 compiled default assignments, eight encoder values, all 77 LED points/flags and the lookup against binary-derived fixtures. `make check-tools` checks formatting, lint, strict typing and tooling tests. Both normal release and debug must build, and exported HEX/BIN payloads must agree.
-
-Validation on 2026-10-05 passed `make test`, `make check-tools` and both normal builds (release: 72,366 bytes; debug: 74,110 bytes). Each build verified its HEX against its BIN. Twelve additional bounded checks of the actual release/debug ARM instructions passed: all 256 brightness values without premature persistence, all 256 effect values, raw-HID protocol/selectors/live NKRO/deferred control, power assignment and repeated resume, complete default keymap/encoder/RGB tables and USB identity, and GUI/matrix peer commands. These checks simulate EEPROM, clocks and external I/O; debug RPC logging is intercepted at the I/O boundary. Logs and the local execution harness are in `artifacts/analysis/stock-v15-full-comparison/reconstruction-*` and `verify_reconstruction_elf.py`.
 
 The official locked compiler download redirected to a host blocked by the cloud network policy. Validation uses checksum-verified xPack ARM GCC 14.2.1-1.1 (the same GCC version, a different distribution); the dependency lock remains unchanged. Actual compiler information is recorded in each build's `build-info.txt`. This is not a claim that the locked official compiler archive was used.
 

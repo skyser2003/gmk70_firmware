@@ -53,7 +53,7 @@ Stock FR8000 OTA stages an image and then **copies it over the running image**;
 it is not an automatic trial/rollback mechanism. USB programming is preferred,
 but the stock application's UART pins differ from the SDK's boot-pin descriptions,
 and no main-MCU radio reset/power control has been identified. A working USB
-recovery path is not yet established. See [radio recovery findings](RADIO-RECOVERY.md).
+recovery path is not yet established. See [radio recovery findings](../../docs/RADIO-RECOVERY.md).
 
 ## Ordinary application snapshot
 

@@ -52,56 +52,19 @@ builds retain clear handling when the radio endpoint is disabled.
 ## Persistence and integration
 
 The one-byte `gmk_flip/state` value uses the existing banked settings backend.
-Runtime toggling works in radio mode; saving waits for LEFT, the physical wired
-position, configured USB and service/storage readiness. Rapid toggles coalesce
+Runtime toggling and allowlisted preference saves work in radio mode, subject
+to LEFT role, power and service/storage readiness. Rapid toggles coalesce
 after 250 ms; failed saves retry no faster than once per second. Power removal
 before an eligible save can lose the latest toggle.
 
 The existing updater worker schedules the save onto existing system work. It
-never waits on itself. A shared runtime-save entry rechecks the USB requirement
-when the backend actually dispatches the write; ordinary startup behavior-ID
+never waits on itself. A shared runtime-save entry rechecks the applicable authorization and power
+gates when the backend dispatches the write; ordinary startup behavior-ID
 writes retain their pre-enumeration path. Malformed lengths, short reads,
 unknown setting names and values other than 0/1 are rejected.
 
 There is no new thread, stack reduction, permanent watchdog, radio protocol,
 resident, RIGHT firmware or settings-bank schema change. The stock white flip
 indicator is outside this implementation; Studio exposes the assignable action,
-without a live mode-status widget. Logo effects, the reserved custom slot and
-QMK settings reset remain unimplemented.
-
-## Build and verification
-
-The original function-flip installation record at source
-`e4e9c7bef4af8c1fa28bbe9adf582a88376935a3` built the normal
-`wired-studio-updater` application at 79,612 bytes, CRC32 `799253422`, SHA256
-`e20a01fd51ff53dbf1b7280e050d7b2c571c933308a618a7e14e7865ed5b8fa1`.
-Static RAM is 27,576 of 27,648 bytes with existing thread stacks retained.
-Compiler stack-frame checks cover the wrapper, mapping, save and worker paths;
-actual hardware stack watermarks remain unmeasured. Existing upstream KSCAN
-deprecation and RWX linker warnings remain.
-
-`make test test-zmk check-tools` passes the dedicated native sanitizer tests,
-repository/migration/protocol/image suites, Ruff and strict mypy. Dedicated tests
-exercise all stock mappings, unrelated HID gaps, held mode/OS changes, duplicate
-presses, brightness, invalid settings, deferred/coalesced saves, failed writes
-and USB loss between queueing and backend dispatch. Studio metadata tests cover
-the zero-parameter behavior and sparse import preserving the other 287 bindings.
-Linked-image checks verify actual calls from native keycode emission to the
-wrapper and from the existing worker to the persistence poll.
-
-The consistency regression additionally compiles unchanged pinned `hid.c` and
-`hid_listener.c`. It covers both modifier-release-report settings with and
-without the radio endpoint, ordinary/overlapping shortcuts, native explicit and
-implicit modifiers, consumers/brightness, duplicate events, clears, mode changes,
-boot and six-key/NKRO reports. Nested and foreign-thread dispatch checks guard
-the custom-event scope; reentrant/threaded clear regressions also check native
-same-target ownership, explicit/implicit modifiers and duplicate replacements.
-The synchronous adapter uses thread-context recursive
-serialization; it does not introduce an interrupt-context keycode emitter.
-See the fixed [custom behavior checklist](CUSTOM-BEHAVIOR-CHECKLIST.md) for
-current integration evidence and hardware limits.
-
-The canonical central, peripheral and both affected qualification variants
-compile. Build/test/conversion commands do not operate the keyboard. Device
-installation and validation are recorded separately in the
-[sanitized hardware results](validation/2026-10-30-zmk-function-flip/README.md).
+without a live mode-status widget. Logo effects and the reserved custom slot remain unimplemented. ZMK's
+application-settings reset is separate from QMK EEPROM reset.

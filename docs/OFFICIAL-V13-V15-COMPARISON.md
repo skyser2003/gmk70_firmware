@@ -8,7 +8,7 @@ This was offline analysis only. Nothing was flashed, no connected keyboard was q
 
 | Item | Previous package | New package |
 | --- | --- | --- |
-| Folder under `D:\Windows\Downloads` | `ZUOYA+GMK70++QMK固件升级20241216` | `ZUOYA+GMK70++QMK固件升级20260819` |
+| Vendor package | `ZUOYA+GMK70++QMK固件升级20241216` | `ZUOYA+GMK70++QMK固件升级20260819` |
 | Firmware | `ZUOYA GMK70 V13.hex` | `ZUOYA GMK70_via_v15.hex` |
 | HEX file bytes | 225,020 | 225,703 |
 | Decoded application bytes | 79,976 | 80,220 (+244; about 0.31%) |
@@ -78,7 +78,7 @@ These changes directly concern lighting power and state restoration on the other
 
 An exact QMK release, source commit, compiler invocation, or complete build-flag set cannot be recovered from these stripped HEX images. VIA protocol 12 is not a QMK version. The unchanged `bts` version string does not prove every linked radio-library byte is unchanged; some linked routines were removed or replaced. The package offers no new source release or independently buildable radio library.
 
-Local evidence is saved under `artifacts/analysis/official-v13-v15-20260927/`: decoded binaries, complete Thumb disassemblies, strings/descriptors, raw aligned diff, package hashes, and the temporary analysis project's source/tests. The raw diff includes relocated code and pointer tables and is not a semantic change percentage. Linear disassembly also decodes literal pools and jump tables as apparent instructions; those regions were treated as data during review. The system `file` utility falsely labels these raw vector bytes as a TTComp archive, so architecture identification uses the vectors and valid Thumb code instead.
+The raw diff includes relocated code and pointer tables and is not a semantic change percentage. Linear disassembly also decodes literal pools and jump tables as apparent instructions; those regions were treated as data during review. The system `file` utility falsely labels these raw vector bytes as a TTComp archive, so architecture identification uses the vectors and valid Thumb code instead.
 
 Intel HEX records were checked for length/checksum, overlaps, gaps, and EOF. V15 decoding independently matched GNU ARM `objcopy` byte-for-byte. Fourteen parser/evidence tests passed, as did Ruff formatting/lint and strict mypy for the temporary Python helpers. Address-normalized instruction comparisons were supplemented with inspection of call destinations, literal data and dispatch tables; they do not prove whole-firmware equivalence. No firmware source was edited for this comparison, so no firmware rebuild was required.
 

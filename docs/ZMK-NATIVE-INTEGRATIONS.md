@@ -1,14 +1,7 @@
 # Native ZMK integration and compatibility transport
 
-The updater relay was subsequently migrated to
-[native ZMK framing](ZMK-NATIVE-UPDATER-WIRE.md), while matrix/RGB and behavior
-RPC17 retain board transport. The remainder of this document describes the
-preceding native-core/encoder integration checkpoint.
-
-The implementation is installed on both halves. See the
-[hardware validation and its limits](validation/2026-11-02-native-zmk/README.md),
-including the initially rejected post-RIGHT health window and subsequent clean
-checks.
+The updater relay uses [native ZMK framing](ZMK-NATIVE-UPDATER-WIRE.md).
+Matrix snapshots, RGB and behavior RPC17 retain the board transport.
 
 The GMK70 port now uses the pinned upstream EC11 driver and generic ZMK split
 central/peripheral cores. Both role cores are linked into the same application;
@@ -56,7 +49,8 @@ service worker performs UART/execution outside callbacks. The two-command queue
 is bounded. Commands are not retried after uncertain delivery. This is not a
 guaranteed-delivery behavior channel: full queues/disconnection may drop a command,
 as native event transports can also reject queued work. Legacy USER_SYNC lengths
-remain ignored with zero responses; updater RPC 18 is unchanged.
+remain ignored with zero responses. Updater RPC18 is confined to the separately
+labelled legacy/native bridge.
 
 The board transport is not counted by upstream's BLE/UART-only peripheral-count
 macro. Generic native GLOBAL behavior fan-out therefore remains absent. Current
@@ -70,35 +64,3 @@ storage, function/media flip and accepted runtime NKRO toggle remain GMK70-speci
 where required. There is still one identical universal application for both halves,
 with target-specific updater manifests. Permanent firmware never enables or feeds
 a hardware watchdog; the resident is preserved.
-
-## Memory qualification before device writes
-
-Canonical Studio comparison against main `fccfead46bc22627c470fd4b3d81f3cc1900d26f`:
-
-| Linker measurement | Before | Native integration |
-| --- | ---: | ---: |
-| Admitted RAM | 28,544 B | 28,544 B |
-| Allocated RAM, including reserved stacks | 28,200 B | 28,322 B |
-| Unallocated RAM | 344 B | 222 B |
-| Total reserved thread/interrupt stacks | 14,336 B | 14,336 B |
-| Four mutable 74-position keymaps | 4,736 B | 4,736 B |
-| General heap | 0 B | 0 B |
-
-Reserved stacks remain Studio RPC 2,560; updater 2,048; interrupt 2,048; scanner
-1,536; serial 1,536; system workqueue 1,536; main 1,024; USB 1,024; low-priority
-workqueue 768; idle 256 bytes. No stack was reduced to make this fit.
-
-Compiler stack-usage records give 48 bytes for the position adapter, 64 for the
-native central event handler, 128 for the native peripheral command handler, and
-144 for the command worker adapter. These are individual frames, not measured
-peak call chains. The extra source-routing calls execute within the existing
-1,536-byte system workqueue reservation; command execution uses the existing
-2,048-byte updater worker reservation. Hardware stack watermarks remain unmeasured.
-The 222-byte linker remainder is not the remaining space inside those stacks.
-
-Offline checks include actual pinned EC11 and split-core execution under native
-sanitizers, board GPIO/IRQ/fallback and legacy transport tests, strict Python
-checks, repository tests and all seven affected ARM build variants. The resident
-is independently checked against its pinned checksum. Hardware validation, when
-performed, must separately establish installed identities, both-half uptime,
-resident preservation and saved Studio keymap preservation.

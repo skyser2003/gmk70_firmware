@@ -1,11 +1,8 @@
 # Persistent Bluetooth Web Vial: offline route analysis
 
-Analysis date: 2026-10-23. Scope: unchanged official Web Vial, firmware-only
-operation, and persistence across a real radio power cycle. Desktop Vial is
-outside this investigation. **No keyboard access, flashing, RAM upload, reset,
-pairing operation, installer, or flashable image was used or produced.**
-The only maintained changes from this analysis are documentation. Publishing
-these notes is separate from developing or installing persistent firmware.
+This analysis describes firmware routes for persistence across a real radio
+power cycle. No persistent radio image or verified independent recovery path
+is available.
 
 ## Required architecture and dongle compatibility
 
@@ -40,10 +37,6 @@ transitions. The trial did not intentionally replace dongle logic, but dongle
 operation and Bluetooth/dongle transitions have not been regression-tested;
 unaffected dongle behavior is a requirement, not a verified result.
 
-This requirement update does not authorize implementation, device access or
-flashing. The earlier evidence ZIP is a snapshot of the preceding route analysis;
-this maintained document records the current constraints.
-
 ## Assessment
 
 | Route | Evidence | Assessment |
@@ -58,27 +51,14 @@ radio-image integration the better-supported candidate. Lack of a loader in
 these bounded paths is not proof that no undocumented boot mode or additional
 PCB connection can exist.
 
-## Inputs and demonstrated baseline
+## Firmware inputs
 
-| Input | Size / SHA256 |
-| --- | --- |
-| Captured stock radio application | `0x25000` bytes; `100e2ecdad6d253ea6d177d91579c2e22ea8d5968d3f09d691ed599f7fe7512c` |
-| Captured radio ROM | `0x20000` bytes; `a2214bdee4ec073d5800df66025f65f77c43433385f5ed51cdc2bfcff64f0908` |
-| Existing compiled RAM payload | 1,168 bytes; `f1ea19e63d0ca5cb2f64c62756396220c62c91611248abaddda69daa9fc5b599` |
-
-Commit `a7f58c3` records the working RAM-trial sources. The trial added a second
-BLE HID service, usage `FF60/61`, with unnumbered 32-byte input/output reports.
-The unchanged official Web Vial loaded the actual GMK70 keymap and native
-extension tabs. Commands travel through the stock UART32 helpers to the existing
-main-MCU Vial implementation. The stock typing HID, FFF0 configuration service,
-and OTA service were retained.
-
-That experiment establishes compatibility of the transport and keymap readout.
-It does not establish automatic cold-start initialization, reliable reconnect,
-configuration setters, another host/platform, or persistent recovery. The
-previous full flash comparison after the successful trial matched the private
-stock backup; this analysis did not recapture flash. See the
-[RAM trial status](../firmware/qmk-common/radio/ram-vial-trial/README.md).
+The experimental RAM payload targets stock application SHA256
+`100e2ecdad6d253ea6d177d91579c2e22ea8d5968d3f09d691ed599f7fe7512c`
+and ROM SHA256
+`a2214bdee4ec073d5800df66025f65f77c43433385f5ed51cdc2bfcff64f0908`.
+It adds a second HID service over stock UART32 helpers while retaining typing,
+FFF0 and OTA. See [the payload contract](../firmware/qmk-common/radio/ram-vial-trial/README.md).
 
 ## Route A: persistent stock-radio extension
 
@@ -262,35 +242,3 @@ commands and from normal Web Vial operation; no host runtime bridge is proposed.
 5. Validate recovery and complete stock readback/restore before relying on a
    persistent experimental image. No such device operations are authorized by
    this analysis request.
-
-## Verification and remaining analysis
-
-Fresh offline checks in this investigation:
-
-- **1,285 UART fixtures:** 256 byte-parser starts; 512 consumer dispatch cases;
-  512 device-control cases; five mouse-state cases, plus canonical complete
-  packets for accepted framing bytes. Subordinate APIs are recorded/stubbed;
-  these checks do not prove every subordinate function or undocumented mode.
-- **Seven ROM fixtures:** three programmer pin/argument cases, two timeout cases
-  and two synthetic JEDEC replies. Peripheral I/O is simulated; no physical
-  flash identification or restore is established.
-- **22 existing compiled-payload checks**, plus **four automatic-readiness
-  cases** confirming initial subscription, missing subscription after reconnect,
-  recovery after an explicit new subscription, and sticky registration failure.
-  Passing readiness cases document limitations; they do not certify fixes.
-- Read-only ELF sizing, stock startup/staging/reference inspection, and source
-  comparisons confirming the maintained radio C/assembly/build files still match
-  the committed trial baseline.
-
-Further offline evidence can refine suffix ownership, startup ordering,
-state/constant placement and separate reply routing while preserving original
-CRC and settings behavior. Additional UART documentation or a different proven
-PCB connection could change the MCU-only assessment. Actual pin access, flash
-capacity, restoration and cold-start timing require a separate hardware session;
-they cannot be certified from these captures.
-
-Local evidence is under `.work/research/radio/persistence-20261023/`.
-The shareable report bundle is
-`artifacts/analysis/web-vial-persistence-2026-10-23/gmk70-web-vial-persistence-20261023-analysis.zip`.
-It excludes raw flash/RAM, pairing keys, HID paths, ownership markers, executables
-and firmware images. No new dependency or vendor source was imported.

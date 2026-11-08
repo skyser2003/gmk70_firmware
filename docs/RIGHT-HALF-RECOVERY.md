@@ -1,8 +1,11 @@
 # Right-half bootloader recovery
 
-## Debug USB command (October 3, 2026)
+## Software bootloader command
 
-Current debug firmware implements VIA command `0x0B` over direct USB, allowing software bootloader entry without a physical key press. Release leaves it unsupported. Each half must first have debug firmware installed, be connected directly as the USB master, and be in wired mode. Radio requests are rejected; the command is not relayed across the split. Unlike this board's mapped `QK_BOOT` handler, the new host command does not invalidate EEPROM. See [the packet format and build distinction](DEBUG-RELEASE.md). On October 3, both halves separately acknowledged this command, entered WB32 DFU, and accepted the corrected debug firmware with exact readback verification. All 360 matrix mappings on each half were preserved. These user-authorized device operations were separate from build/test commands, which do not reset or flash a device.
+Current VIA release and debug firmware implement the deferred stock command
+`0x0B`. See [debug/release behavior](DEBUG-RELEASE.md) for its packet contract.
+Build/test commands never send it to hardware. Older firmware can lack this
+handler, requiring physical recovery.
 
 ## Confirmed firmware regression
 
@@ -33,20 +36,4 @@ Do not assume that holding any key labelled Reset in VIA is equivalent to Bootma
 
 The supplied vendor flashing instructions describe a separate right-half pad procedure. With the right half disconnected from power, set its small internal switch to the lower position described in that document, bridge the two specified small holes beside the large spacebar-switch mounting hole, and connect that half directly to the PC by USB. Use only the pads identified by the vendor instructions; disconnect the inter-half cable for this recovery attempt. Return the internal switch to its normal upper position after the update.
 
-This is the factory-documented recovery method. The user confirmed that hardware pad flashing worked on 2026-09-24. This does not establish that a mapped Reset key works in the affected firmware. After installing the corrected firmware, test the right half directly over USB, confirm its own stored Reset assignment, then test bootloader entry using that assignment.
-
-## Recovery checks on the affected right half, 2026-09-22
-
-With only the right half connected directly by USB and the inter-half cable disconnected, its VIA raw HID interface responded at VID/PID `342D:E491`, usage page `FF60`, usage `61`. It reported VIA protocol 12 and four dynamic layers. This confirms that the application was running despite the missing key events.
-
-The VIA bootloader request `0x0B` returned `0xFF` (unhandled). The installed source declares that command but does not implement a handler. The board has no alternate VIA bootloader handler, and its inter-half RPC commands do not provide a bootloader jump. Changing EEPROM mappings cannot change the compiled master-role test.
-
-All 360 matrix keycodes were backed up to `artifacts/recovery/right-keymap-before-boot-key-20260922-080045.json`. This is a raw matrix backup, not an importable VIA export; it excludes macros, encoder assignments, and other settings. Backspace at row 5, column 8 was temporarily changed from `0x002A` to `0x7C00` on base layers 0 and 2, with both writes verified by readback.
-
-The user then tried changing the internal slide switch while USB remained connected and tapping Backspace. No bootloader appeared. This experiment depended on the unverified possibility that the switch changes the handedness signal while leaving the startup-selected matrix wiring intact; its failure does not establish the switch's actual wiring. Both Backspace assignments were subsequently restored to `0x002A` and verified.
-
-No working software-only or switch-only recovery route was established for the installed build. The vendor switch-and-pad procedure remains the documented recovery route; the corrected firmware cannot resolve bootloader entry until it has been installed. No firmware was flashed during these checks.
-
-## Recovery confirmation, 2026-09-24
-
-The user reported that hardware short flashing succeeded. The flashed image and its checksum were not specified, so this confirms recovery access without establishing acceptance of a particular project build or its wireless behavior.
+This is the factory-documented recovery method. After installing compatible firmware, test the right half directly over USB, confirm its own stored Reset assignment, then test bootloader entry using that assignment.

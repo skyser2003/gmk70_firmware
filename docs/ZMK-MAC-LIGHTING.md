@@ -1,35 +1,8 @@
-# GMK70 Mac layers and lighting candidate
-
-Current checkpoint: [right RGB restoration](ZMK-RIGHT-RGB.md) installs native split RGB
-on both halves (LEFT 70,672/1286125312; RIGHT 43,752/2368050678). Both returned
-automatically and passed 70-second zero-feed health, with unchanged residents and
-the user's freshly saved Studio map preserved. The user confirmed right LEDs work
-and Fn+X controls both halves together.
-The earlier checkpoints below record the preceding installations.
-
-Current checkpoint: [permanent watchdog removal](ZMK-PERMANENT-WATCHDOG-REMOVAL.md)
-applies to canonical builds and both installed halves: LEFT 70,196/986599886,
-RIGHT 38,160/1887741245, resident CRCs 1770733249. Both passed 70-second zero-feed
-health; Studio saving and the original four-layer map were verified. RIGHT
-needed one joined-LEFT cold cycle for the old-watchdog transition. Earlier
-experiment/build/state notes below are historical; use the linked build targets.
-
-Earlier 2026-10-29 checkpoint: [LEFT watchdog rollback](ZMK-WATCHDOG-ROLLBACK.md) passed two
-automatic original-SYSRESETREQ updates and Studio save/reload. Installed LEFT is
-70,340/1796245169 with no watchdog; RIGHT and residents are unchanged. This
-supersedes the installed-state notes below. The exact reset/retention mechanism
-remains unmeasured; ordinary watchdog-enabled variants are unchanged.
-
-2026-10-29 hardware follow-up: the [LEFT handoff variant](ZMK-RESIDENT-HANDOFF.md) now includes four layers and local RGB and connects in Studio. RIGHT remains on the older image; full peer lighting and the ordinary variants below remain unqualified on this keyboard. The offline task record below predates this separate experiment.
-
-Implemented offline on 2026-10-28/29. **Not installed or hardware-qualified.** The
-keyboard remains on the verified two-layer Studio LEFT and original wired RIGHT
-documented in [Studio validation](validation/2026-10-28-zmk-studio/README.md).
-No device query, write, reset, reconnect or resident change was made for this task.
+# GMK70 Mac layers and lighting
 
 ## Four layers and OS selection
 
-Current wired builds compile four 72-position layers: **Windows**, **Windows Fn**,
+Current wired builds compile four 74-position layers: **Windows**, **Windows Fn**,
 **Mac**, **Mac Fn**. Mac uses stock Option/Command placement: left Alt becomes
 left GUI, right Alt becomes right GUI and right GUI becomes right Alt. Its Fn key
 selects Mac Fn. Other ordinary base keys retain the stock physical mapping.
@@ -38,10 +11,9 @@ selects Mac Fn. Other ordinary base keys retain the stock physical mapping.
 - **Fn+A:** select Windows.
 - **Fn+number:** F1–F12, on either OS pair.
 
-These use standard ZMK `&to`/`&mo` behaviors, so Studio can reassign them. The
-runtime OS selection is not persistent: power-on starts on Windows layer 0.
-Stock QMK intercepts its OS-mode bindings to save a persistent default; that
-board-specific interception is not part of standard ZMK `&to`.
+These use standard ZMK `&to`/`&mo` behaviors, so Studio can reassign them.
+The board controls integration observes OS selection and persists it through
+native settings. See [basic feature parity](ZMK-BASIC-PARITY.md).
 
 Pinned ZMK has no native USB host-OS detector or per-OS initial-layer table.
 The upstream [OS detection request](https://github.com/zmkfirmware/zmk/issues/2553)
@@ -92,12 +64,12 @@ claim a new Studio menu. The local HSB adapter also schedules native debounced
 persistence after hue/saturation/brightness commands; upstream sources are intact.
 
 RGB runtime persistence retains the native 60-second debounce and opaque saved
-representation. The latest callback snapshot remains pending through wireless
-mode, missing configured USB, storage contention and failed writes. Eligible
-saves use the existing runtime backend and recheck LEFT/wired/USB/service/storage
-gates at execution; retries are bounded to once per second. Startup behavior-ID
-writes keep their pre-enumeration route. Power loss can discard unsaved RAM;
-latched backend faults keep their existing fail-closed policy. See the
+representation. The latest snapshot remains pending through storage contention
+and failed writes. RGB is in the narrow wireless runtime-save allowlist;
+Studio keymaps and behavior-ID writes retain their wired gates. Execution
+rechecks role, power and service/storage conditions; retries are bounded to
+once per second. Power loss can discard unsaved RAM; latched backend faults
+retain their fail-closed policy. See the
 [native-path acceptance checklist](CUSTOM-BEHAVIOR-CHECKLIST.md).
 
 ## Integration and bounds
@@ -120,20 +92,13 @@ data, and cached frames replay every 200 ms after completion/failure so “off�
 packet loss and a restarted right half recover without another key press.
 Lighting never feeds the watchdog or enters the updater packet handler.
 
-The current installed RIGHT safely ignores this transaction. **Both halves need
-the new application for both-half lighting.** The normal wired image is the
-RIGHT candidate; Studio remains LEFT only. No right-only flashing procedure is
-introduced, and no device operation has been performed.
-
 ## Settings and memory
 
 The existing `0801c000..0801ffff` reservation and two 8 KiB banks are unchanged.
-Version-2 pages encode canonical binding names in two bytes and index 320 record
-offsets. Version-1 pages remain readable; mounting performs no migration writes.
-Compaction upgrades the inactive bank and commits last. Tests cover all 288
-12-byte bindings plus 16 behavior IDs, four names, layer order and RGB settings,
-then further compactions. Legacy migration is cut at every byte of both written
-pages, alongside the existing journal/compaction fault tests.
+Version-2 pages encode canonical binding names in two bytes. Version-1 pages
+remain readable; mounting performs no migration writes. Compaction upgrades
+the inactive bank and commits last. The store uses bounded flash traversal and
+a 344-entry logical limit; see [storage constraints](ZMK-BASIC-PARITY.md).
 
 Do not downgrade a modified v2 settings store to an old image expecting v1:
 that image cannot read new records and may fall back to an older bank. Keep a
@@ -144,23 +109,5 @@ retain real framed/escaped maximum-width request regression coverage. Studio
 RPC has 2560 bytes and main has 1024 bytes; scanner/serial/update/interrupt stacks
 are unchanged. Main loads settings and returns; flash writes execute on the
 separate 2048-byte update worker. The native RGB work queue retains its 768-byte
-stack. ARM `-fstack-usage` output was inspected: RPC main 168 bytes, largest
-nanopb decoder frame 144, backend load 104, store mount 56, snapshot scan 64 and
-checksum 264. These are individual frames, not measured worst-case call chains.
-Hardware stack watermarks remain required during supervised installation qualification.
-
-## Verification and installation boundary
-
-Run `make test`, `make test-zmk`, and the Studio, normal wired and qualification
-build targets after loading `scripts/project.sh`. All are device-independent.
-Native tests exercise encoding, DMA error/timeout/cleanup, clock wrap/frozen
-timer, exact half slicing, claimed-buffer ownership, CRC, loss/reordering,
-sequence wrap, “off” supersession and replay. They do not measure the actual
-LED waveform, GPIO power rails, USB latency, bus contention or stack high-water
-marks on this keyboard. No hardware lighting or four-layer Studio success is
-claimed yet.
-
-The [restart investigation](ZMK-WARM-RESTART-ANALYSIS.md) has no established fix.
-An installation now could again require a physical power cycle. Preserve the
-working keyboard until a supervised validation window; do not turn this offline
-candidate into an unattended flashing loop.
+stack. Build-time frame sizes do not establish worst-case call chains or hardware
+stack watermarks.

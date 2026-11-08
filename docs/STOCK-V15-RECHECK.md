@@ -1,4 +1,4 @@
-# Stock V15 recheck, 2026-10-09
+# Stock V15 power compatibility
 
 This report records seven differences in the **pre-fix** firmware. All seven
 are corrected by the 2026-10-09 follow-up; the findings below preserve the
@@ -78,31 +78,6 @@ permanent failure or reproduce the complete one-minute, both-halves-dark
 symptom on hardware. They do reproduce the stuck software state under the
 special-class conditions described above.
 
-## Verification scope and earlier blind spots
-
-The existing 1,238 bounded power comparisons and 12 broader ARM checks still
-pass. They cover the previously reconstructed peer payload, GPIO wake setup,
-acceptance gates, battery predicate, VIA controls, keymap/encoder/RGB tables,
-USB identity and selected board actions. Their success remains limited to their
-assertions.
-
-The earlier fixtures returned the same simulated value for local and
-synchronized clocks, and compared special hooks after manually applying the
-ordinary classifier. They also tested PRE mostly as a master and evaluated
-the ordinary cable predicate separately from the master task's flag refresh.
-Those boundaries hid the new mismatches. In particular, the earlier power
-report's description of the special radio gate as a prior UART cause was
-incorrect: byte +1 is the previous power state.
-
-The new harness executes the real current QMK synchronization arithmetic,
-complete stock/current STOP dispatch around a simulated physical STOP, PRE on
-both roles, and the mode-selection power prehook. It records 140 scenario rows
-plus 32 additional STOP/WAKE clock-gate checks across release/debug. Results,
-JSON observations, disassembly and the local harness are under
-`artifacts/analysis/stock-v15-recheck-2026-10-09/`. GPIO/time/radio/USB/private
-buffer boundaries are still simulated or intercepted. No physical device was
-read, reset or flashed, and the existing firmware packages were not replaced.
-
 ## Other differences and unresolved areas
 
 The STOP-entry race guard, persistent debug journal, EEPROM readers and resident
@@ -121,7 +96,7 @@ This review does not change the valid stored idle selector. The default is
 still five minutes; selector 1 is one minute, and stock's separate critical
 battery and disconnected-radio requests remain separate paths.
 
-## Fix validation, 2026-10-09
+## Maintained power behavior
 
 The maintained code now leaves peer UART pins unchanged during PRE, uses local
 power clocks, restores stock mode-sync wake, checks previous state for special
@@ -129,15 +104,3 @@ radio preparation, dispatches each STOP class once, gates physical STOP on the
 PRE device snapshot and cached USB cable bit, and refreshes the master cable
 flag before each power task. Physical USB resume also assigns special WAKE
 once before clearing its raw latch. The pending-wake entry guard is retained.
-
-The new regression runner compares the complete state, previous state, class,
-MCU STOP count and radio commands, including a rejected special wake followed
-by cable recovery. Both release/debug run the 140 scenarios and 32 additional
-clock checks with stock-equality assertions. Evidence is saved separately in
-`artifacts/analysis/stock-v15-edge-fixes-2026-10-09/`; the pre-fix evidence above
-is preserved. Native tests link the actual board special classifiers with the
-common state machine, rather than testing those hooks only in isolation.
-
-Full stock equivalence and the physical Bluetooth incident remain unverified.
-These fixes address demonstrated software differences; they do not establish
-which power class or event occurred on the user's hardware.
