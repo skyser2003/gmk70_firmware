@@ -1,140 +1,158 @@
 # GMK70 firmware
 
-Firmware for the ZUOYA GMK70 split keyboard (WB32FQ95). QMK/Vial support USB,
-Bluetooth and 2.4 GHz. Native ZMK supports joined split operation over USB and
-the existing stock radio; see the [wireless scope](docs/ZMK-WIRELESS.md).
+Custom firmware for the **ZUOYA GMK70** split keyboard:
 
-## Base versions
+- **QMK/VIA:** stock-oriented behavior with VIA configuration.
+- **QMK/Vial:** Vial configuration, advanced key features and readable GMK70 controls.
+- **ZMK:** native ZMK firmware with Studio configuration and one application for both halves.
 
-- **QMK/VIA:** official [QMK 0.34.4](https://github.com/qmk/qmk_firmware/tree/0.34.4).
-- **ZMK:** [pinned ZMK/Zephyr](firmware/zmk/PROVENANCE.md), one universal Studio image, native updater and separate bounded staging targets.
-- **Vial:** [vial-qmk at `dd43959ae5c0`](https://github.com/vial-kb/vial-qmk/commit/dd43959ae5c08d8a28d38a1acf7b04e86b14a344).
+All three use the original radio for Bluetooth and 2.4 GHz. The halves still
+need their bridge cable; configuration and firmware updates use USB.
 
-Upstream dependencies remain unmodified. Exact framework, library and
-toolchain versions are pinned in [sources.lock.json](dependencies/sources.lock.json).
-Project firmware sources live in `firmware/`.
+## Changes from stock
 
-Board/radio code is shared in `firmware/qmk-common/`. Framework and RGB
-integration are selected separately from `firmware/qmk-via/` and
-`firmware/qmk-vial/`.
+The QMK builds retain the stock custom-key numbering, Windows/Mac layouts and
+five-minute default idle sleep. Board-specific additions and integration fixes include:
 
-## What this repository provides
+- **Battery indicators with RGB off:** holding Show Battery or Show Charging
+  temporarily lights the indicators. Releasing the key restores darkness without
+  changing the saved RGB setting.
+- **Right-half RGB recovery (VIA/Vial):** LED power follows the synchronized
+  lighting setting, including when the right half starts with its LEDs disabled.
+- **Wake fixes (VIA/Vial):** delayed wake initialization preserves held modifiers,
+  and a local right-half wireless wake signals the left half to wake too.
+- **Key-release handling:** function/media shortcuts release the output selected
+  when pressed, even after an OS or function-mode change. Switching hosts clears
+  outgoing key reports; releasing or remapping a pairing key cancels pending pairing.
+- **Battery-reading validation:** stale or invalid percentages appear as unknown
+  instead of being used for a low-battery warning or shutdown.
+- **GMK70 controls:** readable names for board actions in Vial, and two extra
+  Studio key positions for remapping knob rotation without modifying Studio.
+- **Split updater:** update both halves through left USB after initial setup.
+- **Optional VIA tools:** updater EEPROM backups, debug diagnostics and
+  debug-updater persistent sleep logs. Normal Vial builds exclude these tools.
 
-- QMK/VIA release and debug builds, plus a fixed-keymap QMK build.
-- Shared board/radio integration targeting stock V15 behavior, including stock
-  default keymaps, custom keycodes, RGB lighting and five-minute default idle sleep.
-- Five-millisecond key debounce in both VIA and Vial builds.
-- Shared VIA/Vial idle interrupt scanning and physical pairing-hold guards,
-  plus ZMK LED supply control. See [custom feature parity](docs/CUSTOM-FEATURE-PARITY.md).
-- A [custom behavior checklist](docs/CUSTOM-BEHAVIOR-CHECKLIST.md) describes
-  native integration and hardware limits across VIA, Vial and ZMK.
-- Experimental Vial with keymap and knob remapping, macros, tap dances, combos,
-  key overrides, live QMK settings and VialRGB. See [Vial features](docs/VIAL-PORT.md).
-- Optional split updater: update both halves through the left half's USB connection.
-- QMK/VIA updater EEPROM backups, QMK debug split/sleep diagnostics and
-  debug-updater persistent sleep logs. Normal Vial builds exclude backups and diagnostics;
-  a separate [radio diagnostic build](docs/RADIO-DIAGNOSTICS.md) provides RAM counters.
+Current ZMK has fewer advanced key behaviors and simpler lighting than Vial.
+Complete stock equivalence and battery-life improvements are not established.
+See the [feature comparison and known issues](docs/CUSTOM-FEATURE-PARITY.md).
 
-The [universal ZMK Studio application](docs/ZMK-UNIVERSAL.md) serves both halves,
-selected by the PB9 role pin. LEFT owns the saved keymap and host services;
-RIGHT supplies its keys and RGB. Four Windows/Mac layers, lighting, battery
-actions, stock-radio selection and function/media flip are implemented. Studio
-exposes 72 physical keys and two virtual knob-rotation positions.
+## Downloads
 
-ZMK includes an explicitly unlocked updater and no permanent hardware watchdog.
-See the [updater workflow](docs/ZMK-PERMANENT-WIRED.md) for installation checks
-and recovery limits. Complete stock equivalence remains unverified.
+Open the newest release in the matching list and download its assets:
+
+| Firmware | Release page | Packages |
+| --- | --- | --- |
+| QMK/VIA | [VIA releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Avia-v&expanded=true) | Normal, debug and updater builds |
+| QMK/Vial | [Vial releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Avial-&expanded=true) | Normal, secure updater and unlocked updater builds |
+| ZMK Studio | [ZMK releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Azmk-v&expanded=true) | Universal Studio/updater build |
+
+These links show each family's releases newest first. Each release includes
+checksums and matching sources. Features described here follow `main`; published
+packages may not include every unreleased change.
+
+ZMK packages built from current `main` include first-install images and later
+application updates. Older releases may contain application updates only.
+Read the [updater instructions](#updating-firmware) before choosing a file.
+
+New builds of all three families provide **BIN firmware only**. BIN files do not contain
+flash addresses; choose the file and address shown below. Older releases may
+also include HEX files.
+
+## Configuration
+
+- **VIA:** enable the Design tab and load the
+  [original GMK70 JSON](definitions/via/ZUOYA_GMK70.json).
+- **Vial:** connect over USB; the layout loads from firmware. Named board
+  actions are in the User tab. Secure builds use **Escape + left Shift** when
+  Vial requests physical unlock. See [Vial controls](docs/VIAL-MANUAL-KEYS.md).
+- **ZMK Studio:** join the halves, select wired mode and connect left USB.
+  Select the keyboard's serial port in Studio, edit bindings and click Save.
+  See [Studio setup](docs/ZMK-STUDIO.md) and [knob remapping](docs/ZMK-KNOB-KEYS.md).
+
+Back up settings before updating. Independently rebuilt Vial images can reset
+mappings and macros; stock/VIA, Vial and ZMK settings are not interchangeable.
+ZMK and the separately named Vial `unlocked-updater` omit physical unlock;
+normal Vial/updater packages retain it.
+
+For source-level configuration:
+
+| Area | Files |
+| --- | --- |
+| Shared QMK/VIA/Vial board settings and default map | [config.h](firmware/qmk-common/keyboards/zuoya/gmk70/config.h), [stock_keymap.h](firmware/qmk-common/keyboards/zuoya/gmk70/keymaps/stock_keymap.h) |
+| Vial features, capacities and labels | [Vial keymap directory](firmware/qmk-vial/keymaps/vial/) |
+| ZMK defaults and Studio options | [keymap](firmware/zmk/boards/zuoya/gmk70_wired/gmk70_wired.keymap), [studio.conf](firmware/zmk/boards/zuoya/gmk70_wired/studio.conf) |
 
 ## Build
 
-Use Linux x86_64 or WSL2 with Git, make, curl, tar, xz, a native C compiler, a
-C++20-capable native `c++` compiler and Python 3.12 or newer. The C++ compiler
-is used by the native USB/B1 regression. Setup installs the ARM compiler and
-Python build tools locally.
+Use Linux x86_64 or WSL2 with Git, make, curl, tar, xz, a C compiler, a
+C++20 compiler and Python 3.12+. From the repository root:
 
 ```sh
-make setup        # pinned QMK sources and build tools
-make setup-vial   # additionally prepare pinned Vial sources, if needed
+source scripts/project.sh
+make setup        # QMK sources, ARM compiler and Python tools
+make setup-vial   # additionally required for Vial
+make setup-zmk    # additionally required for ZMK
 ```
 
-Choose a build target:
+Choose the corresponding build:
 
 | Command | Output |
 | --- | --- |
-| `make build` | QMK/VIA release and debug |
-| `make build-release` | QMK/VIA release |
-| `make build-debug` | QMK/VIA with diagnostics |
-| `make build-default` | Fixed-keymap QMK without VIA |
-| `make build-updater` | QMK/VIA release and debug with split updater |
+| `make build` | VIA release and debug firmware |
+| `make build-updater` | VIA release and debug updater packages |
 | `make build-vial` | Normal Vial firmware |
-| `make build-vial-updater` | Vial firmware with split updater |
-| `make build-vial-radio-diagnostic` | Optional Vial updater with RAM radio capture |
-| `make build-zmk-wired-studio-updater` | Universal Studio image, persistent settings and Feature updater |
-| `make build-zmk-wired-updater` | Native permanent wired ZMK application/updater A |
-| `make build-zmk-release` | Universal ZMK Studio release package and matching sources |
-| `make build-zmk-wired-update-test` | Different native wired update-test image B |
-| `make build-zmk-wired-qualification` | Bounded no-feed staging Q; trial packages only |
-| `make build-zmk` | Experimental left ZMK staging trial; requires `make setup-zmk` |
-| `make build-zmk-right-trial` | Experimental right ZMK trial with post-main reset proof |
+| `make build-vial-updater` | Vial with secure split updater |
+| `make build-vial-unlocked-updater` | Vial with permanently unlocked updater |
+| `make build-updater-debug && make build-zmk-release` | Reviewed resident prerequisite, then universal ZMK Studio package |
 
-Builds write firmware, checksums and matching source archives to
-`artifacts/qmk/<variant>/` or `artifacts/vial/<variant>/`. ZMK outputs are under
-`artifacts/zmk/{wired-studio-updater,wired-updater,wired-update-test,wired-qualification,left-trial,right-trial}/`;
-see the [build instructions](firmware/zmk/README.md). Native A/B packages use
-`profile=zmk`, require the exact existing resident and do not emit a full initial
-installer. The universal Studio package uses `profile=zmk-studio-universal`,
-with a 104KiB application limit and separate 16KiB settings reservation.
-Qualification Q emits target-specific staging packages only.
-Builds read `dependencies/` and `firmware/` directly, without copying or symlinking
-source trees. Generated headers and objects live under `.work/`; `make clean`
-removes them. See [external-source builds](docs/EXTERNAL-BUILD.md).
-Build and test commands do not flash or reset a keyboard.
+Outputs are under `artifacts/qmk/`, `artifacts/vial/` and
+`artifacts/zmk/wired-studio-updater/`. Setup initializes pinned dependencies;
+builds use them directly without copying or symlinking source trees.
+See [build architecture](docs/EXTERNAL-BUILD.md) and
+[additional ZMK targets](firmware/zmk/README.md).
 
 ```sh
-make test         # firmware regression tests
-make check-tools  # Python formatting, lint, type checks and tests
+make test check-tools   # firmware regressions and Python tooling checks
+make test-zmk           # additional ZMK tests after ZMK setup
 ```
 
-GitHub Actions runs general checks and firmware builds only on pushes to
-`release/via`, `release/vial` or `release/zmk`. Each branch publishes its own family,
-with independent `via-vX.X.X`, `vial-X.X.X` and `zmk-vX.X.X` patch versions. ZMK
-publishes the universal Studio/updater image; trials and diagnostic images are
-excluded. Pushes to `main` or other branches, PRs, tags and manual events do not
-start the workflow. See [release instructions](docs/RELEASING.md).
+Build and test commands do not flash or reset the keyboard.
 
-## Using the firmware
+## Updating firmware
 
-For native ZMK, see the [Studio workflow](docs/ZMK-STUDIO.md) and the
-[wired updater workflow](docs/ZMK-PERMANENT-WIRED.md).
-Transfer and installation verification are separate; never replay INSTALL after a
-restart-verification timeout.
+Initial VIA/Vial updater and ZMK installation uses `install.bin`
+on each half separately and requires verified 256 KB MCUs. These images contain
+the resident and application; a full ZMK installation clears saved ZMK settings.
+Later updates use `application.bin` and `update.json` through left USB in wired mode, with the
+halves linked. See the [split-updater guide](docs/SPLIT-UPDATER.md).
 
-For QMK/Vial and the universal ZMK Studio package, back up your configuration
-before updating and use the same application build on both halves. Experimental
-staging trials use a [separate launcher](docs/ZMK-TRIAL-LAUNCHER.md).
-Stock/VIA and Vial use different EEPROM layouts; independently rebuilt
-Vial images reset dynamic mappings and macros.
+| BIN file | Purpose | Flash address |
+| --- | --- | --- |
+| Normal VIA/Vial firmware | Direct installation without the split updater | `0x08000000` |
+| `install.bin` | First installation with the resident updater | `0x08000000` |
+| `application.bin` + `update.json` | Later updates through the resident updater | `0x08002000`, handled by the updater |
 
-- **VIA:** load the [original GMK70 definition](definitions/via/ZUOYA_GMK70.json)
-  through the Design tab. See [compatibility and migration](docs/STOCK-COMPATIBILITY.md).
-- **Vial:** the layout is embedded. Physical unlock uses **Escape + left Shift**.
+Do not flash `application.bin` at the start of flash. `resident.bin` is included
+for package validation; it is not the complete keyboard firmware.
 
-## Split updater
+ZMK uses the same resident installer but a different inter-half updater transport.
+Moving between QMK/Vial and canonical ZMK through the split updater requires the
+[migration bridge and documented sequence](docs/ZMK-NATIVE-UPDATER-WIRE.md).
+Direct first installation on both halves does not need that bridge.
+Permanent ZMK has no hardware watchdog or automatic old-image rollback; see
+[installation and recovery](docs/ZMK-PERMANENT-WIRED.md).
 
-Updater builds contain a small resident installer and the keyboard application.
-Initially install `install.bin` or `install.hex` on each half separately over USB;
-each half must have a verified 256 KB MCU.
+## Versions and releases
 
-For later QMK/Vial updates, connect the left half by USB in wired mode and keep the halves
-linked. The host tool uses `application.bin` and `update.json` from a compatible
-updater package, updating and verifying the right half through the split cable
-before updating the left. Incoming images are staged and checked before the
-resident installer replaces the application. Vial updates require physical unlock.
+- **QMK/VIA:** [QMK 0.34.4](https://github.com/qmk/qmk_firmware/tree/0.34.4).
+- **Vial:** [vial-qmk `dd43959ae5c0`](https://github.com/vial-kb/vial-qmk/commit/dd43959ae5c08d8a28d38a1acf7b04e86b14a344).
+- **ZMK/Zephyr:** [pinned revisions and provenance](firmware/zmk/PROVENANCE.md).
 
-See the [updater guide](docs/SPLIT-UPDATER.md) for compatibility requirements,
-detailed flashing instructions and recovery behavior.
+Upstream dependencies remain unmodified. Exact versions are in
+[sources.lock.json](dependencies/sources.lock.json); licenses and source origins
+are documented in [BUNDLED-SOURCES.md](docs/BUNDLED-SOURCES.md).
 
-Additional details: [stock reconstruction](docs/STOCK-V15-RECONSTRUCTION.md),
-[EEPROM backups](docs/EEPROM-QUERIES.md),
-[persistent logs](docs/PERSISTENT-SLEEP-LOG.md), and
-[source provenance and licenses](docs/BUNDLED-SOURCES.md).
+GitHub Actions runs checks, builds and publication only on pushes to
+`release/via`, `release/vial` or `release/zmk`, with separate automatic patch
+versions. Ordinary `main` pushes do not run Actions.
+See [release automation](docs/RELEASING.md).
