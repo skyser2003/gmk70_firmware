@@ -12,7 +12,7 @@ from typing import TypedDict, cast
 from firmware_assets import asset_name, asset_stem, verify_package
 
 FAMILIES = {
-    "via": ("via-release", "via-debug", "via-release-updater", "via-debug-updater"),
+    "via": ("via-release", "via-release-updater"),
     "vial": ("vial", "vial-updater", "vial-unlocked-updater"),
     "zmk": ("zmk", "zmk-standalone"),
 }

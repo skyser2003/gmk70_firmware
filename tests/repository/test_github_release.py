@@ -45,7 +45,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(vial["family"], "vial")
         self.assertEqual(
             set(via["variants"]),
-            {"via-release", "via-debug", "via-release-updater", "via-debug-updater"},
+            {"via-release", "via-release-updater"},
         )
         self.assertEqual(
             set(vial["variants"]), {"vial", "vial-updater", "vial-unlocked-updater"}
@@ -263,15 +263,39 @@ class ReleaseTests(unittest.TestCase):
             with self.subTest(family=family):
                 output = self.assets(family)
                 variant = self.release.FAMILIES[family][0]
-                artifact = output / f"gmk70-{variant}.hex"
+                stem = self.release.asset_stem(variant)
+                artifact = output / f"{stem}.hex"
                 artifact.write_bytes(b"obsolete HEX firmware")
-                with (output / f"gmk70-{variant}.sha256").open("a") as manifest:
+                with (output / f"{stem}.sha256").open("a") as manifest:
                     manifest.write(
                         f"{hashlib.sha256(artifact.read_bytes()).hexdigest()}  {artifact.name}\n"
                     )
                 with self.assertRaisesRegex(ValueError, "Unsupported release asset"):
                     self.release.verify_assets(output, family)
                 self.assertFalse((output / "SHA256SUMS").exists())
+
+    def test_via_release_names_exclude_debug_downloads(self) -> None:
+        output = self.assets("via")
+        self.release.verify_assets(output, "via")
+        self.assertEqual(
+            {path.name for path in output.iterdir()},
+            {
+                "gmk70-via.bin",
+                "gmk70-via.sha256",
+                "gmk70-via-updater.zip",
+                "gmk70-via-updater.sha256",
+                "SHA256SUMS",
+            },
+        )
+        for name in ("gmk70-via-debug.bin", "gmk70-via-debug-updater.zip"):
+            artifact = output / name
+            artifact.write_bytes(b"debug firmware must stay local")
+            with (
+                self.subTest(name=name),
+                self.assertRaisesRegex(ValueError, "Unexpected release assets"),
+            ):
+                self.release.verify_assets(output, "via")
+            artifact.unlink()
 
     def test_corrupt_release_asset_blocks_publication(self) -> None:
         output = self.assets("vial")

@@ -42,7 +42,7 @@ Open the newest release in the matching list and download its assets:
 
 | Firmware | Release page | Packages |
 | --- | --- | --- |
-| QMK/VIA | [VIA releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Avia-v&expanded=true) | Normal, debug and updater builds |
+| QMK/VIA | [VIA releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Avia-v&expanded=true) | Release firmware, normal and updater |
 | QMK/Vial | [Vial releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Avial-&expanded=true) | Normal, secure updater and unlocked updater builds |
 | ZMK Studio | [ZMK releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Azmk-v&expanded=true) | Universal Studio updater and standalone builds |
 

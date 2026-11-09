@@ -129,6 +129,8 @@ class GitHubPackageTests(unittest.TestCase):
                 dist = self.root / "dist"
                 dist.mkdir(exist_ok=True)
                 stem = {
+                    "via-release": "gmk70-via",
+                    "via-release-updater": "gmk70-via-updater",
                     "vial-unlocked-updater": "gmk70-vial-unlocked",
                     "zmk": "gmk70-zmk-updater",
                     "zmk-standalone": "gmk70-zmk",

@@ -11,6 +11,8 @@ INNER_CHECKSUMS = "FIRMWARE-SHA256SUMS"
 
 def asset_stem(variant: str) -> str:
     names = {
+        "via-release": "via",
+        "via-release-updater": "via-updater",
         "vial-unlocked-updater": "vial-unlocked",
         "zmk": "zmk-updater",
         "zmk-standalone": "zmk",

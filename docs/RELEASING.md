@@ -6,7 +6,7 @@ run the workflow. No manual tag or Actions trigger is needed.
 
 | Branch | Packages | Tags |
 | --- | --- | --- |
-| `release/via` | VIA release/debug, normal and updater | `via-vX.X.X` |
+| `release/via` | VIA release firmware, normal and updater | `via-vX.X.X` |
 | `release/vial` | Vial normal, updater and unlocked updater | `vial-X.X.X` |
 | `release/zmk` | ZMK Studio updater and standalone | `zmk-vX.X.X` |
 
@@ -22,6 +22,8 @@ git push origin release/zmk
 Downloads contain only firmware and checksums:
 
 - Normal VIA/Vial and standalone ZMK: one `.bin` per variant.
+- VIA publishes `gmk70-via.bin` and `gmk70-via-updater.zip` from the release
+  configuration. Debug builds remain available locally and are not published.
 - ZMK uses `gmk70-zmk.bin` for normal firmware and `gmk70-zmk-updater.zip`
   for the updater, matching the VIA/Vial naming pattern.
 - Updaters: one `.zip` containing `application.bin`, `install.bin`,
