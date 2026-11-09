@@ -1,0 +1,5 @@
+{
+  "via": {"tag": "via-v0.1.5", "commit": "937d6f15e96477ab73ecc7aa636faff153307979"},
+  "vial": {"tag": "vial-0.1.7", "commit": "2b004b3b67bead73ed6239ba2c77bf0988adb8af"},
+  "zmk": {"tag": "zmk-v0.1.2", "commit": "7001972a5299c32f185c6aed697cdaa8bf149259"}
+}
