@@ -9,6 +9,25 @@ build-updater-release:
 build-updater-debug:
 	bash ./scripts/build.sh qmk debug updater
 .PHONY: build-updater build-updater-release build-updater-debug
+
+# All Docker commands use the same mounted checkout and isolated tool caches.
+docker-image:
+	bash ./scripts/docker.sh image
+docker-setup:
+	bash ./scripts/docker.sh setup
+docker-build:
+	bash ./scripts/docker.sh run bash -c 'make build build-vial build-updater-debug && make build-zmk-release'
+docker-build-via:
+	bash ./scripts/docker.sh run make build
+docker-build-vial:
+	bash ./scripts/docker.sh run make build-vial
+docker-build-zmk:
+	bash ./scripts/docker.sh run bash -c 'make build-updater-debug && make build-zmk-release'
+docker-test:
+	bash ./scripts/docker.sh run make test check-tools test-zmk
+docker-shell:
+	bash ./scripts/docker.sh shell
+.PHONY: docker-image docker-setup docker-build docker-build-via docker-build-vial docker-build-zmk docker-test docker-shell
 build-qmk-via: build-release
 build-diagnostic: build-debug
 build-default: build-qmk-default

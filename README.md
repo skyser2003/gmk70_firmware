@@ -84,6 +84,87 @@ For source-level configuration:
 
 ## Build
 
+### Docker (recommended)
+
+Install Docker Engine with BuildKit or Docker Desktop, plus Git, Bash and make.
+On Windows, clone and run inside the WSL2 Linux filesystem with Docker integration
+enabled. The image targets Linux amd64; ARM hosts need Docker's amd64 emulation.
+From the repository root:
+
+```sh
+make docker-image              # build the tools image
+make docker-setup              # fetch pinned dependencies for all three families
+make docker-build              # VIA release/debug, Vial and universal ZMK Studio
+make docker-test               # firmware regressions, Python checks and ZMK tests
+```
+
+Docker defaults to **xPack ARM GCC 14.2.1-1.1**, downloaded from its official
+GitHub release and verified against the SHA-256 in
+[sources.lock.json](dependencies/sources.lock.json). No compiler override is needed.
+The Ubuntu 24.04 base image is pinned by digest; setup also verifies uv 0.8.22,
+initializes the locked framework commits and installs frozen Python dependencies.
+System packages use the versions available when the image is built.
+
+Only image creation and dependency setup use the network. Builds, tests and
+shells run with Docker networking disabled and uv in offline mode. Re-run setup
+after dependency or Python lockfile changes; rebuild the image after Dockerfile
+changes. Builds use maintained sources directly without copying or symlinking them.
+
+| Command | Result |
+| --- | --- |
+| `make docker-build` | VIA release/debug, normal Vial, VIA debug resident prerequisite, then universal ZMK Studio |
+| `make docker-build-via` | VIA release/debug |
+| `make docker-build-vial` | Normal Vial |
+| `make docker-build-zmk` | VIA debug resident prerequisite, then universal ZMK Studio |
+| `make docker-test` | `make test check-tools test-zmk` |
+| `make docker-shell` | Interactive offline shell with the project environment loaded |
+
+Other existing targets can run through the wrapper, including updater builds:
+
+```sh
+bash scripts/docker.sh run make build-updater build-vial-updater
+JOBS=4 make docker-build
+```
+
+Outputs stay in `artifacts/qmk/`, `artifacts/vial/` and
+`artifacts/zmk/wired-studio-updater/`, owned by the invoking user. Container
+downloads, compilers and intermediates live under `.work/docker/xpack/work/`;
+Python environments live under `.work/docker/xpack/venvs/`. Native caches and
+Python environments are preserved. Sources and artifacts are shared, so run
+native and Docker builds sequentially in the same checkout. Git linked worktrees
+are supported, and source archives include the Docker build configuration.
+
+The root `.env`/`.envrc` is loaded through `scripts/project.sh`. Existing
+`GMK70_TOOLCHAIN` overrides are honored; unset the variable and remove any
+`.env`/`.envrc` override to use Docker's xPack default. The original Arm GNU
+14.2.rel1 compiler remains available explicitly:
+
+```sh
+export GMK70_TOOLCHAIN=arm
+make docker-setup
+make docker-build docker-test
+```
+
+Both compilers have separate archive checksums and Docker caches; setup never
+silently switches distributions on failure. The selected compiler is recorded in
+each variant's `build-info.txt`, and ZMK validates its required resident hash.
+
+Use Docker's normal proxy configuration. For an inspecting proxy, set
+`GMK70_DOCKER_CA_BUNDLE=/absolute/path/to/combined-ca-bundle.pem` before image
+creation and setup. The bundle is passed as a BuildKit secret or read-only mount
+with TLS verification enabled. Managed cloud sessions with `CODEX_PROXY_CERT`
+use the system combined bundle automatically. The default compiler requires
+GitHub release asset access; the optional Arm compiler also requires
+`developer.arm.com` and `armkeil.blob.core.windows.net`. Setup additionally needs
+the framework repositories, Python package indexes and Ubuntu package servers.
+
+`GMK70_DOCKER_IMAGE` overrides the local image tag (`gmk70-build:ubuntu24.04`);
+`JOBS` controls build parallelism (default: 8). Only the `docker/` directory enters
+the image build context. See [Docker setup](docs/DOCKER-BUILD.md) for cache cleanup,
+partial setup, worktree mounts and source archive details.
+
+### Native
+
 Use Linux x86_64 or WSL2 with Git, make, curl, tar, xz, a C compiler, a
 C++20 compiler and Python 3.12+. From the repository root:
 
@@ -93,6 +174,12 @@ make setup        # QMK sources, ARM compiler and Python tools
 make setup-vial   # additionally required for Vial
 make setup-zmk    # additionally required for ZMK
 ```
+
+Native builds retain `GMK70_TOOLCHAIN=arm` as their default. To use the same xPack
+compiler as Docker, export `GMK70_TOOLCHAIN=xpack` **before** sourcing
+`scripts/project.sh` and running setup. When switching native compilers, clear
+the generated `.work/qmk/`, `.work/vial/` and `.work/zmk/` build caches first.
+The exported selector also applies to Docker commands launched from that shell.
 
 Choose the corresponding build:
 

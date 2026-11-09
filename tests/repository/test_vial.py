@@ -266,6 +266,7 @@ class VialTests(unittest.TestCase):
                 "tests",
                 "tools",
                 "docs",
+                "docker",
                 ".github",
             )
             files = {
@@ -304,6 +305,7 @@ class VialTests(unittest.TestCase):
             with tarfile.open(output) as archive:
                 archive.extractall(exported, filter="data")
             self.assertFalse((exported / "dependencies/qmk").exists())
+            self.assertEqual((exported / "docker/source.txt").read_text(), "docker")
             for unrelated in ("zmk", "zephyr", "modules"):
                 self.assertFalse((exported / "dependencies" / unrelated).exists())
             self.assertEqual(

@@ -245,6 +245,7 @@ def export_sources(root: Path, output: Path, platform: str = "qmk") -> None:
         "tests",
         "tools",
         "docs",
+        "docker",
         ".github",
         "Makefile",
         "README.md",

@@ -34,13 +34,17 @@ if [[ ! -x "$uv_binary" ]]; then
         .work/downloads/uv.tar.gz 741ff1f5742c5a4a25d2f829e8395355e43f7a5ae2ebc6368e9ae2df0efb69cf
     tar -xzf .work/downloads/uv.tar.gz -C .work/toolchains
 fi
-arm_directory=".work/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi"
+arm_directory=".work/toolchains/$arm_toolchain_name"
+[[ ! -L "$arm_directory" ]] || { printf 'Redirected compiler directory: %s\n' "$arm_directory" >&2; exit 2; }
 if [[ ! -x "$arm_directory/bin/arm-none-eabi-gcc" ]]; then
-    arm_url="$(python3 -c 'import json; print(json.load(open("dependencies/sources.lock.json"))["arm_toolchain"]["url"])')"
-    arm_sha="$(python3 -c 'import json; print(json.load(open("dependencies/sources.lock.json"))["arm_toolchain"]["sha256"])')"
-    fetch_verified "$arm_url" .work/downloads/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz "$arm_sha"
-    tar -xJf .work/downloads/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz -C .work/toolchains
+    arm_url="$(python3 -c 'import json, sys; print(json.load(open("dependencies/sources.lock.json"))[sys.argv[1]]["url"])' "$arm_toolchain_lock")"
+    arm_sha="$(python3 -c 'import json, sys; print(json.load(open("dependencies/sources.lock.json"))[sys.argv[1]]["sha256"])' "$arm_toolchain_lock")"
+    arm_archive=".work/downloads/${arm_url##*/}"
+    fetch_verified "$arm_url" "$arm_archive" "$arm_sha"
+    tar -xf "$arm_archive" -C .work/toolchains
 fi
+printf 'Selected compiler: %s\n' "$GMK70_TOOLCHAIN"
+"$arm_directory/bin/arm-none-eabi-gcc" --version
 "$uv_binary" sync --frozen --project tools/build-support
 "$uv_binary" sync --frozen --project tools/keymap-migration
 "$uv_binary" sync --frozen --project tools/battery-diagnostics
