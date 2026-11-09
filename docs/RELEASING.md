@@ -22,6 +22,8 @@ git push origin release/zmk
 Downloads contain only firmware and checksums:
 
 - Normal VIA/Vial and standalone ZMK: one `.bin` per variant.
+- ZMK uses `gmk70-zmk.bin` for normal firmware and `gmk70-zmk-updater.zip`
+  for the updater, matching the VIA/Vial naming pattern.
 - Updaters: one `.zip` containing `application.bin`, `install.bin`,
   `resident.bin`, the required `update.json` and `FIRMWARE-SHA256SUMS`.
 - The unlocked Vial package is `gmk70-vial-unlocked.zip`.

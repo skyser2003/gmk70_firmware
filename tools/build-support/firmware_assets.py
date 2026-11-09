@@ -10,9 +10,12 @@ INNER_CHECKSUMS = "FIRMWARE-SHA256SUMS"
 
 
 def asset_stem(variant: str) -> str:
-    return "gmk70-" + (
-        "vial-unlocked" if variant == "vial-unlocked-updater" else variant
-    )
+    names = {
+        "vial-unlocked-updater": "vial-unlocked",
+        "zmk": "zmk-updater",
+        "zmk-standalone": "zmk",
+    }
+    return "gmk70-" + names.get(variant, variant)
 
 
 def is_updater(variant: str) -> bool:

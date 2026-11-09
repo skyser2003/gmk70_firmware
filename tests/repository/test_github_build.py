@@ -128,11 +128,11 @@ class GitHubPackageTests(unittest.TestCase):
                 source = self.fixture(variant)
                 dist = self.root / "dist"
                 dist.mkdir(exist_ok=True)
-                stem = (
-                    "gmk70-vial-unlocked"
-                    if variant == "vial-unlocked-updater"
-                    else f"gmk70-{variant}"
-                )
+                stem = {
+                    "vial-unlocked-updater": "gmk70-vial-unlocked",
+                    "zmk": "gmk70-zmk-updater",
+                    "zmk-standalone": "gmk70-zmk",
+                }.get(variant, f"gmk70-{variant}")
                 for suffix in (".tar.gz", ".hex", ".zip"):
                     (dist / f"gmk70-{variant}{suffix}").write_text("obsolete")
                 self.build.package_variant(self.root, variant)
@@ -182,6 +182,31 @@ class GitHubPackageTests(unittest.TestCase):
                     )
         self.assertFalse(list((self.root / "dist").glob("*.tar.gz")))
         self.assertFalse(list((self.root / "dist").glob("*unlocked-updater*")))
+
+    def test_zmk_packages_preserve_each_other_in_either_build_order(self) -> None:
+        updater = self.fixture("zmk")
+        standalone = self.fixture("zmk-standalone")
+        for order in (("zmk", "zmk-standalone"), ("zmk-standalone", "zmk")):
+            with self.subTest(order=order):
+                for variant in order:
+                    self.build.package_variant(self.root, variant)
+                dist = self.root / "dist"
+                self.assertEqual(
+                    (dist / "gmk70-zmk.bin").read_bytes(),
+                    (standalone / "zmk.bin").read_bytes(),
+                )
+                with zipfile.ZipFile(dist / "gmk70-zmk-updater.zip") as archive:
+                    self.assertEqual(
+                        archive.read("application.bin"),
+                        (updater / "application.bin").read_bytes(),
+                    )
+                for stem in ("gmk70-zmk", "gmk70-zmk-updater"):
+                    digest, name = (
+                        (dist / f"{stem}.sha256").read_text().strip().split("  ")
+                    )
+                    self.assertEqual(
+                        hashlib.sha256((dist / name).read_bytes()).hexdigest(), digest
+                    )
 
     def test_standalone_rejects_updater_artifacts_and_report(self) -> None:
         source = self.fixture("zmk-standalone")

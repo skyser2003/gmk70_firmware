@@ -117,9 +117,17 @@ def repack(repository: str, family: str, tag: str, commit: str) -> None:
                     raise ValueError(f"No existing firmware package for {variant}")
                 unpack_firmware(download(name), name, source)
             else:
-                (source / image_name(variant)).write_bytes(
-                    download(asset_name(variant))
+                name = next(
+                    (
+                        name
+                        for name in (asset_name(variant), f"gmk70-{variant}.bin")
+                        if name in old_assets
+                    ),
+                    None,
                 )
+                if name is None:
+                    raise ValueError(f"No existing firmware image for {variant}")
+                (source / image_name(variant)).write_bytes(download(name))
             write_package(source, output, variant)
         verify_assets(output, family)
         notes = root / "notes.md"

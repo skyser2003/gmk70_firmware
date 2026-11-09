@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import TypedDict, cast
 
-from firmware_assets import asset_stem, write_package
+from firmware_assets import asset_name, asset_stem, write_package
 
 ROOT = Path(__file__).resolve().parents[2]
 VARIANTS = {
@@ -144,9 +144,17 @@ def package_variant(root: Path, variant: str) -> None:
         staging = Path(temporary)
         write_package(source, staging, variant)
         # Clean only this variant's old outputs; other family assets are untouched.
+        protected = {
+            name
+            for other in VARIANTS
+            if other != variant
+            for name in (asset_name(other), f"{asset_stem(other)}.sha256")
+        }
         for old_stem in {stem, f"gmk70-{variant}"}:
             for suffix in (".tar.gz", ".hex", ".bin", ".zip", ".sha256"):
-                (destination / f"{old_stem}{suffix}").unlink(missing_ok=True)
+                name = f"{old_stem}{suffix}"
+                if name not in protected:
+                    (destination / name).unlink(missing_ok=True)
         for path in staging.iterdir():
             path.replace(destination / path.name)
     print(f"Packaged {variant} in {destination}")

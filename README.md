@@ -50,8 +50,8 @@ These links show each family's releases newest first. Each release includes
 firmware and checksums. Features described here follow `main`; published
 packages may not include every unreleased change.
 
-ZMK provides `gmk70-zmk-standalone.bin` for per-half factory USB DFU installation
-without an updater, and `gmk70-zmk.zip` for first installation and later split
+ZMK provides `gmk70-zmk.bin` for per-half factory USB DFU installation
+without an updater, and `gmk70-zmk-updater.zip` for first installation and later split
 application updates. Updater ZIPs include only firmware, the required update manifest and checksums.
 The unlocked Vial package is named `gmk70-vial-unlocked.zip`.
 Older releases may contain application updates only.
