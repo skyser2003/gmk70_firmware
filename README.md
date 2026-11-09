@@ -47,12 +47,13 @@ Open the newest release in the matching list and download its assets:
 | ZMK Studio | [ZMK releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Azmk-v&expanded=true) | Universal Studio updater and standalone builds |
 
 These links show each family's releases newest first. Each release includes
-checksums and matching sources. Features described here follow `main`; published
+firmware and checksums. Features described here follow `main`; published
 packages may not include every unreleased change.
 
 ZMK provides `gmk70-zmk-standalone.bin` for per-half factory USB DFU installation
 without an updater, and `gmk70-zmk.zip` for first installation and later split
-application updates. The standalone build also has a ZIP with instructions.
+application updates. Updater ZIPs include only firmware, the required update manifest and checksums.
+The unlocked Vial package is named `gmk70-vial-unlocked.zip`.
 Older releases may contain application updates only.
 Read the [updater instructions](#updating-firmware) before choosing a file.
 

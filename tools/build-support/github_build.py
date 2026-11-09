@@ -4,12 +4,12 @@ import argparse
 import hashlib
 import json
 import re
-import shutil
 import subprocess
-import tarfile
 import tempfile
 from pathlib import Path
 from typing import TypedDict, cast
+
+from firmware_assets import asset_stem, write_package
 
 ROOT = Path(__file__).resolve().parents[2]
 VARIANTS = {
@@ -64,7 +64,7 @@ def package_variant(root: Path, variant: str) -> None:
     folder = keymap + (f"-{mode}" if mode != "normal" else "")
     source = root / "artifacts" / platform / folder
     target = f"zuoya_gmk70_{keymap}"
-    stem = f"gmk70-{variant}"
+    stem = asset_stem(variant)
     manifest = source / "SHA256SUMS"
     if manifest.is_symlink():
         raise ValueError(f"Redirected checksum manifest: {manifest}")
@@ -85,7 +85,7 @@ def package_variant(root: Path, variant: str) -> None:
             if hashlib.file_digest(handle, "sha256").hexdigest() != digest:
                 raise ValueError(f"Checksum mismatch: {name}")
         files.add(name)
-    required = {"source.tar.gz", "sources.lock.json", "build-info.txt"}
+    required = {"sources.lock.json", "build-info.txt"}
     if platform == "zmk":
         required.update(
             {
@@ -134,37 +134,19 @@ def package_variant(root: Path, variant: str) -> None:
         )
     elif platform != "zmk":
         required.add(f"{target}.bin")
-    if platform in ("vial", "zmk"):
-        required.update({f"{stem}.zip", "README.txt", "FIRMWARE-SHA256SUMS"})
     if missing := required - files:
         raise ValueError(f"Missing required artifacts: {', '.join(sorted(missing))}")
     if platform == "zmk":
         verify_zmk_report(source, keymap)
-    files.add("SHA256SUMS")
-    if (source / "build.log").is_file() and not (source / "build.log").is_symlink():
-        files.add("build.log")
     destination = root / "dist"
     destination.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f".{stem}-", dir=destination) as temporary:
         staging = Path(temporary)
-        archive = staging / f"{stem}.tar.gz"
-        with tarfile.open(archive, "w:gz") as bundle:
-            for name in sorted(files):
-                bundle.add(source / name, arcname=name, recursive=False)
-        if mode == "normal" and platform != "zmk":
-            shutil.copyfile(source / f"{target}.bin", staging / f"{stem}.bin")
-        if variant == "zmk-standalone":
-            shutil.copyfile(source / "zmk.bin", staging / f"{stem}.bin")
-        if platform in ("vial", "zmk"):
-            shutil.copyfile(source / f"{stem}.zip", staging / f"{stem}.zip")
-        checksums = []
-        for path in sorted(staging.iterdir()):
-            with path.open("rb") as handle:
-                checksums.append(
-                    f"{hashlib.file_digest(handle, 'sha256').hexdigest()}  {path.name}\n"
-                )
-        (staging / f"{stem}.sha256").write_text("".join(checksums))
-        (destination / f"{stem}.hex").unlink(missing_ok=True)
+        write_package(source, staging, variant)
+        # Clean only this variant's old outputs; other family assets are untouched.
+        for old_stem in {stem, f"gmk70-{variant}"}:
+            for suffix in (".tar.gz", ".hex", ".bin", ".zip", ".sha256"):
+                (destination / f"{old_stem}{suffix}").unlink(missing_ok=True)
         for path in staging.iterdir():
             path.replace(destination / path.name)
     print(f"Packaged {variant} in {destination}")
@@ -172,7 +154,7 @@ def package_variant(root: Path, variant: str) -> None:
 
 def build_variant(root: Path, variant: str) -> None:
     command = (
-        ["bash", "scripts/build_zmk_release.sh", VARIANTS[variant][1]]
+        ["bash", "scripts/build_zmk.sh", VARIANTS[variant][1]]
         if VARIANTS[variant][0] == "zmk"
         else ["bash", "scripts/build.sh", *VARIANTS[variant]]
     )
@@ -183,10 +165,14 @@ def build_variant(root: Path, variant: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("variant", nargs="?", default="all", choices=("all", *VARIANTS))
+    parser.add_argument("--package-only", action="store_true")
     args = parser.parse_args()
     try:
         for variant in VARIANTS if args.variant == "all" else (args.variant,):
-            build_variant(ROOT, variant)
+            if args.package_only:
+                package_variant(ROOT, variant)
+            else:
+                build_variant(ROOT, variant)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"Firmware packaging failed: {error}\n")
 

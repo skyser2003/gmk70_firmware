@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 from typing import TypedDict, cast
 
+from firmware_assets import asset_name, asset_stem, verify_package
+
 FAMILIES = {
     "via": ("via-release", "via-debug", "via-release-updater", "via-debug-updater"),
     "vial": ("vial", "vial-updater", "vial-unlocked-updater"),
@@ -76,22 +78,20 @@ def choose_tag(family: str, tags: list[tuple[str, str]], commit: str) -> str:
 
 
 def verify_assets(directory: Path, family: str) -> None:
-    expected = {f"gmk70-{variant}.sha256" for variant in FAMILIES[family]}
+    expected = {f"{asset_stem(variant)}.sha256" for variant in FAMILIES[family]}
     lines: list[str] = []
     for variant in FAMILIES[family]:
-        manifest = directory / f"gmk70-{variant}.sha256"
+        manifest = directory / f"{asset_stem(variant)}.sha256"
         if manifest.is_symlink():
             raise ValueError(f"Redirected release manifest: {manifest.name}")
         contents = manifest.read_text().splitlines()
         names: set[str] = set()
         for line in contents:
             entry = re.fullmatch(r"([0-9a-f]{64})  (gmk70-[A-Za-z0-9_.-]+)", line)
-            if (
-                entry is None
-                or not entry[2].startswith(f"gmk70-{variant}.")
-                or entry[2] in names
-            ):
-                raise ValueError(f"Invalid release checksum entry: {line}")
+            if entry is None or entry[2] != asset_name(variant) or entry[2] in names:
+                raise ValueError(
+                    f"Unsupported release asset or invalid checksum entry: {line}"
+                )
             digest, name = entry.groups()
             if name.endswith(".hex"):
                 raise ValueError("HEX firmware is no longer a supported release asset")
@@ -101,10 +101,11 @@ def verify_assets(directory: Path, family: str) -> None:
             with path.open("rb") as handle:
                 if hashlib.file_digest(handle, "sha256").hexdigest() != digest:
                     raise ValueError(f"Checksum mismatch: {name}")
+            verify_package(path, variant)
             names.add(name)
             lines.append(line + "\n")
-        if f"gmk70-{variant}.tar.gz" not in names:
-            raise ValueError(f"Missing complete firmware/source bundle: {variant}")
+        if names != {asset_name(variant)}:
+            raise ValueError(f"Missing firmware: {variant}")
         expected.update(names)
     unexpected = {path.name for path in directory.iterdir()} - expected - {"SHA256SUMS"}
     if unexpected:
@@ -118,6 +119,34 @@ def github_pages(endpoint: str) -> list[GitHubRecord]:
     )
     pages = cast(list[list[GitHubRecord]], json.loads(output))
     return [item for page in pages for item in page]
+
+
+def write_diff_notes(
+    family: str, tag: str, commit: str, tags: list[tuple[str, str]], output: Path
+) -> None:
+    current = tag_version(family, tag)
+    if current is None:
+        raise ValueError("Invalid release tag")
+    previous = [
+        (version, sha)
+        for name, sha in tags
+        if (version := tag_version(family, name)) is not None and version < current
+    ]
+    revision = f"{max(previous)[1]}..{commit}" if previous else commit
+    changes = subprocess.check_output(
+        [
+            "git",
+            "log",
+            "--no-merges",
+            "--reverse",
+            "--format=- %s (%h)",
+            revision,
+            "--",
+        ],
+        text=True,
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(changes or "- No changes.\n")
 
 
 def run_gh(arguments: list[str]) -> None:
@@ -174,6 +203,7 @@ def publish(
             ]
         )
     if release is None:
+        write_diff_notes(family, tag, commit, tags, notes)
         run_gh(
             [
                 "release",
@@ -189,7 +219,6 @@ def publish(
                 f"GMK70 {TITLES[family]} {tag}",
                 "--notes-file",
                 str(notes),
-                "--generate-notes",
             ]
         )
     run_gh(
@@ -234,6 +263,11 @@ def main() -> None:
             print(f"family={result['family']}")
             print(f"variants={json.dumps(result['variants'])}")
             print(f"publish={str(result['publish']).lower()}")
+            requests = Path(".github/repackage-releases.json")
+            repackage = requests.is_file() and result["family"] in json.loads(
+                requests.read_text()
+            )
+            print(f"repackage={str(repackage).lower()}")
         else:
             if os.environ["GITHUB_EVENT_NAME"] != "push":
                 raise ValueError("Only push events publish releases")
@@ -243,7 +277,7 @@ def main() -> None:
                 os.environ["GITHUB_SHA"],
                 os.environ["GITHUB_REPOSITORY"],
                 Path("dist"),
-                Path(f"docs/RELEASE-NOTES-{args.family}.md"),
+                Path(".work/releases/notes.md"),
             )
             if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
                 with Path(summary).open("a") as handle:

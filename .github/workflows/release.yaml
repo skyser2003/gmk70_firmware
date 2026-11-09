@@ -17,6 +17,7 @@ jobs:
       family: ${{ steps.route.outputs.family }}
       variants: ${{ steps.route.outputs.variants }}
       publish: ${{ steps.route.outputs.publish }}
+      repackage: ${{ steps.route.outputs.repackage }}
     steps:
       - name: Checkout project
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -67,6 +68,7 @@ jobs:
   build:
     name: Build ${{ matrix.variant }}
     needs: [plan, checks]
+    if: needs.plan.outputs.repackage != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -111,7 +113,7 @@ jobs:
           FIRMWARE_VARIANT: ${{ matrix.variant }}
           JOBS: "2"
         run: bash scripts/github-build.sh "$FIRMWARE_VARIANT"
-      - name: Upload firmware, checksums and sources
+      - name: Upload firmware and checksums
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gmk70-firmware-${{ matrix.variant }}
@@ -124,7 +126,7 @@ jobs:
   release:
     name: Publish ${{ needs.plan.outputs.family }} firmware
     needs: [plan, checks, build]
-    if: needs.plan.outputs.publish == 'true'
+    if: needs.plan.outputs.publish == 'true' && needs.plan.outputs.repackage != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -134,10 +136,11 @@ jobs:
       cancel-in-progress: false
       queue: max
     steps:
-      - name: Checkout release notes
+      - name: Checkout release history
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Download selected firmware bundles
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -150,3 +153,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FIRMWARE_FAMILY: ${{ needs.plan.outputs.family }}
         run: python3 tools/build-support/github_release.py publish --family "$FIRMWARE_FAMILY"
+
+  repackage:
+    name: Repackage published ${{ needs.plan.outputs.family }} firmware
+    needs: [plan, checks]
+    if: needs.plan.outputs.repackage == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: gmk70-publish-${{ needs.plan.outputs.family }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: Checkout release history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Repackage the selected existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIRMWARE_FAMILY: ${{ needs.plan.outputs.family }}
+        run: python3 tools/build-support/repackage_release.py --family "$FIRMWARE_FAMILY"

@@ -32,7 +32,7 @@ and test commands never access the keyboard.
 | --- | --- |
 | `build-zmk-wired-studio-updater` | Universal Studio application and unlocked updater |
 | `build-zmk-standalone` | Universal Studio, direct boot, no resident or upload receiver |
-| `build-zmk-release` | Universal Studio portable package and matching sources |
+| `build-zmk-release` | Universal Studio firmware ZIP and checksums in `dist/` |
 | `build-zmk-wired-studio-update-test` | Distinct Studio image for update checks |
 | `build-zmk-wired-studio-native-bridge` | Separate legacy/native migration bridge |
 | `build-zmk-wired-studio-radio-qualification` | Separate radio qualification image |

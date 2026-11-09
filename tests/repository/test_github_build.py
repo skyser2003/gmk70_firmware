@@ -4,10 +4,12 @@ import hashlib
 import importlib.util
 import json
 import subprocess
-import tarfile
+import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 PROJECT = Path(__file__).resolve().parents[2]
 VARIANTS = {
@@ -31,7 +33,8 @@ class GitHubPackageTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("github_build", module)
         assert spec is not None and spec.loader is not None
         self.build = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.build)
+        with patch.object(sys, "path", [str(module.parent), *sys.path]):
+            spec.loader.exec_module(self.build)
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
@@ -119,60 +122,66 @@ class GitHubPackageTests(unittest.TestCase):
         (output / "build.log").write_text("build succeeded\n")
         return output
 
-    def test_all_variants_have_distinct_complete_bundles(self) -> None:
+    def test_all_variants_publish_only_firmware_and_checksums(self) -> None:
         for variant, (platform, keymap, mode) in VARIANTS.items():
             with self.subTest(variant=variant):
                 source = self.fixture(variant)
-                # Stale, unmanifested files must not enter a release bundle.
-                (source / "stale-image.bin").write_text("old firmware")
-                (source / "stale-image.hex").write_text("old HEX firmware")
                 dist = self.root / "dist"
                 dist.mkdir(exist_ok=True)
-                (dist / f"gmk70-{variant}.hex").write_text("old loose HEX firmware")
+                stem = (
+                    "gmk70-vial-unlocked"
+                    if variant == "vial-unlocked-updater"
+                    else f"gmk70-{variant}"
+                )
+                for suffix in (".tar.gz", ".hex", ".zip"):
+                    (dist / f"gmk70-{variant}{suffix}").write_text("obsolete")
                 self.build.package_variant(self.root, variant)
+                self.assertFalse((dist / f"gmk70-{variant}.tar.gz").exists())
                 self.assertFalse((dist / f"gmk70-{variant}.hex").exists())
-                with tarfile.open(dist / f"gmk70-{variant}.tar.gz") as bundle:
-                    names = bundle.getnames()
-                    self.assertIn("source.tar.gz", names)
-                    self.assertIn("SHA256SUMS", names)
-                    self.assertIn("build.log", names)
-                    self.assertNotIn("stale-image.bin", names)
-                    self.assertFalse(any(name.endswith(".hex") for name in names))
-                    if platform == "zmk":
-                        self.assertIn("image-check.json", names)
-                        self.assertFalse((dist / "gmk70-zmk.bin").exists())
-                        if variant == "zmk":
-                            self.assertIn("application.bin", names)
-                            self.assertIn("update.json", names)
-                            self.assertIn("install.bin", names)
-                        else:
-                            self.assertNotIn("application.bin", names)
-                            self.assertNotIn("update.json", names)
-                            self.assertNotIn("install.bin", names)
-                            self.assertEqual(
-                                (dist / "gmk70-zmk-standalone.bin").read_bytes(),
-                                (source / "zmk.bin").read_bytes(),
-                            )
-                    elif mode != "normal":
-                        self.assertIn("install.bin", names)
-                        self.assertIn("application.bin", names)
-                        self.assertIn("update.json", names)
-                    else:
+                if variant == "zmk" or mode != "normal":
+                    with zipfile.ZipFile(dist / f"{stem}.zip") as archive:
                         self.assertEqual(
-                            (dist / f"gmk70-{variant}.bin").read_bytes(),
-                            (source / f"zuoya_gmk70_{keymap}.bin").read_bytes(),
+                            set(archive.namelist()),
+                            {
+                                "application.bin",
+                                "install.bin",
+                                "resident.bin",
+                                "update.json",
+                                "FIRMWARE-SHA256SUMS",
+                            },
                         )
-                if platform in ("vial", "zmk"):
-                    self.assertEqual(
-                        (dist / f"gmk70-{variant}.zip").read_bytes(),
-                        (source / f"gmk70-{variant}.zip").read_bytes(),
+                        for name in (
+                            "application.bin",
+                            "install.bin",
+                            "resident.bin",
+                            "update.json",
+                        ):
+                            self.assertEqual(
+                                archive.read(name), (source / name).read_bytes()
+                            )
+                        for line in (
+                            archive.read("FIRMWARE-SHA256SUMS").decode().splitlines()
+                        ):
+                            digest, name = line.split("  ")
+                            self.assertEqual(
+                                hashlib.sha256(archive.read(name)).hexdigest(), digest
+                            )
+                else:
+                    name = (
+                        "zmk.bin" if platform == "zmk" else f"zuoya_gmk70_{keymap}.bin"
                     )
-                for line in (dist / f"gmk70-{variant}.sha256").read_text().splitlines():
+                    self.assertEqual(
+                        (dist / f"{stem}.bin").read_bytes(),
+                        (source / name).read_bytes(),
+                    )
+                    self.assertFalse((dist / f"{stem}.zip").exists())
+                for line in (dist / f"{stem}.sha256").read_text().splitlines():
                     digest, name = line.split("  ", 1)
                     self.assertEqual(
                         hashlib.sha256((dist / name).read_bytes()).hexdigest(), digest
                     )
-        self.assertEqual(len(list((self.root / "dist").glob("*.tar.gz"))), 10)
+        self.assertFalse(list((self.root / "dist").glob("*.tar.gz")))
+        self.assertFalse(list((self.root / "dist").glob("*unlocked-updater*")))
 
     def test_standalone_rejects_updater_artifacts_and_report(self) -> None:
         source = self.fixture("zmk-standalone")
@@ -242,13 +251,12 @@ class GitHubPackageTests(unittest.TestCase):
                 self.build.package_variant(self.root, "zmk")
         self.assertFalse((self.root / "dist").exists())
 
-    def test_zmk_release_requires_portable_zip_and_source_archive(self) -> None:
+    def test_zmk_release_requires_firmware_and_validation(self) -> None:
         source = self.fixture("zmk")
         manifest = source / "SHA256SUMS"
         original = manifest.read_text()
         for missing in (
-            "gmk70-zmk.zip",
-            "source.tar.gz",
+            "application.bin",
             "update.json",
             "image-check.json",
             "install.bin",
@@ -279,14 +287,14 @@ class GitHubPackageTests(unittest.TestCase):
             self.build.package_variant(self.root, "via-release")
         self.assertFalse((self.root / "dist").exists())
 
-    def test_unlocked_updater_cannot_publish_without_its_own_archive(self) -> None:
+    def test_unlocked_updater_requires_its_firmware(self) -> None:
         source = self.fixture("vial-unlocked-updater")
         manifest = source / "SHA256SUMS"
         manifest.write_text(
             "".join(
                 line + "\n"
                 for line in manifest.read_text().splitlines()
-                if not line.endswith("  gmk70-vial-unlocked-updater.zip")
+                if not line.endswith("  application.bin")
             )
         )
         with self.assertRaisesRegex(ValueError, "Missing required"):

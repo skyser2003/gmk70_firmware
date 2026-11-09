@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,7 +22,11 @@ class ReleaseTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("github_release", source)
         assert spec is not None and spec.loader is not None
         self.release = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.release)
+        with patch.object(sys, "path", [str(source.parent), *sys.path]):
+            spec.loader.exec_module(self.release)
+        self.notes_patch = patch.object(self.release, "write_diff_notes")
+        self.notes_patch.start()
+        self.addCleanup(self.notes_patch.stop)
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
@@ -216,12 +221,22 @@ class ReleaseTests(unittest.TestCase):
     def assets(self, family: str) -> Path:
         output = self.root / family
         output.mkdir()
+        with patch.object(
+            sys, "path", [str(PROJECT / "tools/build-support"), *sys.path]
+        ):
+            from firmware_assets import (
+                UPDATE_FILES,
+                image_name,
+                is_updater,
+                write_package,
+            )
         for variant in self.release.FAMILIES[family]:
-            filename = f"gmk70-{variant}.tar.gz"
-            content = f"firmware and source for {variant}".encode()
-            (output / filename).write_bytes(content)
-            digest = hashlib.sha256(content).hexdigest()
-            (output / f"gmk70-{variant}.sha256").write_text(f"{digest}  {filename}\n")
+            source = self.root / f"source-{family}-{variant}"
+            source.mkdir()
+            names = UPDATE_FILES if is_updater(variant) else (image_name(variant),)
+            for name in names:
+                (source / name).write_text(f"firmware for {variant}: {name}")
+            write_package(source, output, variant)
         return output
 
     def test_verified_release_contains_only_selected_family(self) -> None:
@@ -234,7 +249,7 @@ class ReleaseTests(unittest.TestCase):
                     len(manifest.splitlines()), len(self.release.FAMILIES[family])
                 )
                 other = "vial" if family == "via" else "via-release"
-                self.assertNotIn(f"gmk70-{other}.tar.gz", manifest)
+                self.assertNotIn(f"gmk70-{other}.zip", manifest)
 
     def test_mixed_family_artifacts_block_publication(self) -> None:
         output = self.assets("via")
@@ -254,14 +269,28 @@ class ReleaseTests(unittest.TestCase):
                     manifest.write(
                         f"{hashlib.sha256(artifact.read_bytes()).hexdigest()}  {artifact.name}\n"
                     )
-                with self.assertRaisesRegex(ValueError, "HEX firmware"):
+                with self.assertRaisesRegex(ValueError, "Unsupported release asset"):
                     self.release.verify_assets(output, family)
                 self.assertFalse((output / "SHA256SUMS").exists())
 
     def test_corrupt_release_asset_blocks_publication(self) -> None:
         output = self.assets("vial")
-        (output / "gmk70-vial.tar.gz").write_text("corrupt")
+        (output / "gmk70-vial.bin").write_text("corrupt")
         with self.assertRaisesRegex(ValueError, "Checksum mismatch"):
+            self.release.verify_assets(output, "vial")
+        self.assertFalse((output / "SHA256SUMS").exists())
+
+    def test_extra_zip_contents_block_publication_even_with_valid_outer_hash(
+        self,
+    ) -> None:
+        output = self.assets("vial")
+        archive = output / "gmk70-vial-updater.zip"
+        with zipfile.ZipFile(archive, "a") as bundle:
+            bundle.writestr("README.txt", "not a release firmware file")
+        (output / "gmk70-vial-updater.sha256").write_text(
+            f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n"
+        )
+        with self.assertRaisesRegex(ValueError, "only firmware"):
             self.release.verify_assets(output, "vial")
         self.assertFalse((output / "SHA256SUMS").exists())
 
@@ -318,6 +347,7 @@ class ReleaseTests(unittest.TestCase):
                 create = commands[1]
                 self.assertEqual(create[create.index("--target") + 1], "a" * 40)
                 self.assertIn("--draft", create)
+                self.assertNotIn("--generate-notes", create)
                 if family == "zmk":
                     self.assertEqual(
                         create[create.index("--title") + 1], "GMK70 ZMK zmk-v0.1.0"
