@@ -18,21 +18,24 @@
 #define ANAKEY1 0x40010028U
 #define ANAKEY2 0x4001002cU
 
+#ifndef CONFIG_GMK70_STANDALONE
 const uint8_t *gmk_flash_view(uint32_t address) {
     return (const uint8_t *)(uintptr_t)address;
 }
 
 uint32_t gmk_running_size(void) {
     extern const uint8_t __gmk_image_end;
-#ifdef CONFIG_GMK70_STAGING_QUALIFICATION
+#    ifdef CONFIG_GMK70_STAGING_QUALIFICATION
     const uintptr_t base = GMK_STAGE_BASE;
-#else
+#    else
     const uintptr_t base = GMK_APP_BASE;
-#endif
+#    endif
     uintptr_t end = (uintptr_t)&__gmk_image_end;
     if (end < base || end - base > GMK_APP_SIZE) return 0;
     return ((uint32_t)(end - base) + 3U) & ~3U;
 }
+
+#endif
 
 static void set_fhsi(uint32_t value) {
     sys_write32(3, ANAKEY1);
@@ -61,19 +64,22 @@ static bool addressed_operation(uint32_t address, uint32_t op) {
 
 static bool replace_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]);
 
+#ifndef CONFIG_GMK70_STANDALONE
 bool gmk_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
     bool staging = address >= GMK_STAGE_BASE && address < GMK_STAGE_BASE + GMK_APP_SIZE;
     if (!data || address % GMK_PAGE_SIZE || (!staging && address != GMK_COMMIT_BASE)) return false;
-#ifdef CONFIG_GMK70_STAGING_QUALIFICATION
+#    ifdef CONFIG_GMK70_STAGING_QUALIFICATION
     /* This image executes in staging. It may only invalidate a pending
      * manifest, never overwrite its own pages or create a durable commit. */
     if (address != GMK_COMMIT_BASE) return false;
     for (unsigned i = 0; i < GMK_PAGE_SIZE; ++i) {
         if (data[i] != 0xff) return false;
     }
-#endif
+#    endif
     return replace_page(address, data);
 }
+
+#endif
 
 #if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) && !defined(CONFIG_GMK70_STAGING_QUALIFICATION)
 bool gmk_zmk_settings_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
@@ -110,7 +116,7 @@ static bool replace_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
     sys_write32(apb2enr, RCC + 0x4c);
     sys_write32(apb2pre, RCC + 0x20);
     set_fhsi(fhsi);
-    ok = ok && memcmp(gmk_flash_view(address), page, sizeof(page)) == 0;
+    ok = ok && memcmp((const void *)(uintptr_t)address, page, sizeof(page)) == 0;
     gmk_wb32_irq_restore(irq);
     return ok;
 }

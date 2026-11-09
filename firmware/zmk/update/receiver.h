@@ -1,11 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 #include "protocol.h"
+#include "../runtime/service.h"
 
-typedef struct {
-    bool     left, wired, usb_configured, writes_ready, peer;
-    uint32_t uptime_ms, matrix_events;
-} gmk_zmk_update_env_t;
+typedef gmk_zmk_service_env_t gmk_zmk_update_env_t;
 
 /* Initialization precedes registration of either transport callback. */
 void gmk_zmk_receiver_init(const gmk_zmk_update_env_t *env);

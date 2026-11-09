@@ -135,6 +135,9 @@ build-zmk-wired-qualification:
 
 build-zmk-wired-studio-updater:
 	bash ./scripts/build_zmk.sh wired-studio-updater
+build-zmk-standalone:
+	bash ./scripts/build_zmk.sh wired-studio-standalone
+.PHONY: build-zmk-standalone
 build-zmk-release:
 	bash ./scripts/build_zmk_release.sh
 .PHONY: build-zmk-release

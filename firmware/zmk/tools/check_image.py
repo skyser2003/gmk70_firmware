@@ -39,6 +39,9 @@ def validate_ram_symbols(symbols: dict[str, int]) -> dict[str, int]:
 
 
 def validate_native_update_linking(symbols: set[str], variant: str) -> None:
+    if variant == "wired-studio-standalone":
+        validate_standalone_linking(symbols)
+        return
     required = {
         "gmk_native_update_exchange",
         "gmk_native_update_serve",
@@ -53,6 +56,43 @@ def validate_native_update_linking(symbols: set[str], variant: str) -> None:
             raise ValueError("Explicit migration bridge requires both carriers")
     elif legacy & symbols:
         raise ValueError("Canonical updater retained legacy relay")
+
+
+def validate_standalone_linking(symbols: set[str]) -> None:
+    forbidden = {
+        "gmk_flash_page",
+        "gmk_running_size",
+        "gmk_install_pending",
+        "gmk_wired_update",
+        "gmk_protocol_update",
+        "gmk_trial_packet_valid",
+        "__wrap_usb_hid_register_device",
+        "_k_thread_data_update_worker",
+    }
+    present = forbidden & symbols
+    present |= {
+        name
+        for name in symbols
+        if name.startswith(
+            (
+                "gmk_zmk_receiver_",
+                "gmk_zmk_raw_hid_",
+                "gmk_native_update_",
+                "gmk_update_",
+                "gmk_boot_",
+            )
+        )
+    }
+    if present:
+        raise ValueError(f"Standalone image retained updater code: {sorted(present)}")
+    required = {
+        "soc_reset_hook",
+        "_k_thread_data_service_worker",
+        "gmk_zmk_storage_claim",
+        "gmk_zmk_service_idle",
+    }
+    if missing := required - symbols:
+        raise ValueError(f"Missing standalone boot/runtime support: {sorted(missing)}")
 
 
 def validate_radio_linking(
@@ -258,8 +298,10 @@ def _calls(body: str, target: str) -> bool:
 def validate_vectors(
     image: bytes, flash_start: int = FLASH_START
 ) -> dict[str, str | int]:
-    if flash_start not in (0x08002000, FLASH_START):
+    if flash_start not in (0x08000000, 0x08002000, FLASH_START):
         raise ValueError("Unsupported image slot")
+    if flash_start == 0x08000000 and len(image) > 0x1C000:
+        raise ValueError("Standalone image overlaps Studio settings")
     if len(image) < 8 or len(image) > 120 * 1024:
         raise ValueError("Staging image must contain vectors and fit within 120 KiB")
     stack, reset = struct.unpack_from("<II", image)
@@ -488,6 +530,7 @@ def check_wired(
         "wired-peripheral",
         "wired-qualification",
         "wired-studio-updater",
+        "wired-studio-standalone",
         "wired-studio-update-test",
         "wired-studio-radio-qualification",
         "wired-studio-native-bridge",
@@ -498,10 +541,11 @@ def check_wired(
     ):
         raise ValueError("Universal wired board requires explicit supported variant")
     qualification = variant == "wired-qualification"
-    base = FLASH_START if qualification else 0x08002000
+    standalone = variant == "wired-studio-standalone"
+    base = 0x08000000 if standalone else FLASH_START if qualification else 0x08002000
     payload = image.read_bytes()
     result: dict[str, str | int | list[str]] = dict(validate_vectors(payload, base))
-    validate_handoff_payload(payload, not qualification)
+    validate_handoff_payload(payload, not qualification and not standalone)
     lines = subprocess.check_output(
         ["arm-none-eabi-nm", "--defined-only", str(elf)], text=True
     )
@@ -521,23 +565,28 @@ def check_wired(
         "zmk_usb_get_conn_state",
         "wb32_usb_clock_enable",
         "soc_early_init_hook",
-        "gmk_flash_page",
-        "gmk_running_size",
-        "gmk_zmk_receiver_step",
-        "gmk_zmk_raw_hid_init",
         "gmk_wired_scan",
-        "gmk_wired_update",
         "_k_thread_data_gmk_scan_thread",
         "_k_thread_data_gmk_serial_thread",
-        "_k_thread_data_update_worker",
     ):
         if name not in symbols:
             raise ValueError(f"Missing native ZMK wired symbol {name}")
     validate_permanent_symbols(set(symbols))
     validate_basic_parity_linking(set(symbols))
+    if not standalone:
+        for name in (
+            "gmk_flash_page",
+            "gmk_running_size",
+            "gmk_zmk_receiver_step",
+            "gmk_zmk_raw_hid_init",
+            "gmk_wired_update",
+            "_k_thread_data_update_worker",
+        ):
+            if name not in symbols:
+                raise ValueError(f"Missing native ZMK updater symbol {name}")
     if "__wrap_main" in symbols:
         raise ValueError("Permanent/qualification wired target must not wrap main")
-    if not qualification and "gmk_trial_packet_valid" not in symbols:
+    if not qualification and not standalone and "gmk_trial_packet_valid" not in symbols:
         raise ValueError("Missing peer trial validator")
     if qualification and "gmk_trial_packet_valid" in symbols:
         raise ValueError("Qualification retained peer trial code")
@@ -556,7 +605,11 @@ def check_wired(
         payload,
         base,
         symbols["__gmk_image_end"],
-        0x1A000 if variant.startswith("wired-studio-") else 0x1E000,
+        0x1C000
+        if standalone
+        else 0x1A000
+        if variant.startswith("wired-studio-")
+        else 0x1E000,
     )
     disassembly = ""
     if variant.startswith("wired-studio-") or "gmk_radio_poll" in symbols:
@@ -572,14 +625,18 @@ def check_wired(
             "settings_backend_init",
             "gmk_zmk_settings_poll",
             "gmk_zmk_settings_flash_page",
-            "__wrap_usb_hid_register_device",
             "__wrap_zmk_studio_core_get_lock_state",
             "uart_rpc_interface_init",
         ):
             if name not in symbols:
                 raise ValueError(f"Missing Studio integration symbol {name}")
         functions = _function_bodies(disassembly)
-        if not re.search(
+        if standalone:
+            if not _calls(
+                functions.get("__start", functions.get("_reset", "")), "soc_reset_hook"
+            ):
+                raise ValueError("Standalone reset bypasses factory bootloader hook")
+        elif not re.search(
             r"\bblx?\s+[^\n]*<__wrap_usb_hid_register_device>",
             functions.get("zmk_usb_hid_init", ""),
         ):
@@ -593,10 +650,11 @@ def check_wired(
         image_end=symbols["__gmk_image_end"],
         ram_end=symbols["_image_ram_end"],
         development="unlocked"
-        if variant == "wired-studio-updater"
+        if variant in ("wired-studio-updater", "wired-studio-standalone")
         else "EXPERIMENTAL unlocked",
         trial_backend="absent",
         main_wrapper="absent",
+        updater="absent" if standalone else "present",
     )
     if variant.startswith("wired-studio-"):
         result["runtime_roles"] = ["left", "right"]
@@ -630,6 +688,7 @@ def main() -> None:
             "wired-peripheral",
             "wired-qualification",
             "wired-studio-updater",
+            "wired-studio-standalone",
             "wired-studio-update-test",
             "wired-studio-radio-qualification",
             "wired-studio-native-bridge",

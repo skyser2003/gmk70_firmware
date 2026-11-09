@@ -16,15 +16,15 @@ base = shlex.split(entry["command"])
 update = root / "firmware/zmk/update"
 common = root / "firmware/qmk-common/keyboards/zuoya/gmk70/update"
 for profile in ("permanent", "qualification", "relay"):
-    sources = [update / name for name in ("receiver.c", "raw_hid.c", "service.c", "wb32_flash.c")]
-    sources += [common / "image.c", common / "protocol.c"]
+    sources = [update / name for name in ("receiver.c", "raw_hid.c", "wb32_flash.c")]
+    sources += [root / "firmware/zmk/runtime/service.c", common / "image.c", common / "protocol.c"]
     if profile == "relay":
         sources.append(common / "trial.c")
     for source in sources:
         command = base.copy()
         command[command.index("-o") + 1] = str(work / f"{source.stem}-{profile}.o")
         command[command.index("-c") + 1] = str(source)
-        command.extend([f"-I{update}", f"-I{common}", f"-I{root / 'firmware/zmk/wired'}", f"-I{root / 'dependencies/zmk/app/include'}", "-Werror"])
+        command.extend([f"-I{update}", f"-I{common}", f"-I{root / 'firmware/zmk/wired'}", f"-I{root / 'dependencies/zmk/app/include'}", "-Werror", "-DCONFIG_GMK70_ZMK_UPDATER=1"])
         if profile == "qualification":
             command.append("-DCONFIG_GMK70_STAGING_QUALIFICATION=1")
         if profile == "relay":

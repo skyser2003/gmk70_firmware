@@ -98,11 +98,14 @@ jobs:
       - name: Initialize Vial sources
         if: startsWith(matrix.variant, 'vial')
         run: make setup-vial
-      - name: Initialize ZMK sources and reviewed resident prerequisite
+      - name: Initialize ZMK sources
+        if: startsWith(matrix.variant, 'zmk')
+        run: make setup-zmk
+      - name: Build reviewed resident prerequisite
         if: matrix.variant == 'zmk'
         env:
           JOBS: "2"
-        run: make setup-zmk build-updater-debug
+        run: make build-updater-debug
       - name: Build and verify package
         env:
           FIRMWARE_VARIANT: ${{ matrix.variant }}

@@ -30,7 +30,10 @@ class ReleaseTests(unittest.TestCase):
         via = self.release.plan("push", "refs/heads/release/via")
         vial = self.release.plan("push", "refs/heads/release/vial")
         zmk = self.release.plan("push", "refs/heads/release/zmk")
-        self.assertEqual(zmk, {"family": "zmk", "variants": ("zmk",), "publish": True})
+        self.assertEqual(
+            zmk,
+            {"family": "zmk", "variants": ("zmk", "zmk-standalone"), "publish": True},
+        )
         self.assertTrue(via["publish"])
         self.assertTrue(vial["publish"])
         self.assertEqual(via["family"], "via")

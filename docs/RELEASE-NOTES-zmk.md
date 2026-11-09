@@ -2,9 +2,22 @@ GMK70 ZMK Studio firmware, built from the commit selected by this ZMK tag.
 
 One universal application runs on both halves. The hardware role pin selects
 LEFT central or RIGHT peripheral behavior. Keep the halves joined and connect
-USB to LEFT for Studio and updates. Bluetooth and the 2.4 GHz dongle use the
+USB to LEFT for Studio and split updates in the updater build. Bluetooth and the 2.4 GHz dongle use the
 existing stock radio; Studio configuration is available over USB only.
 
+This release adds a standalone build without the resident or application updater.
+It retains Studio, saved settings, knob editing, lighting and stock-radio support.
+Standalone installation and its factory-bootloader entry have passed offline
+checks but still need hardware validation.
+
+- `gmk70-zmk-standalone.bin`: standalone firmware, flashed at `0x08000000`
+  through **each half's factory USB DFU bootloader separately**. Same image for both
+  halves. This replaces any resident updater; subsequent updates also require
+  per-half DFU. Do not install it with `update.py` or the application updater.
+- `gmk70-zmk-standalone.zip`: the same BIN with instructions, build information,
+  image validation and checksums.
+- `gmk70-zmk-standalone.tar.gz`: full standalone bundle, including ELF/map files
+  and matching sources.
 - `gmk70-zmk.zip`: first-install images, application update package, resident
   reference, image validation report, instructions and checksums.
 - `gmk70-zmk.tar.gz`: full bundle, also including ELF/map files, generated
@@ -12,11 +25,16 @@ existing stock radio; Studio configuration is available over USB only.
 - Verify downloads with `sha256sum -c SHA256SUMS`; after extracting the ZIP,
   verify `sha256sum -c FIRMWARE-SHA256SUMS`.
 
-This is an explicitly unlocked updater distribution: compatible host software
-can edit settings and initiate firmware writes without a physical unlock
-gesture. Wired mode, USB, role and storage-readiness gates still apply.
+Both builds allow Studio settings edits without a physical unlock gesture.
+The updater distribution also permits firmware writes without that gesture;
+wired mode, USB, role and storage-readiness gates still apply.
 
-Choose the files for your installation:
+The standalone image is limited to the first 112 KiB, before the existing ZMK
+settings banks at `0x0801c000..0x0801ffff`. Preserving saved settings requires a
+range write without a full-chip erase. Back up Studio settings first. Returning
+to the updater through its full `install.bin` clears settings.
+
+Choose these files when using the **updater** package:
 
 - `install.bin`: full 256 KiB first-install image containing the reviewed
   resident and universal ZMK application. Install the same image on each half
@@ -46,7 +64,7 @@ on each half does not require that migration bridge.
 
 Features include four Windows/Mac layers, USB Studio keymap and knob-direction
 editing, stock-radio Bluetooth profiles/dongle selection, shared RGB controls,
-held battery/charging indicators and the application updater. Battery-level
+held battery/charging indicators, plus the application updater in its named package. Battery-level
 presses request a fresh radio reading; automatic three-second radio queries run
 only in wireless mode. The stock estimator can temporarily report a high value
 during charging transitions; this release does not claim to fix that estimate.
@@ -63,5 +81,7 @@ RAM reservations and resident identity, and never flash the keyboard.
 
 The source archive includes the board sources, exact ZMK/Zephyr/module inputs
 and QMK resident sources. On Linux x86_64, run `make setup setup-zmk`, then
-`make build-updater-debug build-zmk-release`; setup verifies the exported source
-hashes and installs pinned tools. Normal builds do not download dependencies.
+`make build-updater-debug build-zmk-release` for the updater, or
+`bash scripts/github-build.sh zmk-standalone` for the standalone release package.
+Setup verifies the exported source hashes and installs pinned tools. Normal
+builds do not download dependencies.

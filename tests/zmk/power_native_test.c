@@ -91,17 +91,17 @@ bool gmk_wired_split_command(const uint8_t request[32], uint8_t response[32]) {
     assert(false);
     return false;
 }
-bool gmk_zmk_receiver_idle(void) {
+bool gmk_zmk_service_idle(void) {
     return receiver_free && !lease;
 }
-bool gmk_zmk_receiver_storage_claim(void) {
+bool gmk_zmk_storage_claim(void) {
     ++claims;
     if (!receiver_free || lease) return false;
     lease = true;
     if (input_during_claim) power_test_pointing(&(struct input_event){1}, NULL);
     return true;
 }
-void gmk_zmk_receiver_storage_release(void) {
+void gmk_zmk_storage_release(void) {
     assert(lease);
     lease = false;
     ++releases;

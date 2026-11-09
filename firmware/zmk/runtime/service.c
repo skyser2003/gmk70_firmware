@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-#include "raw_hid.h"
+#include "service.h"
+#ifdef CONFIG_GMK70_ZMK_UPDATER
+#    include "../update/raw_hid.h"
+#endif
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 #    include "../studio/settings_backend.h"
 #    ifdef CONFIG_GMK70_WB32_RGB
@@ -34,14 +37,15 @@
 /* APPLICATION init publishes success before Zephyr starts static threads. */
 static bool service_ready;
 
-static gmk_zmk_update_env_t gates(void) {
+static gmk_zmk_service_env_t gates(void) {
     bool ready = service_ready;
 #ifdef CONFIG_GMK70_POWER
     ready = ready && !gmk_power_sleep_pending();
 #endif
-    return (gmk_zmk_update_env_t){.left = gmk_wired_is_left(), .wired = gmk_wired_mode(), .usb_configured = zmk_usb_is_hid_ready(), .writes_ready = ready};
+    return (gmk_zmk_service_env_t){.left = gmk_wired_is_left(), .wired = gmk_wired_mode(), .usb_configured = zmk_usb_is_hid_ready(), .writes_ready = ready};
 }
 
+#ifdef CONFIG_GMK70_ZMK_UPDATER
 static void peer_receive(const uint8_t request[32], uint8_t response[32]) {
     gmk_zmk_update_env_t env = gates();
     gmk_zmk_receiver_receive(request, response, false, &env);
@@ -50,12 +54,13 @@ static void peer_receive(const uint8_t request[32], uint8_t response[32]) {
 void gmk_zmk_update_reset(void) {
     sys_reboot(SYS_REBOOT_COLD);
 }
+#endif
 
 /* Worker-owned telemetry; callbacks use gates() and the receiver's cache. */
-static gmk_zmk_update_env_t worker_environment(bool peer) {
-    gmk_zmk_update_env_t env = gates();
-    env.peer                 = peer;
-    env.uptime_ms            = k_uptime_get_32();
+static gmk_zmk_service_env_t worker_environment(bool peer) {
+    gmk_zmk_service_env_t env = gates();
+    env.peer                  = peer;
+    env.uptime_ms             = k_uptime_get_32();
     /* No key-event counter is exposed by the scanner yet. Zero means
      * unavailable, not a transport transaction or polling count. */
     env.matrix_events = 0;
@@ -79,9 +84,9 @@ static void worker(void *a, void *b, void *c) {
         /* Never enqueue this worker behind the responder/scanner mutex.
          * Contention means unknown peer state, represented by a cleared flag;
          * do not reuse an earlier connected indication indefinitely. */
-        bool                 peer           = gmk_wired_try_get_stats(&stats) && stats.peer;
-        gmk_zmk_update_env_t env            = worker_environment(peer);
-        bool                 runtime_writes = env.left && env.writes_ready && env.wired && env.usb_configured;
+        bool                  peer           = gmk_wired_try_get_stats(&stats) && stats.peer;
+        gmk_zmk_service_env_t env            = worker_environment(peer);
+        bool                  runtime_writes = env.left && env.writes_ready && env.wired && env.usb_configured;
 #ifdef CONFIG_GMK70_POWER
         runtime_writes = env.left && env.writes_ready && ((env.wired && env.usb_configured) || gmk_power_runtime_storage_safe());
 #endif
@@ -100,11 +105,13 @@ static void worker(void *a, void *b, void *c) {
         gmk_rgb_settings_poll(runtime_writes);
 #endif
         ARG_UNUSED(runtime_writes);
+#ifdef CONFIG_GMK70_ZMK_UPDATER
         gmk_zmk_raw_hid_poll(&env);
         /* Admission and execution are distinct boundaries: resample physical
          * mode/USB/role after USB work, immediately before protocol dispatch. */
         env = worker_environment(peer);
         gmk_zmk_receiver_step(&env);
+#endif
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
         env = worker_environment(peer);
         gmk_zmk_settings_poll(&env);
@@ -117,18 +124,24 @@ static void worker(void *a, void *b, void *c) {
 }
 /* Static thread setup runs after APPLICATION init in the pinned Zephyr.
  * Autostart then; k_thread_start() from service_init would precede setup. */
+#ifdef CONFIG_GMK70_ZMK_UPDATER
 K_THREAD_DEFINE(update_worker, 2048, worker, NULL, NULL, NULL, 6, 0, 0);
+#else
+K_THREAD_DEFINE(service_worker, 2048, worker, NULL, NULL, NULL, 6, 0, 0);
+#endif
 
 static int service_init(void) {
     service_ready = false;
-    int result    = gmk_zmk_raw_hid_init();
+#ifdef CONFIG_GMK70_ZMK_UPDATER
+    int result = gmk_zmk_raw_hid_init();
     if (result != 0) return result;
     gmk_zmk_update_env_t env = gates();
     env.uptime_ms            = k_uptime_get_32();
     gmk_zmk_receiver_init(&env);
     gmk_wired_set_update_handler(peer_receive);
+#endif
     service_ready = true;
     return 0;
 }
-/* HID1 must be registered before keyboard HID0 (95) enables USB (96). */
+/* Updater HID registration precedes USB; ordinary services also precede main. */
 SYS_INIT(service_init, APPLICATION, 90);

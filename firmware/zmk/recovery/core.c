@@ -8,7 +8,8 @@
 #include <zmk/settings.h>
 
 /* Pinned QMK wb32_dfu.c writes __ram0_end__ - 4. The unchanged resident's
- * update/boot.c explicitly consumes this exact word before entering WB32 ROM.
+ * update/boot.c (or the standalone SoC reset hook) consumes this exact word
+ * before entering WB32 ROM.
  * Zephyr's admitted RAM ends at 0x20006fc0; this is the separately reserved
  * factory-magic word, not the end of Zephyr's smaller application RAM region. */
 #define FACTORY_BOOT_MAGIC_ADDRESS 0x20006ffcU

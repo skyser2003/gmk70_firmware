@@ -127,7 +127,7 @@ bool gmk_flash_page(uint32_t address, const uint8_t data[256]) {
     ++writes;
     return true;
 }
-#include "service.c"
+#include "../../firmware/zmk/runtime/service.c"
 static void run_iteration(void) {
     int result = setjmp(leave_worker);
     if (!result) worker(NULL, NULL, NULL);

@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
+config GMK70_STANDALONE
+    bool "GMK70 direct-boot firmware without a resident or upload receiver"
+    depends on SOC_WB32FQ95 && KSCAN_GMK70_WIRED && ZMK_USB
+    select REBOOT
+    select SOC_RESET_HOOK
+
 config GMK70_ZMK_UPDATER
     bool "GMK70 native raw HID firmware updater"
     depends on SOC_WB32FQ95 && KSCAN_GMK70_WIRED && ZMK_USB
+    depends on !GMK70_STANDALONE
     select REBOOT
     select GMK70_NATIVE_UPDATE_WIRE
     help

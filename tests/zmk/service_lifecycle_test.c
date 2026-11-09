@@ -124,7 +124,7 @@ bool gmk_flash_page(uint32_t address, const uint8_t data[256]) {
     ++flash_writes;
     return true;
 }
-#include "service.c"
+#include "../../firmware/zmk/runtime/service.c"
 
 static void initialize_static_thread(struct lifecycle_thread *t) {
     t->sleeping = true;

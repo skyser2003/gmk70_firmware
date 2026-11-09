@@ -76,11 +76,11 @@ void settings_src_register(struct settings_store *s) {
 void settings_dst_register(struct settings_store *s) {
     assert(backend == s);
 }
-bool gmk_zmk_receiver_storage_claim(void) {
+bool gmk_zmk_storage_claim(void) {
     ++claims;
     return !atomic_exchange(&busy, true);
 }
-void gmk_zmk_receiver_storage_release(void) {
+void gmk_zmk_storage_release(void) {
     assert(atomic_exchange(&busy, false));
 }
 bool gmk_zmk_settings_flash_page(uint32_t address, const uint8_t data[256]) {
@@ -114,8 +114,8 @@ int settings_call_set_handler(const char *name, size_t size, settings_read_cb re
 }
 static void *worker(void *arg) {
     (void)arg;
-    worker_id                = pthread_self();
-    gmk_zmk_update_env_t env = {.left = !invalid_role, .wired = !invalid_mode, .writes_ready = true};
+    worker_id                 = pthread_self();
+    gmk_zmk_service_env_t env = {.left = !invalid_role, .wired = !invalid_mode, .writes_ready = true};
     while (!atomic_load(&stop)) {
         if (atomic_load(&pause_worker)) {
             atomic_store(&worker_paused, true);
@@ -284,8 +284,8 @@ static void native_ids_wireless_startup(void) {
     check_notification_locks = true;
     atomic_store(&lock_notifications, 0);
     atomic_store(&unlock_notifications, 0);
-    unsigned             before = atomic_load(&writes);
-    gmk_zmk_update_env_t env    = {.left = true, .wired = true, .usb_configured = true, .writes_ready = true};
+    unsigned              before = atomic_load(&writes);
+    gmk_zmk_service_env_t env    = {.left = true, .wired = true, .usb_configured = true, .writes_ready = true};
     atomic_store(&busy, true);
     gmk_zmk_settings_poll(&env);
     assert(atomic_load(&writes) == before && !gmk_zmk_settings_ids_ready());

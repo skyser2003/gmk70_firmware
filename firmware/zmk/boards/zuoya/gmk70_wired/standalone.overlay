@@ -1,0 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* Keep both existing Studio settings banks at 0x0801c000..0x0801ffff. */
+&flash0 { reg = <0x08000000 0x1c000>; };
+/ { model = "ZUOYA GMK70 standalone Studio"; };

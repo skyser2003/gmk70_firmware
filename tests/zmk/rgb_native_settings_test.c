@@ -76,10 +76,10 @@ int led_strip_update_rgb(const struct device *device, struct led_rgb *pixels, si
 bool gmk_wired_is_left(void) {
     return true;
 }
-bool gmk_zmk_receiver_storage_claim(void) {
+bool gmk_zmk_storage_claim(void) {
     return !atomic_exchange(&storage_busy, true);
 }
-void gmk_zmk_receiver_storage_release(void) {
+void gmk_zmk_storage_release(void) {
     assert(atomic_exchange(&storage_busy, false));
 }
 bool gmk_zmk_settings_flash_page(uint32_t address, const uint8_t data[256]) {
@@ -123,7 +123,7 @@ int settings_call_set_handler(const char *name, size_t size, settings_read_cb re
 static void *storage_worker(void *arg) {
     (void)arg;
     while (!atomic_load(&stop)) {
-        gmk_zmk_update_env_t env = {.left = true, .wired = atomic_load(&wired), .usb_configured = atomic_load(&usb_ready), .writes_ready = atomic_load(&writes_ready)};
+        gmk_zmk_service_env_t env = {.left = true, .wired = atomic_load(&wired), .usb_configured = atomic_load(&usb_ready), .writes_ready = atomic_load(&writes_ready)};
         gmk_zmk_settings_poll(&env);
         usleep(100);
     }

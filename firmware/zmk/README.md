@@ -31,6 +31,7 @@ and test commands never access the keyboard.
 | Target | Purpose |
 | --- | --- |
 | `build-zmk-wired-studio-updater` | Universal Studio application and unlocked updater |
+| `build-zmk-standalone` | Universal Studio, direct boot, no resident or upload receiver |
 | `build-zmk-release` | Universal Studio portable package and matching sources |
 | `build-zmk-wired-studio-update-test` | Distinct Studio image for update checks |
 | `build-zmk-wired-studio-native-bridge` | Separate legacy/native migration bridge |
@@ -47,7 +48,7 @@ resolve to canonical no-watchdog builds.
 
 ## Application and updater boundaries
 
-Permanent applications link at `0x08002000`. Studio reserves 104 KiB for the
+Updater applications link at `0x08002000`. Studio reserves 104 KiB for the
 application and two 8 KiB settings banks at `0x0801c000..0x0801ffff`.
 Packages use the reviewed 8 KiB resident: padded SHA256
 `be33f246624cbb2e7a02c6617dc5c3284ee4783e2e3ae3860b62a7dc6182462a`,
@@ -58,6 +59,42 @@ the resident, application and erased settings/staging space for first installati
 on each verified 256 KiB half. Application updates retain the existing resident
 and settings. Development/bridge variants remain application-only. See
 [first installation](../../docs/ZMK-PERMANENT-WIRED.md#first-installation).
+
+## Standalone Studio build
+
+Run `make build-zmk-standalone`, or after Docker setup,
+`bash scripts/docker.sh run make build-zmk-standalone`.
+Outputs are in `artifacts/zmk/wired-studio-standalone/`, including `zmk.bin`,
+ELF/map/config, the image-validation report and `gmk70-zmk-standalone.zip`.
+No resident prerequisite or QMK build is needed.
+
+Flash the same `zmk.bin` at **0x08000000** on each half through factory WB32
+USB DFU. This replaces the resident installer. It cannot be installed using
+`update.py`, and subsequent updates also require direct USB access to each half.
+The build emits no resident, `application.bin`, `install.bin` or `update.json`.
+
+The application has 112 KiB, ending before the unchanged two settings banks at
+`0x0801c000..0x0801ffff`. Existing ZMK settings remain compatible when a direct
+range write preserves those banks; a full-chip erase does not preserve them.
+Back up Studio settings before migration. Other old staging bytes are unused.
+Returning to an updater build requires direct installation of its `install.bin`
+on both halves; that full image clears ZMK settings, so restore a backup afterward.
+
+The shared runtime worker retains radio, battery, split, settings and sleep
+services. Upload state, HID Feature commands and updater relay are omitted.
+Settings and sleep still share a mutually exclusive storage lease. The worker's
+2 KiB stack is retained; removing the receiver does not eliminate those tasks.
+Studio unlock policy, saved behavior IDs, geometry and native keymap stay unchanged.
+
+A standalone reset hook checks the existing factory-bootloader magic before
+Zephyr initialization and branches to WB32 ROM. The keyboard's bootloader action
+and startup chord therefore have an implementation independent of the resident.
+Build checks verify direct-boot vectors, image/settings boundaries, SRAM exclusions,
+absence of updater code, native feature integration and the linked reset hook.
+Hardware boot/DFU, both-half typing, Studio saves and sleep/wake remain unverified
+until this variant is tested on a keyboard. Build/test commands never flash it.
+
+## Updater and trial operation
 
 The universal package uses `profile=zmk-studio-universal`; static A/B packages
 use `profile=zmk`. Permanent firmware never initializes or feeds a hardware

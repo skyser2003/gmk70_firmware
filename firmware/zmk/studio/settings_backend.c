@@ -113,7 +113,7 @@ static int submit_operation(const char *name, const char *value, size_t size, en
     if (native_id) atomic_and(&ready, ~IDS_READY);
     int result = -EIO;
     if (reset ? !store.bytes || !store.write : !gmk_zmk_settings_ready()) goto out;
-    if (!gmk_zmk_receiver_storage_claim()) {
+    if (!gmk_zmk_storage_claim()) {
         result = -EBUSY;
         goto out;
     }
@@ -128,7 +128,7 @@ static int submit_operation(const char *name, const char *value, size_t size, en
     job.operation = operation;
     job.pending   = true;
     k_spin_unlock(&job_lock, key);
-    /* Startup behavior-ID writes use the same queue. The static update
+    /* Startup behavior-ID writes use the same queue. The static board service
      * worker starts before ZMK main and needs no configured USB to serve it.
      * It never calls settings APIs while this caller holds settings_lock. */
     k_sem_take(&completed, K_FOREVER);
@@ -164,11 +164,11 @@ static bool runtime_name_allowed(const char *name) {
 #endif
 
 #ifdef CONFIG_ZMK_BEHAVIOR_LOCAL_ID_TYPE_SETTINGS_TABLE
-static void confirm_native_ids(const gmk_zmk_update_env_t *env) {
+static void confirm_native_ids(const gmk_zmk_service_env_t *env) {
     if (gmk_zmk_settings_ids_ready() || !gmk_zmk_settings_ready() || !env->left || !env->wired || !env->usb_configured || !env->writes_ready) return;
     if (k_mutex_lock(&access, K_NO_WAIT)) return;
     bool notify = false;
-    if (!gmk_zmk_settings_ready() || !gmk_zmk_receiver_storage_claim()) goto out;
+    if (!gmk_zmk_settings_ready() || !gmk_zmk_storage_claim()) goto out;
     bool complete = true;
     STRUCT_SECTION_FOREACH(zmk_behavior_local_id_map, item) {
         if (!device_is_ready(item->device)) continue;
@@ -195,7 +195,7 @@ static void confirm_native_ids(const gmk_zmk_update_env_t *env) {
         break;
     }
     if (complete) notify = (atomic_or(&ready, IDS_READY) & IDS_READY) == 0;
-    gmk_zmk_receiver_storage_release();
+    gmk_zmk_storage_release();
 out:
     k_mutex_unlock(&access);
     /* The native core may already be unlocked, so its explicit unlock call
@@ -205,7 +205,7 @@ out:
 }
 #endif
 
-void gmk_zmk_settings_poll(const gmk_zmk_update_env_t *env) {
+void gmk_zmk_settings_poll(const gmk_zmk_service_env_t *env) {
     k_spinlock_key_t key     = k_spin_lock(&job_lock);
     bool             pending = job.pending;
     k_spin_unlock(&job_lock, key);
@@ -229,7 +229,7 @@ void gmk_zmk_settings_poll(const gmk_zmk_update_env_t *env) {
     job.result  = result;
     job.pending = false;
     k_spin_unlock(&job_lock, key);
-    gmk_zmk_receiver_storage_release();
+    gmk_zmk_storage_release();
     k_sem_give(&completed);
 }
 

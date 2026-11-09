@@ -10,7 +10,7 @@ adapter.
 | --- | --- | --- |
 | `release/via` | VIA release/debug, each with a normal and updater package | `via-v0.1.0`, `via-v0.1.1`, ... |
 | `release/vial` | Vial normal, secure updater and unlocked updater packages | `vial-0.1.0`, `vial-0.1.1`, ... |
-| `release/zmk` | Universal ZMK Studio application/updater | `zmk-v0.1.0`, `zmk-v0.1.1`, ... |
+| `release/zmk` | Universal ZMK Studio updater and standalone packages | `zmk-v0.1.0`, `zmk-v0.1.1`, ... |
 | `main` or any other branch | No workflow, including general checks | None |
 
 Every successful push to a release branch publishes that family's next patch
@@ -67,7 +67,7 @@ All firmware families distribute BIN only. Normal VIA/Vial images and full
 are excluded from build manifests and packages; publication rejects obsolete
 HEX assets. Existing published releases are unchanged.
 
-ZMK publishes only `wired-studio-updater`, packaged as `gmk70-zmk`. Its identical
+ZMK publishes `wired-studio-updater`, packaged as `gmk70-zmk`. Its identical
 application serves both halves and includes the unlocked native updater. The
 ZIP contains `install.bin` for first installation on each verified
 256 KiB half, plus `application.bin`, `update.json`, the pinned resident reference,
@@ -79,6 +79,13 @@ built native-update bridge; direct installation on each half does not. See the
 variants are excluded. CI builds the QMK debug-updater resident prerequisite
 separately, then the ZMK packager requires its exact reviewed hash. That QMK
 prerequisite is not published as part of the ZMK family.
+
+ZMK also publishes `wired-studio-standalone` as `gmk70-zmk-standalone` with a direct
+BIN download, portable ZIP and full source bundle. The BIN starts at `0x08000000`
+and must be installed on each half separately through factory USB DFU. It excludes
+the resident and application updater, while preserving the existing settings-bank
+addresses. Its build has no resident prerequisite. The packager rejects updater
+artifacts or an updater-enabled validation report in this standalone package.
 
 The ZMK source bundle extends the shared source exporter with pinned
 ZMK/Zephyr/modules and a separate integrity manifest. Upstream internal source
@@ -100,9 +107,10 @@ For the same packages locally, after `make setup setup-vial setup-zmk`:
 make test test-zmk
 make check-tools
 make build-updater-debug                    # reviewed resident prerequisite
-bash scripts/github-build.sh                 # all nine variants
+bash scripts/github-build.sh                 # all ten variants
 bash scripts/github-build.sh vial-updater    # one variant
 bash scripts/github-build.sh zmk             # universal Studio release bundle
+bash scripts/github-build.sh zmk-standalone  # Studio without the updater
 ```
 
 Packages are written to `dist/`. Packaging verifies the build's `SHA256SUMS`

@@ -22,6 +22,7 @@ VARIANTS = {
     "vial-updater": ("vial", "vial", "updater"),
     "vial-unlocked-updater": ("vial", "vial", "unlocked-updater"),
     "zmk": ("zmk", "wired-studio-updater", "normal"),
+    "zmk-standalone": ("zmk", "wired-studio-standalone", "normal"),
 }
 
 
@@ -33,14 +34,19 @@ class ZmkReport(TypedDict):
     bytes: int
     main_wrapper: str
     trial_backend: str
+    updater: str
 
 
-def verify_zmk_report(source: Path) -> None:
+def verify_zmk_report(source: Path, variant: str) -> None:
     report = cast(ZmkReport, json.loads((source / "image-check.json").read_text()))
-    application = (source / "application.bin").read_bytes()
+    standalone = variant == "wired-studio-standalone"
+    application = (
+        source / ("zmk.bin" if standalone else "application.bin")
+    ).read_bytes()
     if (
         report.get("board") != "gmk70_wired"
-        or report.get("variant") != "wired-studio-updater"
+        or report.get("variant") != variant
+        or report.get("updater") != ("absent" if standalone else "present")
         or report.get("runtime_roles") != ["left", "right"]
         or report.get("trial_backend") != "absent"
         or report.get("main_wrapper") != "absent"
@@ -90,13 +96,20 @@ def package_variant(root: Path, variant: str) -> None:
                 "zephyr.dts",
                 "compile_commands.json",
                 "image-check.json",
-                "package-info.json",
-                "application.bin",
-                "resident.bin",
-                "install.bin",
-                "update.json",
             }
         )
+        updater_files = {
+            "package-info.json",
+            "application.bin",
+            "resident.bin",
+            "install.bin",
+            "update.json",
+        }
+        if variant == "zmk-standalone":
+            if files & updater_files:
+                raise ValueError("Standalone ZMK cannot contain updater artifacts")
+        else:
+            required.update(updater_files)
     else:
         required.update(
             {
@@ -126,7 +139,7 @@ def package_variant(root: Path, variant: str) -> None:
     if missing := required - files:
         raise ValueError(f"Missing required artifacts: {', '.join(sorted(missing))}")
     if platform == "zmk":
-        verify_zmk_report(source)
+        verify_zmk_report(source, keymap)
     files.add("SHA256SUMS")
     if (source / "build.log").is_file() and not (source / "build.log").is_symlink():
         files.add("build.log")
@@ -140,6 +153,8 @@ def package_variant(root: Path, variant: str) -> None:
                 bundle.add(source / name, arcname=name, recursive=False)
         if mode == "normal" and platform != "zmk":
             shutil.copyfile(source / f"{target}.bin", staging / f"{stem}.bin")
+        if variant == "zmk-standalone":
+            shutil.copyfile(source / "zmk.bin", staging / f"{stem}.bin")
         if platform in ("vial", "zmk"):
             shutil.copyfile(source / f"{stem}.zip", staging / f"{stem}.zip")
         checksums = []
@@ -157,8 +172,8 @@ def package_variant(root: Path, variant: str) -> None:
 
 def build_variant(root: Path, variant: str) -> None:
     command = (
-        ["bash", "scripts/build_zmk_release.sh"]
-        if variant == "zmk"
+        ["bash", "scripts/build_zmk_release.sh", VARIANTS[variant][1]]
+        if VARIANTS[variant][0] == "zmk"
         else ["bash", "scripts/build.sh", *VARIANTS[variant]]
     )
     subprocess.run(command, cwd=root, check=True)

@@ -135,6 +135,7 @@ static void assert_restored(unsigned irq) {
     assert(REG(FMC) == 0x005f0000U);
 }
 
+#ifndef CONFIG_GMK70_STANDALONE
 static void flash_tests(void) {
     uint8_t page[GMK_PAGE_SIZE];
     for (unsigned i = 0; i < sizeof(page); ++i)
@@ -149,7 +150,7 @@ static void flash_tests(void) {
     assert(!gmk_flash_page(GMK_STAGE_BASE, NULL));
     assert(reads == 0 && writes == 0);
     assert(gmk_flash_view(GMK_STAGE_BASE) == (void *)(uintptr_t)GMK_STAGE_BASE);
-#ifdef CONFIG_GMK70_STAGING_QUALIFICATION
+#    ifdef CONFIG_GMK70_STAGING_QUALIFICATION
     reset();
     assert(!gmk_flash_page(GMK_STAGE_BASE, page));
     assert(!gmk_flash_page(GMK_COMMIT_BASE, page));
@@ -157,7 +158,7 @@ static void flash_tests(void) {
     memset(page, 0xff, sizeof(page));
     assert(gmk_flash_page(GMK_COMMIT_BASE, page));
     assert_restored(0);
-#else
+#    else
     const uint32_t accepted[] = {GMK_STAGE_BASE, GMK_STAGE_BASE + GMK_APP_SIZE - GMK_PAGE_SIZE, GMK_COMMIT_BASE};
     for (unsigned i = 0; i < sizeof(accepted) / sizeof(accepted[0]); ++i) {
         reset();
@@ -184,8 +185,10 @@ static void flash_tests(void) {
     corrupt = true;
     assert(!gmk_flash_page(GMK_STAGE_BASE, page));
     assert_restored(0);
-#endif
+#    endif
 }
+
+#endif
 
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 extern bool gmk_zmk_settings_flash_page(uint32_t, const uint8_t[256]);
@@ -202,7 +205,7 @@ static void settings_bounds(void) {
     for (uint32_t a = 0x0801c000; a < 0x08020000; a += 256) {
         reset();
         assert(gmk_zmk_settings_flash_page(a, page));
-        assert(memcmp(gmk_flash_view(a), page, 256) == 0);
+        assert(memcmp((const void *)(uintptr_t)a, page, 256) == 0);
         assert_restored(0);
     }
 }
@@ -210,11 +213,16 @@ static void settings_bounds(void) {
 int main(int argc, char **argv) {
     void *flash = mmap((void *)GMK_FLASH_BASE, 0x40000, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
     assert(flash == (void *)GMK_FLASH_BASE);
+#ifndef CONFIG_GMK70_STANDALONE
     if (argc == 1 || strcmp(argv[1], "flash") == 0) {
         flash_tests();
         assert(gmk_running_size() == 0x304);
     }
 
+#else
+    (void)argc;
+    (void)argv;
+#endif
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
     settings_bounds();
 #endif

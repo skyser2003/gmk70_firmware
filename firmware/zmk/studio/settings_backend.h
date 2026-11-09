@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
-#include "receiver.h"
+#include "../runtime/service.h"
 #include <stddef.h>
 
 bool gmk_zmk_settings_ready(void);
@@ -12,7 +12,7 @@ bool gmk_zmk_settings_ids_ready(void);
  * startup/Studio writes retain the wired gate and original USB behavior. */
 int gmk_zmk_settings_save_runtime(const char *name, const void *value, size_t size);
 /* Deliberate LEFT wired/configured-USB recovery. One queued empty-bank commit,
- * protected by the updater storage lease; caller reboots after success. */
+ * protected by the shared storage lease; caller reboots after success. */
 int  gmk_zmk_settings_factory_reset(void);
-void gmk_zmk_settings_poll(const gmk_zmk_update_env_t *env);
+void gmk_zmk_settings_poll(const gmk_zmk_service_env_t *env);
 bool gmk_zmk_settings_flash_page(uint32_t address, const uint8_t data[256]);

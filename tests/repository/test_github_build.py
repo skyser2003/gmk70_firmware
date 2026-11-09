@@ -20,6 +20,7 @@ VARIANTS = {
     "vial-updater": ("vial", "vial", "updater"),
     "vial-unlocked-updater": ("vial", "vial", "unlocked-updater"),
     "zmk": ("zmk", "wired-studio-updater", "normal"),
+    "zmk-standalone": ("zmk", "wired-studio-standalone", "normal"),
 }
 
 
@@ -61,15 +62,18 @@ class GitHubPackageTests(unittest.TestCase):
                 "zephyr.dts",
                 "compile_commands.json",
                 "image-check.json",
-                "package-info.json",
-                "application.bin",
-                "resident.bin",
-                "install.bin",
-                "update.json",
                 "source.tar.gz",
                 "sources.lock.json",
                 "build-info.txt",
             ]
+            if variant == "zmk":
+                names += [
+                    "package-info.json",
+                    "application.bin",
+                    "resident.bin",
+                    "install.bin",
+                    "update.json",
+                ]
         elif mode != "normal":
             names += [
                 "application.bin",
@@ -86,13 +90,19 @@ class GitHubPackageTests(unittest.TestCase):
         for name in names:
             (output / name).write_text(f"{variant}: {name}\n")
         if platform == "zmk":
-            application = (output / "application.bin").read_bytes()
+            application = (
+                output
+                / ("zmk.bin" if variant == "zmk-standalone" else "application.bin")
+            ).read_bytes()
             (output / "zmk.bin").write_bytes(application)
             (output / "image-check.json").write_text(
                 json.dumps(
                     {
                         "board": "gmk70_wired",
-                        "variant": "wired-studio-updater",
+                        "variant": keymap,
+                        "updater": "absent"
+                        if variant == "zmk-standalone"
+                        else "present",
                         "runtime_roles": ["left", "right"],
                         "sha256": hashlib.sha256(application).hexdigest(),
                         "bytes": len(application),
@@ -129,11 +139,20 @@ class GitHubPackageTests(unittest.TestCase):
                     self.assertNotIn("stale-image.bin", names)
                     self.assertFalse(any(name.endswith(".hex") for name in names))
                     if platform == "zmk":
-                        self.assertIn("application.bin", names)
-                        self.assertIn("update.json", names)
                         self.assertIn("image-check.json", names)
-                        self.assertIn("install.bin", names)
                         self.assertFalse((dist / "gmk70-zmk.bin").exists())
+                        if variant == "zmk":
+                            self.assertIn("application.bin", names)
+                            self.assertIn("update.json", names)
+                            self.assertIn("install.bin", names)
+                        else:
+                            self.assertNotIn("application.bin", names)
+                            self.assertNotIn("update.json", names)
+                            self.assertNotIn("install.bin", names)
+                            self.assertEqual(
+                                (dist / "gmk70-zmk-standalone.bin").read_bytes(),
+                                (source / "zmk.bin").read_bytes(),
+                            )
                     elif mode != "normal":
                         self.assertIn("install.bin", names)
                         self.assertIn("application.bin", names)
@@ -153,7 +172,45 @@ class GitHubPackageTests(unittest.TestCase):
                     self.assertEqual(
                         hashlib.sha256((dist / name).read_bytes()).hexdigest(), digest
                     )
-        self.assertEqual(len(list((self.root / "dist").glob("*.tar.gz"))), 9)
+        self.assertEqual(len(list((self.root / "dist").glob("*.tar.gz"))), 10)
+
+    def test_standalone_rejects_updater_artifacts_and_report(self) -> None:
+        source = self.fixture("zmk-standalone")
+        manifest = source / "SHA256SUMS"
+        original = manifest.read_text()
+        for name in (
+            "application.bin",
+            "resident.bin",
+            "install.bin",
+            "update.json",
+            "package-info.json",
+        ):
+            (source / name).write_bytes(b"updater artifact")
+            manifest.write_text(
+                original
+                + f"{hashlib.sha256(b'updater artifact').hexdigest()}  {name}\n"
+            )
+            with (
+                self.subTest(name=name),
+                self.assertRaisesRegex(ValueError, "cannot contain updater"),
+            ):
+                self.build.package_variant(self.root, "zmk-standalone")
+        report_path = source / "image-check.json"
+        report = json.loads(report_path.read_text())
+        report["updater"] = "present"
+        report_path.write_text(json.dumps(report))
+        manifest.write_text(
+            "\n".join(
+                f"{hashlib.sha256(report_path.read_bytes()).hexdigest()}  image-check.json"
+                if line.endswith("  image-check.json")
+                else line
+                for line in original.splitlines()
+            )
+            + "\n"
+        )
+        with self.assertRaisesRegex(ValueError, "validated universal Studio"):
+            self.build.package_variant(self.root, "zmk-standalone")
+        self.assertFalse((self.root / "dist").exists())
 
     def test_zmk_rejects_noncanonical_role_or_trial_report(self) -> None:
         source = self.fixture("zmk")

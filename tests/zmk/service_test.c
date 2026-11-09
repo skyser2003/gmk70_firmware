@@ -47,6 +47,9 @@ void gmk_rgb_settings_poll(bool allowed) {
 }
 void gmk_zmk_settings_poll(const gmk_zmk_update_env_t *env) {
     assert(env->writes_ready == !test_sleep);
+#    ifndef CONFIG_GMK70_ZMK_UPDATER
+    observed = *env;
+#    endif
 }
 #endif
 bool gmk_zmk_watchdog_init(void) {
@@ -118,16 +121,29 @@ void sys_reboot(int type) {
     assert(type == 0);
     ++reset_calls;
 }
-#include "service.c"
+#include "../../firmware/zmk/runtime/service.c"
 int main(void) {
     assert(!gates().writes_ready);
-    assert(service_init() == 0 && wire_handler);
+    assert(service_init() == 0);
+#ifdef CONFIG_GMK70_ZMK_UPDATER
+    assert(wire_handler);
+#else
+    assert(!wire_handler);
+#endif
     if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
-    assert(steps == 1 && raw_polls == 1 && observed.uptime_ms == 1234 && observed.matrix_events == 0);
+    assert(observed.uptime_ms == 1234 && observed.matrix_events == 0);
+#ifdef CONFIG_GMK70_ZMK_UPDATER
+    assert(steps == 1 && raw_polls == 1);
+#else
+    assert(steps == 0 && raw_polls == 0);
+#endif
     assert(feeds == 0 && early_calls == 0 && observed.writes_ready);
+
+#ifdef CONFIG_GMK70_ZMK_UPDATER
     uint8_t packet[32] = {0};
     wire_handler(packet, packet);
     assert(observed.left && observed.wired);
+#endif
 #ifdef CONFIG_GMK70_POWER
     assert(runtime_polls == 4 && runtime_allowed && power_polls == 1);
     test_wired = test_usb = false;
@@ -145,6 +161,8 @@ int main(void) {
     if (!setjmp(leave_worker)) worker(NULL, NULL, NULL);
     assert(!runtime_allowed);
 #endif
+
+#ifdef CONFIG_GMK70_ZMK_UPDATER
     raw_init_result = -1;
     assert(service_init() == -1 && !gates().writes_ready);
     unsigned previous = raw_polls;
@@ -152,5 +170,8 @@ int main(void) {
     assert(raw_polls == previous && feeds == 0 && early_calls == 0);
     gmk_zmk_update_reset();
     assert(reset_calls == 1 && handoff_calls == 0);
+#else
+    assert(!wire_handler && !raw_polls && !steps && !reset_calls && !handoff_calls);
+#endif
     puts("ZMK service readiness and permanent no-watchdog tests passed");
 }

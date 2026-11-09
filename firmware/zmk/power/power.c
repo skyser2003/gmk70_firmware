@@ -2,7 +2,7 @@
 #include "power.h"
 #include "coordinator.h"
 #include "../wired/wired.h"
-#include "../update/receiver.h"
+#include "../runtime/service.h"
 #include "../battery/battery.h"
 #include "../controls/controls.h"
 #include "../function_flip/flip.h"
@@ -103,7 +103,7 @@ static bool preferences_dirty(void) {
     return dirty;
 }
 static bool busy(bool own_lease) {
-    return preferences_dirty() || !radio_idle() || !gmk_battery_idle() || (!own_lease && !gmk_zmk_receiver_idle());
+    return preferences_dirty() || !radio_idle() || !gmk_battery_idle() || (!own_lease && !gmk_zmk_service_idle());
 }
 bool gmk_power_sleep_pending(void) {
     return ((uint32_t)atomic_get(&published) & 3U) != GMK_POWER_PHASE_IDLE;
@@ -128,7 +128,7 @@ bool gmk_power_runtime_storage_safe(void) {
 static bool claim(struct gmk_power_platform *context) {
     ARG_UNUSED(context);
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
-    return gmk_zmk_receiver_storage_claim();
+    return gmk_zmk_storage_claim();
 #else
     return false; /* No atomic upload/settings exclusion on this configuration. */
 #endif
@@ -136,7 +136,7 @@ static bool claim(struct gmk_power_platform *context) {
 static void release(struct gmk_power_platform *context) {
     ARG_UNUSED(context);
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
-    gmk_zmk_receiver_storage_release();
+    gmk_zmk_storage_release();
 #endif
 }
 static bool quiesce(struct gmk_power_platform *context, bool enabled) {

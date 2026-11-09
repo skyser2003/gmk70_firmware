@@ -12,7 +12,7 @@ from typing import TypedDict, cast
 FAMILIES = {
     "via": ("via-release", "via-debug", "via-release-updater", "via-debug-updater"),
     "vial": ("vial", "vial-updater", "vial-unlocked-updater"),
-    "zmk": ("zmk",),
+    "zmk": ("zmk", "zmk-standalone"),
 }
 PREFIXES = {"via": "via-v", "vial": "vial-", "zmk": "zmk-v"}
 TITLES = {"via": "VIA", "vial": "Vial", "zmk": "ZMK"}

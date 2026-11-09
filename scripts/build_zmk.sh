@@ -18,13 +18,18 @@ case "$variant" in
     wired-updater) ;;
     wired-peripheral) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/peripheral.conf") ;;
     wired-update-test) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/update-test.conf") ;;
-    wired-studio-updater|wired-studio-update-test|wired-studio-radio-qualification|wired-studio-native-bridge) extra+=(-DGMK70_STUDIO=ON
+    wired-studio-updater|wired-studio-standalone|wired-studio-update-test|wired-studio-radio-qualification|wired-studio-native-bridge) extra+=(-DGMK70_STUDIO=ON
         -DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.overlay") ;;
     wired-qualification) extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.conf"
         -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/qualification.overlay") ;;
     *) printf 'Unsupported experimental ZMK target: %s\n' "$variant" >&2; exit 2 ;;
 esac
+if [[ "$variant" == wired-studio-standalone ]]; then
+    mode=normal
+    extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/standalone.conf"
+        -DDTC_OVERLAY_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.overlay;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/standalone.overlay")
+fi
 if [[ "$variant" == wired-studio-native-bridge ]]; then
     extra+=(-DEXTRA_CONF_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/studio.conf;$project_root/firmware/zmk/boards/zuoya/gmk70_wired/native-update-bridge.conf")
 fi
@@ -82,7 +87,10 @@ cp "$build_dir/zephyr/zephyr.dts" "$output/"
 cp dependencies/sources.lock.json "$output/"
 if [[ "$board" == gmk70_wired ]]; then
     python3 firmware/zmk/tools/check_image.py "$output/zmk.elf" "$output/zmk.bin" --board "$board" --variant "$variant" > "$output/image-check.json"
-    if [[ "$variant" == wired-qualification ]]; then
+    if [[ "$variant" == wired-studio-standalone ]]; then
+        # Direct-boot binary only: never label it as a resident-compatible update.
+        rm -f "$output/application.bin" "$output/resident.bin" "$output/install.bin" "$output/update.json"
+    elif [[ "$variant" == wired-qualification ]]; then
         # Qualification can only enter through target-specific trial ABI2.
         # Never emit a normal application manifest for a staging-linked image.
         for target in left right; do
@@ -99,7 +107,11 @@ else
 fi
 {
     if [[ "$board" == gmk70_wired ]]; then
-        if [[ "$variant" == wired-studio-updater ]]; then
+        if [[ "$variant" == wired-studio-standalone ]]; then
+            printf 'Standalone universal ZMK Studio; no resident installer or upload receiver.\n'
+            printf 'zmk.bin: direct factory DFU at 0x08000000 on each half.\n'
+            printf 'Existing ZMK settings banks remain at 0x0801c000..0x0801ffff.\n'
+        elif [[ "$variant" == wired-studio-updater ]]; then
             printf 'ZMK Studio universal distribution; explicitly unlocked updater.\n'
             printf 'install.bin: full 256 KiB first install at 0x08000000 on each half; clears ZMK settings.\n'
         else
@@ -110,10 +122,12 @@ fi
             printf 'Staging qualification at 0x08020000; no watchdog feed, running-code writes or durable install.\n'
             printf 'Only target-specific left/right TrialPackage manifests are emitted.\n'
         else
-            printf 'Application at 0x08002000; native updater; no permanent watchdog or outgoing handoff.\n'
-            printf 'Hardware reset activates updates; a hung application may require a physical power cycle.\n'
+            if [[ "$variant" != wired-studio-standalone ]]; then
+                printf 'Application at 0x08002000; native updater; no permanent watchdog or outgoing handoff.\n'
+                printf 'Hardware reset activates updates; a hung application may require a physical power cycle.\n'
+            fi
             if [[ "$variant" == wired-studio-* ]]; then
-                printf 'profile=zmk-studio-universal; identical application for LEFT and RIGHT.\n'
+                printf 'Identical Studio application for LEFT and RIGHT.\n'
                 printf 'LEFT owns CDC Studio settings; RIGHT never mounts/writes central settings banks.\n'
                 printf 'Battery: stock-radio inquiry/ACK cache, native sensor and held RGB status.\n'
                 printf 'Radio: stock vendor UART3 Bluetooth/dongle keyboard and consumer endpoint; USB Studio retained.\n'
@@ -139,7 +153,25 @@ fi
 } > "$output/build-info.txt"
 (cd "$output" && sha256sum zmk.bin zmk.elf zmk.map zmk.config zephyr.dts compile_commands.json sources.lock.json image-check.json build-info.txt > SHA256SUMS)
 if [[ "$board" == gmk70_wired ]]; then
-    if [[ "$variant" == wired-qualification ]]; then
+    if [[ "$variant" == wired-studio-standalone ]]; then
+        cat > "$output/README.txt" <<'EOF'
+GMK70 standalone ZMK Studio (same image for both halves)
+
+Flash zmk.bin at 0x08000000 through each half's factory WB32 USB DFU
+bootloader. This replaces any resident installer; left-USB split updating
+is unavailable afterward. Do not use update.py or the application updater.
+
+The image stops before the existing ZMK settings banks at 0x0801c000.
+Preserving settings requires a flash-range write without a full-chip erase.
+Back up Studio settings before migration. The bootloader key/startup chord
+uses the standalone ROM-entry hook. Initial hardware validation is pending.
+
+Typing, Studio over USB, saved settings, knob assignments, lighting,
+Bluetooth/2.4 GHz and coordinated sleep use the same board implementation.
+The shared service worker remains for those functions. No hardware watchdog.
+EOF
+        (cd "$output" && sha256sum zmk.bin README.txt image-check.json sources.lock.json build-info.txt > FIRMWARE-SHA256SUMS && python3 -m zipfile -c gmk70-zmk-standalone.zip zmk.bin README.txt image-check.json sources.lock.json build-info.txt FIRMWARE-SHA256SUMS)
+    elif [[ "$variant" == wired-qualification ]]; then
         (cd "$output" && sha256sum left/trial.bin left/trial.json right/trial.bin right/trial.json >> SHA256SUMS)
     else
         (cd "$output" && sha256sum application.bin resident.bin update.json package-info.json >> SHA256SUMS)

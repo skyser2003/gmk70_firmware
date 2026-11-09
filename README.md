@@ -44,14 +44,16 @@ Open the newest release in the matching list and download its assets:
 | --- | --- | --- |
 | QMK/VIA | [VIA releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Avia-v&expanded=true) | Normal, debug and updater builds |
 | QMK/Vial | [Vial releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Avial-&expanded=true) | Normal, secure updater and unlocked updater builds |
-| ZMK Studio | [ZMK releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Azmk-v&expanded=true) | Universal Studio/updater build |
+| ZMK Studio | [ZMK releases](https://github.com/skyser2003/gmk70_firmware/releases?q=tag%3Azmk-v&expanded=true) | Universal Studio updater and standalone builds |
 
 These links show each family's releases newest first. Each release includes
 checksums and matching sources. Features described here follow `main`; published
 packages may not include every unreleased change.
 
-ZMK packages built from current `main` include first-install images and later
-application updates. Older releases may contain application updates only.
+ZMK provides `gmk70-zmk-standalone.bin` for per-half factory USB DFU installation
+without an updater, and `gmk70-zmk.zip` for first installation and later split
+application updates. The standalone build also has a ZIP with instructions.
+Older releases may contain application updates only.
 Read the [updater instructions](#updating-firmware) before choosing a file.
 
 New builds of all three families provide **BIN firmware only**. BIN files do not contain
@@ -190,6 +192,7 @@ Choose the corresponding build:
 | `make build-vial` | Normal Vial firmware |
 | `make build-vial-updater` | Vial with secure split updater |
 | `make build-vial-unlocked-updater` | Vial with permanently unlocked updater |
+| `make build-zmk-standalone` | ZMK Studio without the resident or split updater |
 | `make build-updater-debug && make build-zmk-release` | Reviewed resident prerequisite, then universal ZMK Studio package |
 
 Outputs are under `artifacts/qmk/`, `artifacts/vial/` and
@@ -207,7 +210,7 @@ Build and test commands do not flash or reset the keyboard.
 
 ## Updating firmware
 
-Initial VIA/Vial updater and ZMK installation uses `install.bin`
+Initial VIA/Vial updater and ZMK updater installation uses `install.bin`
 on each half separately and requires verified 256 KB MCUs. These images contain
 the resident and application; a full ZMK installation clears saved ZMK settings.
 Later updates use `application.bin` and `update.json` through left USB in wired mode, with the
@@ -216,13 +219,20 @@ halves linked. See the [split-updater guide](docs/SPLIT-UPDATER.md).
 | BIN file | Purpose | Flash address |
 | --- | --- | --- |
 | Normal VIA/Vial firmware | Direct installation without the split updater | `0x08000000` |
+| Standalone ZMK `zmk.bin` | Direct installation without the split updater | `0x08000000` |
 | `install.bin` | First installation with the resident updater | `0x08000000` |
 | `application.bin` + `update.json` | Later updates through the resident updater | `0x08002000`, handled by the updater |
 
 Do not flash `application.bin` at the start of flash. `resident.bin` is included
 for package validation; it is not the complete keyboard firmware.
 
-ZMK uses the same resident installer but a different inter-half updater transport.
+The standalone ZMK target produces `artifacts/zmk/wired-studio-standalone/gmk70-zmk-standalone.zip`.
+It retains Studio, settings, lighting and wireless typing, but requires direct
+factory USB DFU on each half for every firmware update. It preserves the settings
+addresses; preserving their contents requires flashing without a full-chip erase.
+See the [standalone build details](firmware/zmk/README.md#standalone-studio-build).
+
+ZMK updater builds use the same resident installer but a different inter-half updater transport.
 Moving between QMK/Vial and canonical ZMK through the split updater requires the
 [migration bridge and documented sequence](docs/ZMK-NATIVE-UPDATER-WIRE.md).
 Direct first installation on both halves does not need that bridge.
