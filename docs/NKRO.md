@@ -10,8 +10,11 @@ VIA/Vial use native `NK_TOGG`, `NK_ON` and `NK_OFF` keycodes. These persist thro
 the framework's existing keymap configuration. The stock live VIA command stays
 live-only. Startup no longer forces a saved off choice back on.
 
-ZMK Studio exposes **GMK70 NKRO**, with Toggle, Enable and Disable actions
-(`&gmk_nkro 0`, `&gmk_nkro 1`, `&gmk_nkro 2`). It uses a new one-byte
+ZMK Studio exposes these actions under **GMK70 controls**, with descriptive
+NKRO Toggle, On (more than six keys) and Off (six-key compatibility) choices.
+Custom DTS bindings use `&gmk_controls GMK70_NKRO_TOGGLE`, `GMK70_NKRO_ON`
+or `GMK70_NKRO_OFF` with `dt-bindings/zmk/gmk70_controls.h` included. Existing
+direct `gmk_nkro` bindings migrate in RAM. It retains the one-byte
 `gmk_nkro/state` key in the existing settings store; bank formats, saved layers
 and unrelated settings are unchanged. NKRO and function/media flip share the
 same deferred boolean-setting helper: changes are coalesced for 250 ms, failed

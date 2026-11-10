@@ -28,7 +28,7 @@ class VialToZmkTests(unittest.TestCase):
         for code in ("USER26", "KC_FILP", 0x7E1A, "0x7E1A"):
             with self.subTest(code=code):
                 self.assertEqual(
-                    self.converter.translate(code, 4), Binding("gmk_flip", ())
+                    self.converter.translate(code, 4), Binding("gmk_controls", (9,))
                 )
 
     def setUp(self) -> None:
@@ -46,7 +46,8 @@ class VialToZmkTests(unittest.TestCase):
         for keycode, action in cases:
             with self.subTest(keycode=keycode):
                 self.assertEqual(
-                    self.converter.translate(keycode, 4), Binding("gmk_nkro", (action,))
+                    self.converter.translate(keycode, 4),
+                    Binding("gmk_controls", (action + 10,)),
                 )
 
     @staticmethod
@@ -223,7 +224,7 @@ class VialToZmkTests(unittest.TestCase):
             ("STOCK_USB_SLEEP_OFF", Binding("gmk_controls", (8,))),
             ("STOCK_USB_SLEEP_ON", Binding("gmk_controls", (7,))),
             ("STOCK_USB_SLEEP_TOGGLE", Binding("gmk_controls", (6,))),
-            ("QK_CLEAR_EEPROM", Binding("gmk_recovery", (3,))),
+            ("QK_CLEAR_EEPROM", Binding("gmk_controls", (15,))),
         )
         for keycode, expected in cases:
             with self.subTest(keycode=keycode):

@@ -30,6 +30,14 @@ config GMK70_RECOVERY
 	depends on GMK70_ZMK_STUDIO_SETTINGS && !RETENTION_BOOT_MODE
 	default y
 
+config GMK70_MERGED_CONTROLS
+	bool
+	depends on GMK70_CONTROLS && GMK70_FUNCTION_FLIP && GMK70_RECOVERY
+	default y
+	help
+	  Present controls, function/media flip, NKRO and recovery in one native
+	  Studio behavior. Preserve legacy saved bindings through RAM translation.
+
 config INPUT_THREAD_PRIORITY_OVERRIDE
 	bool
 	depends on ZMK_POINTING && INPUT_MODE_SYNCHRONOUS

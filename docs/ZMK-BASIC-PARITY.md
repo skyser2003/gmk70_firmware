@@ -70,10 +70,40 @@ not create a separate GUI or replace ZMK's framework.
 
 Studio exposes native mouse buttons, movement and scrolling, native reset and
 bootloader actions, and a native soft-off action requiring a three-second hold.
-The additional `GMK70 controls` behavior provides Windows-key lock, Windows/Mac
-selection and USB-sleep preference. `GMK70 sleep timeout` selects never,
+The `GMK70 controls` behavior combines the board controls, function/media flip,
+NKRO and guarded recovery actions in one native Studio dropdown:
+
+| Option | Effect |
+| --- | --- |
+| GUI lock: toggle / block / allow Win/Command keys | Toggle, enable or disable the GUI-key lock. |
+| Windows mode: normal Alt/GUI | Select the saved Windows mode and its default modifier layout. |
+| Mac mode: swap Alt/GUI | Select Mac mode and its default modifier layout. |
+| Windows/Mac mode: toggle | Switch between those two modes. |
+| USB idle sleep: toggle permission | Toggle the saved permission for idle sleep in USB mode. |
+| USB idle sleep: allow saved timeout | Permit sleep after the saved timeout when the USB host is suspended. An active USB host stays connected. |
+| USB idle sleep: keep USB awake | Disable USB idle sleep; wireless sleep keeps its own policy. |
+| Flip: numbers to F-keys/Mac media | Toggle the [number-row/function/media translations](ZMK-FUNCTION-FLIP.md), according to the active OS mode. |
+| NKRO: toggle multi-key rollover | Switch between NKRO and six-key output. |
+| NKRO: on (more than 6 keys) | Enable the NKRO report path. |
+| NKRO: off (6-key compatibility) | Use the six-key compatibility report path. |
+| Reboot this half: hold 3s/release | Hold for at least three seconds, then release to reboot the half containing that key. |
+| Bootloader this half: hold 3s/release | Use the same gesture to enter that half's factory bootloader. |
+| Clear app settings: left key, hold 3s/release | Use a left-half key and the same gesture to clear the application settings, subject to existing wired/storage gates. RIGHT cannot erase LEFT's settings. |
+
+Battery/charging and Bluetooth/dongle remain separate behaviors. The native
+`Sleep` action is separate too. `GMK70 sleep timeout` selects never,
 1/3/5/10/20/30 minutes, or the five-minute default. These are native behavior
 metadata and settings; no separate configuration application is required.
+
+Existing direct bindings to `gmk_flip`, `gmk_nkro` and `gmk_recovery` are translated
+to the corresponding controls action in RAM after native settings load, including
+Studio Discard. Their historical behavior IDs remain reserved. The old three
+groups are no longer advertised to Studio; existing controls values 0–8 keep their
+meaning, and the new actions use explicit values 9–15. Native Studio Save writes
+the converted bindings if requested; migration does not reset or automatically
+rewrite the saved keymap. Layer names/order, other bindings and preference
+records are preserved. New custom DTS keymaps and macros should use
+`&gmk_controls GMK70_*` from `dt-bindings/zmk/gmk70_controls.h`.
 
 RGB stays on during ordinary idle, including active USB use. Both halves blank
 their LEDs when the board sleep coordinator quiesces them, using the saved

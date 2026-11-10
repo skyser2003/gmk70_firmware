@@ -16,6 +16,9 @@ static inline ssize_t gmk_settings_read_value(void *context, void *data, size_t 
 
 #ifdef CONFIG_ZMK_BEHAVIOR_LOCAL_ID_TYPE_SETTINGS_TABLE
 #    include <drivers/behavior.h>
+#    ifdef CONFIG_GMK70_MERGED_CONTROLS
+#        include "../controls/bindings.h"
+#    endif
 #    include <errno.h>
 #    include <stdio.h>
 #    include <stdlib.h>
@@ -30,6 +33,9 @@ static inline int gmk_settings_reserve_orphan_id(const char *key, const struct g
     char         *end;
     unsigned long id = strtoul(key + sizeof("behavior/local_id/") - 1, &end, 10);
     if (*end || !id || id >= UINT16_MAX) return -EINVAL;
+#    ifdef CONFIG_GMK70_MERGED_CONTROLS
+    gmk_controls_note_legacy_id((uint16_t)id, record->value, record->size);
+#    endif
     struct zmk_behavior_local_id_map *seed   = NULL;
     bool                              known  = false;
     unsigned                          vacant = 0;

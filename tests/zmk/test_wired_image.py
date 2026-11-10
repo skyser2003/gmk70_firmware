@@ -10,6 +10,62 @@ import check_image
 
 
 class WiredImageTests(unittest.TestCase):
+    def test_actual_picker_table_and_native_load_boundaries(self) -> None:
+        base = 0x08002000
+        symbols = {
+            "_zmk_behavior_ref_list_start": base,
+            "_zmk_behavior_ref_list_end": base + 32,
+            "__init_gmk70_menu_metadata_init": base + 128,
+            "gmk70_menu_metadata_init": base + 224,
+            "settings_handler_gmk_controls_bindings": base + 136,
+            "zmk_behavior_find_behavior_name_from_local_id": base + 228,
+            "gmk_native_behavior_find_behavior_name_from_local_id": base + 232,
+            "__wrap_zmk_behavior_find_behavior_name_from_local_id": base + 236,
+        }
+        image = bytearray(256)
+        for index, name in enumerate(
+            (b"gmk_controls", b"gmk_sleep", b"gmk_radio", b"gmk_battery")
+        ):
+            struct.pack_into("<II", image, index * 8, base + 32 + index * 4, 0)
+            struct.pack_into("<I", image, 32 + index * 4, base + 48 + index * 16)
+            image[48 + index * 16 : 48 + index * 16 + len(name)] = name
+        struct.pack_into("<I", image, 128, symbols["gmk70_menu_metadata_init"] | 1)
+        struct.pack_into("<I", image, 140, 1)
+        resolver = "zmk_behavior_find_behavior_name_from_local_id"
+        assembly = "\n".join(
+            f"{index:08x} <{caller}>:\n  100: f000 b000 b.w 200 <{target}>\n"
+            for index, (caller, target) in enumerate(
+                (
+                    (resolver, "gmk_native_behavior_find_behavior_name_from_local_id"),
+                    (f"__wrap_{resolver}", resolver),
+                    ("keymap_handle_set", f"__wrap_{resolver}"),
+                    ("keymap_handle_commit", f"__wrap_{resolver}"),
+                )
+            )
+        )
+        check_image.validate_merged_controls(symbols, bytes(image), base, assembly)
+        duplicate = image.copy()
+        duplicate[64:80] = b"gmk_flip\0".ljust(16, b"\0")
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            check_image.validate_merged_controls(
+                symbols, bytes(duplicate), base, assembly
+            )
+        with self.assertRaisesRegex(ValueError, "compatibility bypassed"):
+            check_image.validate_merged_controls(
+                symbols, bytes(image), base, assembly.replace("<__wrap_", "<bypassed_")
+            )
+
+    def test_static_profile_rejects_new_users_of_removed_facilities(self) -> None:
+        config = "CONFIG_GMK70_MERGED_CONTROLS=y\nCONFIG_PM_DEVICE=y\n"
+        check_image.validate_static_studio_config(config, "", set())
+        for dts, symbols in (
+            ("power-domains = <&domain>;", set()),
+            ("", {"settings_register"}),
+            ("", {"k_sched_time_slice_set"}),
+        ):
+            with self.subTest(dts=dts, symbols=symbols), self.assertRaises(ValueError):
+                check_image.validate_static_studio_config(config, dts, symbols)
+
     def test_permanent_builds_reject_watchdog_and_outgoing_handoff_symbols(
         self,
     ) -> None:
@@ -105,15 +161,19 @@ class WiredImageTests(unittest.TestCase):
         ]
         self.assertEqual(mapped, coords + [(10, 0), (10, 1)])
         bindings = re.findall(
-            r"&(?:kp\s+\w+|(?:mo|to|gmk_nkro)\s+\d+|rgb_ug\s+\w+|none|trans)",
-            (board / "gmk70_wired.keymap").read_text(),
+            r"GMK70_NKRO_BINDING|&(?:kp\s+\w+|(?:mo|to|gmk_nkro)\s+\d+|rgb_ug\s+\w+|none|trans)",
+            "\n".join(
+                line
+                for line in (board / "gmk70_wired.keymap").read_text().splitlines()
+                if not line.lstrip().startswith("#")
+            ),
         )
         self.assertEqual(len(bindings), 4 * (len(coords) + 2))
         self.assertEqual(bindings[coords.index((4, 2))], "&mo 1")
         for layer in (1, 3):
             self.assertEqual(
                 bindings[layer * (len(coords) + 2) + coords.index((3, 5))],
-                "&gmk_nkro 0",
+                "GMK70_NKRO_BINDING",
             )
 
 

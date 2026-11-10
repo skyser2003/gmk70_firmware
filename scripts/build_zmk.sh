@@ -44,7 +44,8 @@ zmk_tools="$project_root/firmware/zmk/tools/.venv/bin"
 modules="$project_root/dependencies/modules/hal/cmsis;$project_root/dependencies/modules/lib/gui/lvgl"
 if [[ "$variant" == wired-studio-* ]]; then
     modules+=";$project_root/dependencies/modules/lib/nanopb;$project_root/dependencies/modules/msgs/zmk-studio-messages"
-    extra+=(-DNANOPB_PROTOC_EXECUTABLE="$zmk_tools/python-grpc-tools-protoc")
+    extra+=(-DNANOPB_PROTOC_EXECUTABLE="$zmk_tools/python-grpc-tools-protoc"
+        -DKEYMAP_FILE="$project_root/firmware/zmk/boards/zuoya/gmk70_wired/gmk70_studio.keymap")
 fi
 for tool in python cmake ninja; do
     [[ -x "$zmk_tools/$tool" ]] || { printf 'Missing pinned ZMK build tools; run make setup-zmk\n' >&2; exit 2; }

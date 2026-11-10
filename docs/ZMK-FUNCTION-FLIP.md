@@ -1,11 +1,12 @@
 # GMK70 function/media flip
 
-**GMK70 Function / Media Flip** is a parameterless, assignable ZMK Studio
-behavior implementing stock `custom(26)` / `KC_FILP` (`0x7E1A`). Pressing it
-toggles the mode; releasing it has no action. Fresh settings start with flip off.
-The factory keymap is unchanged. The saved-layout migration restores only the
-original flip position, preserving all other 287 bindings
-and all four layer names/order.
+In ZMK Studio, select **GMK70 controls → Flip: numbers to F-keys/Mac media**.
+This assignable action implements stock `custom(26)` / `KC_FILP` (`0x7E1A`).
+Pressing it toggles the mode; releasing it has no action. Fresh settings start
+with flip off. Existing direct `gmk_flip` bindings convert to this action in
+RAM without resetting the saved layout. Custom DTS bindings use
+`&gmk_controls GMK70_FUNCTION_FLIP` with
+`dt-bindings/zmk/gmk70_controls.h` included.
 
 With flip off, keys pass through unchanged. With it on, the emitted keycodes
 follow the maintained QMK board's tables:

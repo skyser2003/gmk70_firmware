@@ -249,7 +249,14 @@ class RadioImageTests(unittest.TestCase):
                 )
                 elf_path.write_bytes(elf)
                 image_path.write_bytes(image)
-                with patch("check_image.subprocess.check_output", side_effect=output):
+                elf_path.with_name("zmk.config").write_text(
+                    "CONFIG_GMK70_MERGED_CONTROLS=y\n"
+                )
+                elf_path.with_name("zephyr.dts").write_text("")
+                with (
+                    patch("check_image.subprocess.check_output", side_effect=output),
+                    patch("check_image.validate_merged_controls"),
+                ):
                     if size == 0x1A000:
                         result = check_image.check_wired(
                             elf_path, image_path, "wired-studio-radio-qualification"

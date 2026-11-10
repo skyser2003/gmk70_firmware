@@ -5,9 +5,28 @@
 #include <dt-bindings/zmk/gmk70_controls.h>
 #include <zephyr/device.h>
 #include <zmk/behavior.h>
+#ifdef CONFIG_GMK70_MERGED_CONTROLS
+#    include "../function_flip/flip.h"
+#    include "../nkro/nkro.h"
+#    include "../recovery/recovery.h"
+#    include "../wired/wired.h"
+#    include <zmk/split/central.h>
+#    include <zmk/events/position_state_changed.h>
+
+static int recovery(struct zmk_behavior_binding *binding, struct zmk_behavior_binding_event event, bool pressed) {
+    /* Retain native event-source locality for recovery alone. Other controls
+     * stay on LEFT; a right-side reset still targets RIGHT, never the host. */
+#    if IS_ENABLED(CONFIG_ZMK_SPLIT) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    if (gmk_wired_is_left() && event.source != ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL) return zmk_split_central_invoke_behavior(event.source, binding, event, pressed);
+#    endif
+    return pressed ? gmk_recovery_hold_press((enum gmk_recovery_action)(binding->param1 - GMK70_RECOVERY_RESET + GMK_RECOVERY_RESET), event) : gmk_recovery_release_event(event);
+}
+#endif
 
 static int controls_pressed(struct zmk_behavior_binding *binding, struct zmk_behavior_binding_event event) {
+#ifndef CONFIG_GMK70_MERGED_CONTROLS
     ARG_UNUSED(event);
+#endif
     if (binding->param2) return -EINVAL;
     switch (binding->param1) {
         case GMK70_GUI_TOGGLE:
@@ -28,6 +47,20 @@ static int controls_pressed(struct zmk_behavior_binding *binding, struct zmk_beh
             return gmk_controls_usb_sleep_set(true);
         case GMK70_USB_SLEEP_OFF:
             return gmk_controls_usb_sleep_set(false);
+#ifdef CONFIG_GMK70_MERGED_CONTROLS
+        case GMK70_FUNCTION_FLIP:
+            return gmk_flip_toggle();
+        case GMK70_NKRO_TOGGLE:
+            return gmk_nkro_toggle();
+        case GMK70_NKRO_ON:
+            return gmk_nkro_set(true);
+        case GMK70_NKRO_OFF:
+            return gmk_nkro_set(false);
+        case GMK70_RECOVERY_RESET:
+        case GMK70_RECOVERY_BOOTLOADER:
+        case GMK70_RECOVERY_SETTINGS_RESET:
+            return recovery(binding, event, true);
+#endif
         default:
             return -EINVAL;
     }
@@ -42,22 +75,38 @@ static int released(struct zmk_behavior_binding *binding, struct zmk_behavior_bi
     ARG_UNUSED(event);
     return 0;
 }
+#ifdef CONFIG_GMK70_MERGED_CONTROLS
+static int controls_released(struct zmk_behavior_binding *binding, struct zmk_behavior_binding_event event) {
+    if (!binding->param2 && binding->param1 >= GMK70_RECOVERY_RESET && binding->param1 <= GMK70_RECOVERY_SETTINGS_RESET) return recovery(binding, event, false);
+    return 0;
+}
+#endif
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
-static const struct behavior_parameter_value_metadata control_values[] = {
-    {.display_name = "Toggle GUI lock", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_GUI_TOGGLE}, {.display_name = "Lock GUI", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_GUI_ON}, {.display_name = "Unlock GUI", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_GUI_OFF}, {.display_name = "Windows", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_OS_WINDOWS}, {.display_name = "Mac", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_OS_MAC}, {.display_name = "Toggle OS", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_OS_TOGGLE}, {.display_name = "USB sleep: toggle", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_USB_SLEEP_TOGGLE}, {.display_name = "USB sleep: on", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_USB_SLEEP_ON}, {.display_name = "USB sleep: off", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = GMK70_USB_SLEEP_OFF},
-};
-static const struct behavior_parameter_value_metadata sleep_values[] = {
-    {.display_name = "Never", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = 0}, {.display_name = "1 min", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = 1}, {.display_name = "3 min", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = 2}, {.display_name = "5 min", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = 3}, {.display_name = "10 min", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = 4}, {.display_name = "20 min", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = 5}, {.display_name = "30 min", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = 6}, {.display_name = "Default: 5 min", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = 7},
-};
-static const struct behavior_parameter_metadata_set control_sets[]   = {{.param1_values = control_values, .param1_values_len = ARRAY_SIZE(control_values)}};
-static const struct behavior_parameter_metadata_set sleep_sets[]     = {{.param1_values = sleep_values, .param1_values_len = ARRAY_SIZE(sleep_values)}};
-static const struct behavior_parameter_metadata     control_metadata = {.sets_len = ARRAY_SIZE(control_sets), .sets = control_sets};
-static const struct behavior_parameter_metadata     sleep_metadata   = {.sets_len = ARRAY_SIZE(sleep_sets), .sets = sleep_sets};
+#    ifdef CONFIG_GMK70_MERGED_CONTROLS
+#        include "metadata.h"
+#        define control_metadata gmk70_menu_metadata[0]
+#        define sleep_metadata gmk70_menu_metadata[1]
+#    else
+#        include "metadata_rows.h"
+#        define GMK_VALUE(v, text) {.display_name = (text), .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = (v)},
+static const struct behavior_parameter_value_metadata control_values[] = {GMK70_BASE_CONTROL_OPTIONS(GMK_VALUE)};
+static const struct behavior_parameter_value_metadata sleep_values[]   = {GMK70_SLEEP_OPTIONS(GMK_VALUE)};
+#        undef GMK_VALUE
+static const struct behavior_parameter_metadata_set   control_sets[]   = {{.param1_values = control_values, .param1_values_len = ARRAY_SIZE(control_values)}};
+static const struct behavior_parameter_metadata_set   sleep_sets[]     = {{.param1_values = sleep_values, .param1_values_len = ARRAY_SIZE(sleep_values)}};
+static const struct behavior_parameter_metadata       control_metadata = {.sets_len = ARRAY_SIZE(control_sets), .sets = control_sets};
+static const struct behavior_parameter_metadata       sleep_metadata   = {.sets_len = ARRAY_SIZE(sleep_sets), .sets = sleep_sets};
+#    endif
+
 #endif
 static const struct behavior_driver_api controls_api = {
-    .binding_pressed  = controls_pressed,
+    .binding_pressed = controls_pressed,
+#ifdef CONFIG_GMK70_MERGED_CONTROLS
+    .binding_released = controls_released,
+#else
     .binding_released = released,
-    .locality         = BEHAVIOR_LOCALITY_CENTRAL,
+#endif
+    .locality = BEHAVIOR_LOCALITY_CENTRAL,
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
     .parameter_metadata = &control_metadata,
 #endif

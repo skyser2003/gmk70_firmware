@@ -84,6 +84,7 @@ test-zmk:
 	bash ./tests/zmk/run_controls_tests.sh
 	bash ./tests/zmk/run_native_ids_tests.sh
 	bash ./tests/zmk/run_controls_behavior_tests.sh
+	bash ./tests/zmk/run_merged_controls_tests.sh
 	bash ./tests/zmk/run_recovery_tests.sh
 	bash ./tests/zmk/run_wb32_stop_tests.sh
 	bash ./tests/zmk/run_wired_power_tests.sh

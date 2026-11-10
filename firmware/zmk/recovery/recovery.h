@@ -31,3 +31,8 @@ enum gmk_recovery_action gmk_recovery_startup_sample(struct gmk_recovery_startup
 /* Scanner-only local LEFT rows. Dispatch occurs once, after releasing all keys,
  * on the system workqueue so the separate settings worker remains available. */
 void gmk_recovery_startup_poll(const uint16_t rows[5]);
+
+/* Native event-source recovery, shared by the merged and legacy behaviors. */
+struct zmk_behavior_binding_event;
+int gmk_recovery_hold_press(enum gmk_recovery_action action, struct zmk_behavior_binding_event event);
+int gmk_recovery_release_event(struct zmk_behavior_binding_event event);

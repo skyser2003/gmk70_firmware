@@ -1,0 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+#include <dt-bindings/zmk/gmk70_controls.h>
+#define GMK70_NKRO_BINDING &gmk_controls GMK70_NKRO_TOGGLE
+#include "gmk70_wired.keymap"

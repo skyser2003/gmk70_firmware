@@ -481,7 +481,7 @@ class VialToZmk:
         if code in (0x7E11, 0x7E12, 0x7E13):
             return Binding("gmk_controls", ({0x7E11: 8, 0x7E12: 7, 0x7E13: 6}[code],))
         if code == 0x7E1A:
-            return Binding("gmk_flip", ())
+            return Binding("gmk_controls", (9,))
         if code in (0x7009, 0x700A, 0x700B, 0x7E24):
             # QMK GUI_ON permits Windows keys; the native board control's
             # lock-on action suppresses them, so the on/off values invert.
@@ -489,10 +489,12 @@ class VialToZmk:
                 "gmk_controls", ({0x7009: 2, 0x700A: 1, 0x700B: 0, 0x7E24: 0}[code],)
             )
         if code in (0x7011, 0x7012, 0x7013):
-            return Binding("gmk_nkro", ({0x7011: 1, 0x7012: 2, 0x7013: 0}[code],))
+            return Binding(
+                "gmk_controls", ({0x7011: 11, 0x7012: 12, 0x7013: 10}[code],)
+            )
         if code == 0x7C03:
             # Deliberate hold/release resets only ZMK's application settings.
-            return Binding("gmk_recovery", (3,))
+            return Binding("gmk_controls", (15,))
         if 0x7E00 <= code <= 0x7E3F:
             raise UnsupportedKeycode(IssueCategory.RESERVED)
         raise UnsupportedKeycode(IssueCategory.UNSUPPORTED)

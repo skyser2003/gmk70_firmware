@@ -104,10 +104,19 @@ pending.
 
 | Variant | Flash bytes / slot | Reserved RAM / capacity | Unallocated RAM |
 | --- | ---: | ---: | ---: |
-| Studio updater | 106,432 / 106,496 | 27,452 / 28,544 | 1,092 |
-| Studio standalone | 101,096 / 114,688 | 26,604 / 28,544 | 1,940 |
+| Studio updater | 106,480 / 106,496 | 28,020 / 28,544 | 524 |
+| Studio standalone | 101,136 / 114,688 | 27,172 / 28,544 | 1,372 |
 
-The updater has 64 flash bytes spare. Bounds checks remain strict; a future
+These figures include the unified [Studio controls menu](ZMK-BASIC-PARITY.md#integration-and-operation).
+Its metadata initializes 624 bytes of static RAM from compact name tables,
+trading RAM for flash while retaining the descriptive dropdowns. No heap or new
+thread is involved. The profile disables unused dynamic settings handlers,
+already-inactive time slicing (the previous slice size was zero), and device
+power-domain support (no enabled device has a `power-domains` dependency).
+Ordinary device suspend/resume and static settings handlers remain enabled;
+image checks reject new dependencies on the disabled facilities.
+
+The updater has 16 flash bytes spare. Bounds checks remain strict; a future
 compiler or feature change may require more size work. Unallocated RAM is a
 linker quantity, not a measured runtime peak. Stack reservations are unchanged
 except that main now owns the scanner's reservation and its separate thread is

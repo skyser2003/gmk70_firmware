@@ -548,6 +548,74 @@ def validate_basic_parity_linking(symbols: set[str]) -> None:
         raise ValueError("RGB must follow board sleep without a separate idle cutoff")
 
 
+def validate_merged_controls(
+    symbols: dict[str, int], image: bytes, base: int, disassembly: str
+) -> None:
+    """Inspect the actual native picker table and saved-ID call boundaries."""
+    required = {
+        "__init_gmk70_menu_metadata_init",
+        "gmk70_menu_metadata_init",
+        "settings_handler_gmk_controls_bindings",
+        "zmk_behavior_find_behavior_name_from_local_id",
+        "gmk_native_behavior_find_behavior_name_from_local_id",
+        "__wrap_zmk_behavior_find_behavior_name_from_local_id",
+    }
+    if missing := required - symbols.keys():
+        raise ValueError(f"Missing merged Studio controls: {sorted(missing)}")
+
+    def word(address: int) -> int:
+        if not base <= address <= base + len(image) - 4:
+            raise ValueError("Studio metadata points outside the image")
+        return int(struct.unpack_from("<I", image, address - base)[0])
+
+    start = symbols["_zmk_behavior_ref_list_start"]
+    end = symbols["_zmk_behavior_ref_list_end"]
+    if end <= start or (end - start) % 8:
+        raise ValueError("Invalid native behavior reference table")
+    names = set()
+    for address in range(start, end, 8):
+        offset = word(word(address)) - base  # ref.device->name
+        if not 0 <= offset < len(image):
+            raise ValueError("Behavior name outside the image")
+        names.add(image[offset : offset + 64].split(b"\0", 1)[0])
+    if names & {b"gmk_flip", b"gmk_nkro", b"gmk_recovery"}:
+        raise ValueError("Native Studio still advertises duplicate controls")
+    if not {b"gmk_controls", b"gmk_sleep", b"gmk_radio", b"gmk_battery"} <= names:
+        raise ValueError("Merged controls removed a separate GMK70 menu")
+    entry = symbols["__init_gmk70_menu_metadata_init"]
+    if word(entry) & ~1 != symbols["gmk70_menu_metadata_init"]:
+        raise ValueError("Menu metadata initialization is not registered")
+    # Native settings_handler layout: name, commit priority, four callbacks.
+    if word(symbols["settings_handler_gmk_controls_bindings"] + 4) != 1:
+        raise ValueError("Binding migration must commit after native priority zero")
+    bodies = _function_bodies(disassembly)
+    resolver = "zmk_behavior_find_behavior_name_from_local_id"
+    for caller, target in (
+        (resolver, f"gmk_native_{resolver.removeprefix('zmk_')}"),
+        (f"__wrap_{resolver}", resolver),
+        ("keymap_handle_set", f"__wrap_{resolver}"),
+        ("keymap_handle_commit", f"__wrap_{resolver}"),
+    ):
+        if target not in _branch_targets(bodies.get(caller, "")):
+            raise ValueError(f"Saved binding compatibility bypassed: {caller}")
+
+
+def validate_static_studio_config(config: str, dts: str, symbols: set[str]) -> None:
+    """Keep size savings limited to unused kernel facilities."""
+    if "CONFIG_GMK70_MERGED_CONTROLS=y" not in config.splitlines():
+        raise ValueError("Studio profile must enable merged GMK70 controls")
+    if "CONFIG_PM_DEVICE_POWER_DOMAIN=y" not in config.splitlines() and re.search(
+        r"\bpower-domains\s*=", dts
+    ):
+        raise ValueError("Device power domains are disabled but used by a device")
+    for option, api in (
+        ("CONFIG_SETTINGS_DYNAMIC_HANDLERS", "settings_register"),
+        ("CONFIG_TIMESLICING", "k_sched_time_slice_set"),
+    ):
+        if f"{option}=y" not in config.splitlines() and api in symbols:
+            raise ValueError(f"Disabled facility still used: {api}")
+
+
 def validate_retained_sleep_linking(symbols: set[str]) -> bool:
     """Reject a partial returning-STOP integration; reset-only remains supported."""
     transport = {
@@ -720,6 +788,12 @@ def check_wired(
     if event_scanner:
         validate_idle_main(disassembly)
     if variant.startswith("wired-studio-"):
+        validate_static_studio_config(
+            elf.with_name("zmk.config").read_text(),
+            elf.with_name("zephyr.dts").read_text(),
+            set(symbols),
+        )
+        validate_merged_controls(symbols, payload, base, disassembly)
         validate_studio_roles(disassembly)
         for name in (
             "settings_backend_init",

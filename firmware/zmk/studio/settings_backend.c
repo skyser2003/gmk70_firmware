@@ -3,6 +3,9 @@
 #include "settings_store.h"
 #include "settings_ids.h"
 #include "../runtime/idle.h"
+#ifdef CONFIG_GMK70_MERGED_CONTROLS
+#    include "../controls/bindings.h"
+#endif
 #include "../wired/wired.h"
 #ifdef CONFIG_GMK70_POWER
 #    include "../power/power.h"
@@ -58,6 +61,9 @@ bool gmk_zmk_settings_ids_ready(void) {
  * secured Studio RPCs closed when storage cannot be read or written safely. */
 enum zmk_studio_core_lock_state __real_zmk_studio_core_get_lock_state(void);
 enum zmk_studio_core_lock_state __wrap_zmk_studio_core_get_lock_state(void) {
+#ifdef CONFIG_GMK70_MERGED_CONTROLS
+    if (!gmk_controls_bindings_ready()) return ZMK_STUDIO_CORE_LOCK_STATE_LOCKED;
+#endif
     return gmk_zmk_settings_ids_ready() ? __real_zmk_studio_core_get_lock_state() : ZMK_STUDIO_CORE_LOCK_STATE_LOCKED;
 }
 
@@ -65,6 +71,9 @@ static int load(struct settings_store *cs, const struct settings_load_arg *arg) 
     ARG_UNUSED(cs);
     k_mutex_lock(&access, K_FOREVER);
     atomic_and(&ready, ~IDS_READY);
+#ifdef CONFIG_GMK70_MERGED_CONTROLS
+    if ((!arg || !arg->cb) && (!arg || !arg->subtree || !strcmp(arg->subtree, "keymap"))) gmk_controls_prepare_legacy_load();
+#endif
     int                   result = gmk_zmk_settings_ready() ? 0 : -EIO;
     gmk_settings_cursor_t cursor;
     gmk_settings_cursor_init(&cursor);

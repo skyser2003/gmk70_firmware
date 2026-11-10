@@ -12,6 +12,7 @@ class OsKeymapTests(unittest.TestCase):
         native = (
             ROOT / "firmware/zmk/boards/zuoya/gmk70_wired/gmk70_wired.keymap"
         ).read_text()
+        native = native.replace("GMK70_NKRO_BINDING", "&gmk_nkro 0")
         layers = re.findall(r"bindings\s*=\s*<(.*?)>;", native, re.S)
         expected = {
             17: "RGB_EFF",
@@ -38,6 +39,7 @@ class OsKeymapTests(unittest.TestCase):
         native = (
             ROOT / "firmware/zmk/boards/zuoya/gmk70_wired/gmk70_wired.keymap"
         ).read_text()
+        native = native.replace("GMK70_NKRO_BINDING", "&gmk_nkro 0")
         native_layers = re.findall(r"bindings\s*=\s*<(.*?)>;", native, re.S)
         self.assertEqual(len(native_layers), 4)
         layers = [re.findall(r"&\w+(?:\s+[^&\n]+)?", layer) for layer in native_layers]

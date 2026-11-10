@@ -12,6 +12,12 @@ The new output must not already exist. The input remains unchanged. The converte
 
 After initializing the new firmware's defaults, import a converted **VIA export** through VIA's Save/Load interface. A converted raw recovery dump still needs a dedicated matrix restore procedure; it is not a VIA import file. The original vendor keyboard definition is neither kind of saved keymap and is rejected.
 
+The separate offline `vial_to_zmk.py` converter emits the current unified
+`gmk_controls` bindings for function/media flip, NKRO and application-settings
+reset. These appear under **GMK70 controls** in Studio. The converter does not
+change the keyboard; existing on-device ZMK direct bindings migrate in RAM when
+the new firmware loads them. See [Studio controls](../../docs/ZMK-BASIC-PARITY.md#integration-and-operation).
+
 Validation:
 
 ```sh
