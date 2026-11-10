@@ -525,9 +525,7 @@ void wireless_post_task(void) {
 }
 
 static bool selected_device_allowed(uint8_t device) {
-    uint8_t mode = confinfo.devs;
-    hs_modeio_detection(true, &mode, confinfo.last_btdevs);
-    return gmk70_device_allowed(device, mode);
+    return gmk70_device_allowed(device, hs_modeio_read());
 }
 
 bool process_record_wls(uint16_t keycode, keyrecord_t *record) {

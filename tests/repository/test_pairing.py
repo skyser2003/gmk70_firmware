@@ -19,6 +19,10 @@ class PairingTests(unittest.TestCase):
         body = [
             '#include "pairing_hold.h"',
             test_nkro.NkroTests.function(
+                BOARD / "wls/wls.c",
+                "bool hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev)",
+            ),
+            test_nkro.NkroTests.function(
                 board, "static bool selected_device_allowed(uint8_t device)"
             ),
         ]
@@ -139,6 +143,10 @@ class PairingTests(unittest.TestCase):
                     "timing",
                     "replacement",
                     "mode-gate",
+                    "cross-mode",
+                    "slider",
+                    "slider-bounce",
+                    "slider-wrap",
                     "usb",
                     "synthetic",
                     "vial-authorization",

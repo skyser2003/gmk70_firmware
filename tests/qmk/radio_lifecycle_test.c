@@ -206,7 +206,7 @@ static void physical_modes(void) {
             for (unsigned index = 0; index < sizeof(destinations); ++index) {
                 confinfo.devs   = previous;
                 uint8_t device  = destinations[index];
-                bool    allowed = pins == 3 ? device == DEVS_USB : pins == 1 ? device >= DEVS_BT1 && device <= DEVS_BT5 : pins == 2 ? device == DEVS_2G4 : false;
+                bool    allowed = pins != 0;
                 assert(selected_device_allowed(device) == allowed && "Physical admission must reject both-low regardless of the old logical device");
             }
         }

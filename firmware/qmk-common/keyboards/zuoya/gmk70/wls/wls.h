@@ -1,4 +1,6 @@
-#include QMK_KEYBOARD_H
+#ifdef QMK_KEYBOARD_H
+#    include QMK_KEYBOARD_H
+#endif
 
 #include "quantum.h"
 #include <stdbool.h>
@@ -19,10 +21,11 @@
 
 enum modeio_mode { hs_none = 0, hs_usb, hs_bt, hs_2g4, hs_wireless, hs_invalid };
 
-extern bool lower_sleep;
-bool        hs_rgb_blink_hook(void);
-bool        hs_mode_scan(bool update, uint8_t moude, uint8_t lsat_btdev);
-bool        hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev);
-void        hs_rgb_blink_set_timer(uint32_t time);
-void        hs_split_wake_peer(void);
-void        usart_init(void);
+extern bool      lower_sleep;
+enum modeio_mode hs_modeio_read(void);
+bool             hs_rgb_blink_hook(void);
+bool             hs_mode_scan(bool update, uint8_t moude, uint8_t lsat_btdev);
+bool             hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev);
+void             hs_rgb_blink_set_timer(uint32_t time);
+void             hs_split_wake_peer(void);
+void             usart_init(void);

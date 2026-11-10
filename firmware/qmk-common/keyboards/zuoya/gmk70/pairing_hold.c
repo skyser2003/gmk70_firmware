@@ -13,10 +13,11 @@ static struct {
     uint8_t                        row;
     uint8_t                        col;
     uint8_t                        device;
+    enum modeio_mode               physical_mode;
     gmk70_pairing_device_allowed_t device_allowed;
 } pairing;
 
-static void pairing_cancel(void) {
+void gmk70_pairing_cancel(void) {
     if (pairing.token != INVALID_DEFERRED_TOKEN) {
         cancel_deferred_exec(pairing.token);
         pairing.token = INVALID_DEFERRED_TOKEN;
@@ -24,15 +25,15 @@ static void pairing_cancel(void) {
 }
 
 void gmk70_pairing_release_position(uint8_t row, uint8_t col) {
-    if (row == pairing.row && col == pairing.col) pairing_cancel();
+    if (row == pairing.row && col == pairing.col) gmk70_pairing_cancel();
 }
 
 static uint32_t pairing_complete(uint32_t trigger_time, void *cb_arg) {
     (void)trigger_time;
     (void)cb_arg;
     pairing.token = INVALID_DEFERRED_TOKEN;
-    // A physical selector change during the hold must still forbid pairing.
-    if (pairing.device_allowed(pairing.device)) wireless_devs_change(wireless_get_current_devs(), pairing.device, true);
+    // Check the pins again in case the scan has not observed a new position yet.
+    if (hs_modeio_read() == pairing.physical_mode && pairing.device_allowed(pairing.device)) wireless_devs_change(wireless_get_current_devs(), pairing.device, true);
     return 0;
 }
 
@@ -43,13 +44,14 @@ bool gmk70_pairing_process_record(uint16_t keycode, keyrecord_t *record, gmk70_p
     if (device == UINT8_MAX) return true;
     if (!record->event.pressed || !device_allowed(device)) return false;
 
-    pairing_cancel();
+    gmk70_pairing_cancel();
     if (wireless_get_current_devs() != device) wireless_devs_change(wireless_get_current_devs(), device, false);
     // Synthetic selectors may change hosts, but cannot establish a physical hold.
     if (device != DEVS_USB && physical) {
         pairing.row            = record->event.key.row;
         pairing.col            = record->event.key.col;
         pairing.device         = device;
+        pairing.physical_mode  = hs_modeio_read();
         pairing.device_allowed = device_allowed;
         pairing.token          = defer_exec(3000, pairing_complete, NULL);
     }
@@ -66,17 +68,17 @@ void __real_nvm_dynamic_keymap_update_buffer(uint32_t offset, uint32_t size, uin
 void __real_nvm_dynamic_keymap_erase(void);
 
 void __wrap_nvm_dynamic_keymap_update_keycode(uint8_t layer, uint8_t row, uint8_t column, uint16_t keycode) {
-    pairing_cancel();
+    gmk70_pairing_cancel();
     __real_nvm_dynamic_keymap_update_keycode(layer, row, column, keycode);
 }
 
 void __wrap_nvm_dynamic_keymap_update_buffer(uint32_t offset, uint32_t size, uint8_t *data) {
-    pairing_cancel();
+    gmk70_pairing_cancel();
     __real_nvm_dynamic_keymap_update_buffer(offset, size, data);
 }
 
 void __wrap_nvm_dynamic_keymap_erase(void) {
-    pairing_cancel();
+    gmk70_pairing_cancel();
     __real_nvm_dynamic_keymap_erase();
 }
 #endif

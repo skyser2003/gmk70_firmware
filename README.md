@@ -14,6 +14,13 @@ need their bridge cable; configuration and firmware updates use USB.
 The QMK builds retain the stock custom-key numbering, Windows/Mac layouts and
 five-minute default idle sleep. Board-specific additions and integration fixes include:
 
+- **Connection shortcuts (VIA, Vial and ZMK):** select USB, any Bluetooth slot,
+  or the 2.4 GHz dongle regardless of the physical mode slider's position.
+  The slider selects its corresponding connection at startup or when moved;
+  a shortcut overrides it until the next slider change or restart. Typing goes
+  to one selected connection at a time. Holding a wireless selector for three
+  seconds starts pairing; moving the slider cancels a pending pairing hold.
+  Firmware updates still require the slider in USB mode and a USB connection.
 - **Battery indicators with RGB off:** holding Show Battery or Show Charging
   temporarily lights the indicators. Releasing the key restores darkness without
   changing the saved RGB setting.

@@ -46,7 +46,7 @@ class RadioLifecycleTests(unittest.TestCase):
         bodies.append(
             test_nkro.NkroTests.function(
                 BOARD / "wls/wls.c",
-                "bool hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev)",
+                "enum modeio_mode hs_modeio_read(void)",
             )
         )
         (output / "radio_lifecycle_fixture.h").write_text("\n".join(bodies))

@@ -23,19 +23,9 @@ uint8_t gmk70_wireless_device(uint16_t keycode) {
 }
 
 bool gmk70_device_allowed(uint8_t device, uint8_t physical_mode) {
-    if (device > DEVS_2G4) {
-        return false;
-    }
-    if (physical_mode == hs_none || physical_mode == hs_wireless) {
-        return true;
-    }
-    if (device == DEVS_USB) {
-        return physical_mode == hs_usb;
-    }
-    if (device == DEVS_2G4) {
-        return physical_mode == hs_2g4;
-    }
-    return physical_mode == hs_bt;
+    // The slider selects an output when moved; shortcuts may override it.
+    // Retain rejection of invalid pin states and unsupported destinations.
+    return device <= DEVS_2G4 && physical_mode <= hs_wireless;
 }
 
 uint16_t gmk70_shortcut_keycode(uint16_t keycode) {

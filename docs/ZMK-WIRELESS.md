@@ -11,6 +11,9 @@ the destination; holding a wireless selector for three seconds requests pairing.
 Releasing or reassigning the held key cancels a pairing request that has not yet
 been sent. There is no automatic bond erase or CLEAN command. The physical LEFT
 host switch selects USB, the last saved Bluetooth slot, or the dongle after a 50 ms debounce.
+Connection shortcuts can override that selection in any valid slider position;
+the slider selects again only at startup or when moved. VIA and Vial share this
+policy; see [changes from stock](../README.md#changes-from-stock).
 
 Cancellation precedes native binding edits, Studio Discard/Reset and layer
 move/add/remove/restore operations. It invalidates the physical deadline and

@@ -3,6 +3,7 @@
 #include "transactions.h"
 #include "usb_main.h"
 #include "wireless.h"
+#include "wls/wls.h"
 #include "via.h"
 #include "update/qmk_update.h"
 #include "update/protocol.h"
@@ -24,6 +25,7 @@ bool via_command_kb(uint8_t *data, uint8_t length) {
 static bool             left, master;
 static transport_t      transport;
 static uint8_t          mode;
+static enum modeio_mode physical_mode;
 static unsigned         flash_writes, rpc_calls, usb_calls, radio_calls, forwarded, locks, resets;
 static unsigned         eeprom_reads;
 static bool             relay;
@@ -145,6 +147,9 @@ bool is_keyboard_master(void) {
 transport_t get_transport(void) {
     return transport;
 }
+enum modeio_mode hs_modeio_read(void) {
+    return physical_mode;
+}
 uint8_t wireless_get_current_devs(void) {
     return mode;
 }
@@ -214,6 +219,7 @@ static void fixture(void) {
     left = master    = true;
     transport        = TRANSPORT_USB;
     mode             = DEVS_USB;
+    physical_mode    = hs_usb;
     USB_DRIVER.state = USB_ACTIVE;
     now              = 100;
     flash_writes = rpc_calls = usb_calls = radio_calls = forwarded = locks = resets = 0;
@@ -479,6 +485,7 @@ typedef enum {
     REVOKE_TRANSPORT,
     REVOKE_USB,
     REVOKE_WIRED,
+    REVOKE_SLIDER,
 #    ifdef GMK70_VIAL_UPDATE
     REVOKE_UNLOCK,
 #    endif
@@ -502,6 +509,9 @@ static void revoke_local_gate(revoked_gate_t gate) {
         case REVOKE_WIRED:
             mode = DEVS_BT1;
             break;
+        case REVOKE_SLIDER:
+            physical_mode = hs_bt;
+            break;
 #    ifdef GMK70_VIAL_UPDATE
         case REVOKE_UNLOCK:
             vial_unlocked = false;
@@ -517,6 +527,7 @@ static void restore_local_gates(void) {
     transport        = TRANSPORT_USB;
     USB_DRIVER.state = USB_ACTIVE;
     mode             = DEVS_USB;
+    physical_mode    = hs_usb;
 #    ifdef GMK70_VIAL_UPDATE
     vial_unlocked = true;
 #    endif
@@ -1340,13 +1351,16 @@ int main(void) {
         gmk_update_task();
     }
     assert(!gmk_update_active() && !flash_writes && !rpc_calls && !resets && !eeprom_reads);
-    for (unsigned invalid = 0; invalid < 5; ++invalid) {
+    for (unsigned invalid = 0; invalid < 8; ++invalid) {
         fixture();
         if (invalid == 0) left = false;
         if (invalid == 1) master = false;
         if (invalid == 2) transport = TRANSPORT_WLS;
         if (invalid == 3) USB_DRIVER.state = 0;
         if (invalid == 4) mode = DEVS_BT1;
+        if (invalid == 5) physical_mode = hs_bt;
+        if (invalid == 6) physical_mode = hs_2g4;
+        if (invalid == 7) physical_mode = hs_invalid;
         begin(packet, 0);
 #if defined(GMK70_DEBUG_USB_BOOTLOADER) || defined(GMK70_VIAL_UPDATE)
         assert(via_command_kb(packet, 32));

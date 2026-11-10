@@ -5,9 +5,10 @@
 #include <string.h>
 #include "host_driver.h"
 
-typedef uint32_t ioline_t;
-void             gpio_set_pin_input_low(ioline_t pin);
-bool             gmk70_stock_cable_flag(void);
+typedef struct keyrecord_t keyrecord_t;
+typedef uint32_t           ioline_t;
+void                       gpio_set_pin_input_low(ioline_t pin);
+bool                       gmk70_stock_cable_flag(void);
 enum { A1 = 1, A2, A3, A4, A5, A6, A7, A8, A9, A10, B0 = 16, B6 = 22, B10 = 26, B11, B12, B13, B14, C0 = 32, C1, C2, C3, C4, C5, C6, C7, C8, C9, C11 = 43, C13 = 45, C14, C15 };
 #define NO_PIN UINT32_MAX
 #define MATRIX_COLS 9

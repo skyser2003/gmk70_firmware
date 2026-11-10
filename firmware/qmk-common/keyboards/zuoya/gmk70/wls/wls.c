@@ -1,58 +1,60 @@
 #include "wls.h"
 #include "split_diagnostics.h"
+#include "pairing_hold.h"
+
+enum modeio_mode hs_modeio_read(void) {
+#if defined(HS_BT_DEF_PIN) && defined(HS_2G4_DEF_PIN)
+    if (HS_GET_MODE_PIN(HS_USB_PIN_STATE)) return hs_usb;
+    if (HS_GET_MODE_PIN(HS_BT_PIN_STATE)) return hs_bt;
+    if (HS_GET_MODE_PIN(HS_2G4_PIN_STATE)) return hs_2g4;
+    return hs_invalid;
+#else
+    return hs_none;
+#endif
+}
 
 bool hs_modeio_detection(bool update, uint8_t *mode, uint8_t lsat_btdev) {
-    static uint32_t scan_timer = 0x00;
+    static uint32_t         scan_timer = 0x00;
+    static uint32_t         candidate_at;
+    static enum modeio_mode candidate = hs_invalid, stable = hs_invalid;
 
     if ((update != true) && (timer_elapsed32(scan_timer) <= (HS_MODEIO_DETECTION_TIME))) {
         return false;
     }
-    scan_timer = timer_read32();
-#if defined(HS_BT_DEF_PIN) && defined(HS_2G4_DEF_PIN)
-    uint8_t        now_mode  = 0x00;
-    uint8_t        hs_mode   = 0x00;
-    static uint8_t last_mode = 0x00;
-    bool           sw_mode   = false;
-    now_mode                 = (HS_GET_MODE_PIN(HS_USB_PIN_STATE) ? 3 : (HS_GET_MODE_PIN(HS_BT_PIN_STATE) ? 1 : ((HS_GET_MODE_PIN(HS_2G4_PIN_STATE) ? 2 : 0))));
-    hs_mode                  = (*mode >= DEVS_BT1 && *mode <= DEVS_BT5) ? 1 : ((*mode == DEVS_2G4) ? 2 : ((*mode == DEVS_USB) ? 3 : 0));
-    sw_mode                  = ((update || (last_mode == now_mode)) && (hs_mode != now_mode)) ? true : false;
-    last_mode                = now_mode;
+    scan_timer                      = timer_read32();
+    const enum modeio_mode now_mode = hs_modeio_read();
+    *mode                           = now_mode;
+    if (candidate != now_mode) {
+        // Even a brief move away and back must cancel an outstanding hold.
+        gmk70_pairing_cancel();
+        candidate    = now_mode;
+        candidate_at = scan_timer;
+        return false;
+    }
+    if (timer_elapsed32(candidate_at) < HS_MODEIO_DETECTION_TIME || stable == now_mode) return false;
+    stable = now_mode;
 
+    uint8_t destination;
     switch (now_mode) {
-        case 1:
-            *mode = hs_bt;
-            if (sw_mode) {
-                wireless_devs_change(wireless_get_current_devs(), lsat_btdev, false);
-            }
+        case hs_bt:
+            destination = lsat_btdev >= DEVS_BT1 && lsat_btdev <= DEVS_BT5 ? lsat_btdev : DEVS_BT1;
             break;
-        case 2:
-            *mode = hs_2g4;
-            if (sw_mode) {
-                wireless_devs_change(wireless_get_current_devs(), DEVS_2G4, false);
-            }
+        case hs_2g4:
+            destination = DEVS_2G4;
             break;
-        case 3:
-            *mode = hs_usb;
-            if (sw_mode) wireless_devs_change(wireless_get_current_devs(), DEVS_USB, false);
-
+        case hs_usb:
+            destination = DEVS_USB;
             break;
         default:
-            // Both pins low is invalid, distinct from boards without a selector.
-            // Never let the old logical device masquerade as a decoded mode.
-            *mode = hs_invalid;
             return false;
     }
 
-    if (sw_mode) {
-        hs_rgb_blink_set_timer(timer_read32());
-        suspend_wakeup_init();
-        return true;
-    }
-#else
-    *mode = hs_none;
-#endif
-
-    return false;
+    // An unchanged slider must not undo a shortcut on a later scan or wake.
+    if (wireless_get_current_devs() == destination) return false;
+    wireless_devs_change(wireless_get_current_devs(), destination, false);
+    hs_rgb_blink_set_timer(timer_read32());
+    suspend_wakeup_init();
+    return true;
 }
 
 static uint32_t hs_linker_rgb_timer = 0x00;

@@ -28,6 +28,7 @@ static bool packet_valid(const uint8_t request[GMK_PACKET_SIZE]) {
 #include "quantum.h"
 #include "transactions.h"
 #include "wireless.h"
+#include "wls/wls.h"
 #include "usb_main.h"
 #include "bootloader.h"
 #include <string.h>
@@ -43,6 +44,7 @@ static uint32_t      reset_at;
 static gmk_update_result_t update_gate(bool usb, uint8_t operation) {
     if (wireless_get_current_devs() != DEVS_USB) return GMK_UNAVAILABLE;
     if (usb) {
+        if (hs_modeio_read() != hs_usb) return GMK_UNAVAILABLE;
         if (!is_keyboard_left() || !is_keyboard_master() || get_transport() != TRANSPORT_USB || USB_DRIVER.state != USB_ACTIVE) return GMK_UNAVAILABLE;
 #ifdef GMK70_VIAL_UPDATE
         if (!gmk_update_usb_authorized(operation)) return GMK_LOCKED;

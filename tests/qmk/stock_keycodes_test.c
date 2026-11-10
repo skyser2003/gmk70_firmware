@@ -13,9 +13,10 @@ int main(void) {
         uint8_t device = gmk70_wireless_device(0x7E00 + slot);
         assert(device == devices[slot]);
         for (uint8_t mode = hs_none; mode <= hs_wireless; ++mode) {
-            bool expected = mode == hs_none || mode == hs_wireless || (device == DEVS_USB && mode == hs_usb) || (device == DEVS_2G4 && mode == hs_2g4) || (device >= DEVS_BT1 && device <= DEVS_BT5 && mode == hs_bt);
-            assert(gmk70_device_allowed(device, mode) == expected);
+            assert(gmk70_device_allowed(device, mode));
         }
+        assert(!gmk70_device_allowed(device, hs_invalid));
+        assert(!gmk70_device_allowed(device, UINT8_MAX));
     }
     assert(KC_BATQ == 0x7E07 && RL_MOD == 0x7E09);
     assert(KC_FILP == 0x7E1A && HS_BATQ == 0x7E1B);

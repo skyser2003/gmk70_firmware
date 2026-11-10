@@ -194,8 +194,13 @@ a host but cannot establish a physical pairing hold.
 
 Live matrix keymap writes, buffer writes and resets cancel a pending hold through
 the native storage boundaries. Cancellation is conservative, including edits to
-other positions. Native bounds, Vial authorization and physical switch gates
-remain authoritative; the expiry callback checks the physical mode again.
+other positions. Native bounds and Vial authorization remain authoritative.
+Connection shortcuts can select USB, Bluetooth or the dongle from any valid
+slider position, matching ZMK. The slider selects at startup and after a
+debounced move instead of continually enforcing its position. Any observed
+slider movement cancels pending pairing; the expiry callback also checks that
+the physical position has not changed. Firmware updates require both logical
+USB output and the physical USB position on the left half.
 
 ## VIA and Vial: radio report recovery
 

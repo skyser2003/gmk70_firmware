@@ -57,6 +57,7 @@ void suspend_power_down_quantum(void) {
 void usart_init(void) {
     ++uart_restores;
 }
+void gmk70_pairing_cancel(void) {}
 void gpio_set_pin_output(ioline_t pin) {
     assert(!"master must not pulse split TX");
 }
@@ -205,6 +206,8 @@ static void test_physical_host_switch_clears_input(void) {
     mod_edge(0x04, true);
     key_edge(0x2B, true);
     physical_device = DEVS_USB;
+    assert(!hs_mode_scan(true, DEVS_BT1, DEVS_BT1));
+    fixture.now += 50;
     assert(hs_mode_scan(true, DEVS_BT1, DEVS_BT1));
     assert(mods == 0 && !keys[0x2B] && clears == 1);
     assert(fixture.device == DEVS_USB && fixture.wake_calls == 1);

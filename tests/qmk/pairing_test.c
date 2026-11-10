@@ -9,19 +9,19 @@
 #include "wireless.h"
 #include "pairing_storage_fixture.h"
 
-static struct {
-    uint8_t devs;
-    uint8_t last_btdevs;
-} confinfo              = {.devs = DEVS_BT1, .last_btdevs = DEVS_BT1};
-static uint32_t now     = 100;
-static uint8_t  current = DEVS_BT1, mode = hs_bt;
-static unsigned pairs, switches;
-static bool     user_accepts;
-static uint8_t  eeprom[1024];
-int             vial_unlocked;
+static uint32_t         now     = 100;
+static uint8_t          current = DEVS_BT1;
+static enum modeio_mode mode    = hs_bt;
+static unsigned         pairs, switches;
+static bool             user_accepts;
+static uint8_t          eeprom[1024];
+int                     vial_unlocked;
 
 uint32_t timer_read32(void) {
     return now;
+}
+uint32_t timer_elapsed32(uint32_t stamp) {
+    return now - stamp;
 }
 uint8_t wireless_get_current_devs(void) {
     return current;
@@ -34,12 +34,10 @@ void wireless_devs_change(uint8_t old_device, uint8_t device, bool pairing) {
     else
         ++switches;
 }
-bool hs_modeio_detection(bool update, uint8_t *detected, uint8_t last) {
-    (void)last;
-    assert(update);
-    *detected = mode;
-    return true;
+enum modeio_mode hs_modeio_read(void) {
+    return mode;
 }
+void suspend_wakeup_init(void) {}
 void hs_rgb_blink_set_timer(uint32_t value) {
     assert(value == now);
 }
@@ -147,7 +145,7 @@ static void test_replacement(void) {
     assert(pairs == 1 && current == DEVS_BT2);
 }
 static void test_mode_gate(void) {
-    mode = hs_usb;
+    mode = hs_invalid;
     key(KC_BT2, 0, 1, true);
     advance(3000);
     assert(switches == 0 && pairs == 0);
@@ -156,6 +154,90 @@ static void test_mode_gate(void) {
     mode = hs_usb;
     advance(3000);
     assert(pairs == 0 && switches == 1);
+}
+static bool scan(void) {
+    uint8_t detected = current;
+    bool    changed  = hs_modeio_detection(true, &detected, DEVS_BT5);
+    assert(detected == mode);
+    return changed;
+}
+static void test_cross_mode(void) {
+    const enum modeio_mode modes[]        = {hs_usb, hs_bt, hs_2g4};
+    const uint16_t         selectors[]    = {KC_USB, KC_BT1, KC_BT2, KC_BT3, KC_BT4, KC_BT5, KC_2G4};
+    const uint8_t          destinations[] = {DEVS_USB, DEVS_BT1, DEVS_BT2, DEVS_BT3, DEVS_BT4, DEVS_BT5, DEVS_2G4};
+    for (unsigned slider = 0; slider < sizeof(modes) / sizeof(modes[0]); ++slider) {
+        mode = modes[slider];
+        (void)scan();
+        advance(50);
+        (void)scan();
+        for (unsigned index = 0; index < sizeof(selectors) / sizeof(selectors[0]); ++index) {
+            unsigned previous_pairs = pairs;
+            key(selectors[index], 0, 1, true);
+            assert(current == destinations[index]);
+            // Both forced admission checks and ordinary periodic scans must
+            // preserve the shortcut, including across the pairing deadline.
+            assert(!scan());
+            advance(2999);
+            uint8_t detected = current;
+            assert(!hs_modeio_detection(false, &detected, DEVS_BT5));
+            assert(current == destinations[index] && pairs == previous_pairs);
+            advance(1);
+            assert(pairs == previous_pairs + (destinations[index] != DEVS_USB));
+            key(selectors[index], 0, 1, false);
+            advance(100);
+            assert(!scan() && current == destinations[index]);
+        }
+    }
+}
+static void test_slider(void) {
+    mode = hs_usb;
+    assert(!scan());
+    advance(49);
+    assert(!scan() && current == DEVS_BT1);
+    advance(1);
+    assert(scan() && current == DEVS_USB);
+    key(KC_BT2, 0, 1, true);
+    assert(!scan() && current == DEVS_BT2);
+    mode = hs_2g4;
+    assert(!scan());
+    advance(50);
+    assert(scan() && current == DEVS_2G4);
+    advance(3000);
+    assert(pairs == 0);
+    mode = hs_bt;
+    assert(!scan());
+    advance(50);
+    assert(scan() && current == DEVS_BT5);
+    mode = hs_invalid;
+    assert(!scan());
+    advance(50);
+    assert(!scan() && current == DEVS_BT5);
+    mode = hs_usb;
+    assert(!scan());
+    advance(50);
+    assert(scan() && current == DEVS_USB);
+}
+static void test_slider_bounce(void) {
+    (void)scan();
+    advance(50);
+    (void)scan();
+    key(KC_BT2, 0, 1, true);
+    mode = hs_usb;
+    assert(!scan());
+    advance(10);
+    mode = hs_bt;
+    assert(!scan());
+    advance(3000);
+    assert(!scan() && pairs == 0 && current == DEVS_BT2);
+}
+static void test_slider_wrap(void) {
+    now  = UINT32_MAX - 20;
+    mode = hs_usb;
+    assert(!scan());
+    advance(49);
+    assert(!scan());
+    advance(1);
+    assert(scan() && current == DEVS_USB);
 }
 static void test_usb(void) {
     mode = hs_none;
@@ -189,7 +271,7 @@ int main(int argc, char **argv) {
         const char *name;
         void (*run)(void);
     } tests[] = {
-        {"duplicate", test_duplicate}, {"remapped-release", test_remapped_release}, {"single-write", test_single_write}, {"buffer-write", test_buffer_write}, {"reset", test_reset}, {"timing", test_timing}, {"replacement", test_replacement}, {"mode-gate", test_mode_gate}, {"usb", test_usb}, {"synthetic", test_synthetic}, {"vial-authorization", test_vial_authorization},
+        {"duplicate", test_duplicate}, {"remapped-release", test_remapped_release}, {"single-write", test_single_write}, {"buffer-write", test_buffer_write}, {"reset", test_reset}, {"timing", test_timing}, {"replacement", test_replacement}, {"mode-gate", test_mode_gate}, {"cross-mode", test_cross_mode}, {"slider", test_slider}, {"slider-bounce", test_slider_bounce}, {"slider-wrap", test_slider_wrap}, {"usb", test_usb}, {"synthetic", test_synthetic}, {"vial-authorization", test_vial_authorization},
     };
     for (unsigned i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
         if (strcmp(argv[1], tests[i].name) == 0) {
