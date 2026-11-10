@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "bool_setting.h"
+#include "../runtime/idle.h"
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 #    include "settings_backend.h"
 #endif
@@ -27,6 +28,7 @@ static void save(struct k_work *work) {
     if (!result) setting->stored = value != 0;
     setting->saving = false;
     k_spin_unlock(&setting->lock, key);
+    gmk_service_notify();
 }
 
 void gmk_bool_setting_init(struct gmk_bool_setting *setting, const char *name, bool default_value) {
@@ -52,6 +54,7 @@ bool gmk_bool_setting_set(struct gmk_bool_setting *setting, bool value) {
     k_spinlock_key_t key     = k_spin_lock(&setting->lock);
     bool             changed = set_locked(setting, value);
     k_spin_unlock(&setting->lock, key);
+    if (changed) gmk_service_notify();
     return changed;
 }
 
@@ -60,6 +63,7 @@ bool gmk_bool_setting_toggle(struct gmk_bool_setting *setting) {
     set_locked(setting, !setting->enabled);
     bool enabled = setting->enabled;
     k_spin_unlock(&setting->lock, key);
+    gmk_service_notify();
     return enabled;
 }
 

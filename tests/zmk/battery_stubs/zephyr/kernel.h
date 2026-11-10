@@ -3,6 +3,22 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#ifdef CONFIG_GMK70_EVENT_IDLE
+#    include <stddef.h>
+#    include <errno.h>
+#    define K_NO_WAIT 0
+struct k_msgq {
+    uint8_t  bytes[128];
+    unsigned head, tail, count;
+};
+#    define K_MSGQ_DEFINE(name, size, count, align) struct k_msgq name
+int                    k_msgq_get(struct k_msgq *, void *, int);
+int                    k_msgq_put(struct k_msgq *, const void *, int);
+void                   k_msgq_purge(struct k_msgq *);
+static inline unsigned k_msgq_num_used_get(struct k_msgq *q) {
+    return q->count;
+}
+#endif
 #define ARG_UNUSED(value) (void)(value)
 extern uint32_t battery_test_time;
 extern unsigned battery_test_locks;

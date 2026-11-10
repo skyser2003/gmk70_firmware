@@ -3,6 +3,7 @@
 #include "coordinator.h"
 #include "../wired/wired.h"
 #include "../runtime/service.h"
+#include "../runtime/idle.h"
 #include "../battery/battery.h"
 #include "../controls/controls.h"
 #include "../function_flip/flip.h"
@@ -11,6 +12,15 @@
 #include "../lighting/lighting.h"
 #include "../radio/radio.h"
 #include "wb32_stop.h"
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+#    include "retained.h"
+static uint32_t retained_delay = UINT32_MAX;
+#    ifdef CONFIG_ZMK_POINTING
+/* The pinned native activity work records its own last-activity timestamp.
+ * A real wake may be a mode/encoder edge, not a synthetic key event. */
+extern struct k_work note_activity_work;
+#    endif
+#endif
 #include <errno.h>
 #include <string.h>
 #include <zephyr/arch/cpu.h>
@@ -59,6 +69,7 @@ void gmk_power_note_activity(void) {
     gmk_power_core_activity(&core, true, k_uptime_get_32());
     atomic_set(&published, atomic_get(&published) & ~CACHE_READY);
     irq_unlock(key);
+    gmk_service_notify();
 }
 
 bool gmk_power_usb_powered(void) {
@@ -182,6 +193,7 @@ static int activity_changed(const zmk_event_t *event) {
         gmk_power_note_activity();
     }
     irq_unlock(key);
+    gmk_service_notify();
     return ZMK_EV_EVENT_BUBBLE;
 }
 ZMK_LISTENER(gmk_power_activity, activity_changed);
@@ -196,7 +208,8 @@ static void pointing_activity(struct input_event *event, void *context) {
 INPUT_CALLBACK_DEFINE(NULL, pointing_activity, NULL);
 #endif
 
-void gmk_power_receive(const uint8_t request[32], uint8_t response[32]) {
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) void gmk_power_receive(const uint8_t request[32], uint8_t response[32]) {
     memset(response, 0, 32);
     struct gmk_power_command command;
     if (!initialized || gmk_wired_is_left() || !gmk_power_protocol_request_decode(request, &command)) return;
@@ -208,6 +221,7 @@ void gmk_power_receive(const uint8_t request[32], uint8_t response[32]) {
         uint32_t     value = ((uint32_t)command.session << 8) | (command.critical ? 16U : 0) | ((uint32_t)command.operation + 1U);
         atomic_val_t old   = atomic_get(&mailbox);
         if ((old && (uint32_t)old != value) || (!old && !atomic_cas(&mailbox, 0, (atomic_val_t)value))) reply.flags |= GMK_POWER_FLAG_BUSY;
+        gmk_service_notify();
     }
     (void)gmk_power_protocol_reply_encode(response, request, &reply);
 }
@@ -218,6 +232,14 @@ int  __wrap_zmk_pm_suspend_devices(void) {
     unsigned key = irq_lock();
     /* READY was published by the UART/storage owner after quiescence. This
      * native activity caller must not inspect that owner's parser state. */
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+    /* Returning suspend belongs to the service owner; native activity may
+     * request policy but must not enter its non-returning sys_poweroff path. */
+    if (gmk_retained_available() && !active_critical() && k_current_get() != service_owner) {
+        irq_unlock(key);
+        return -EBUSY;
+    }
+#endif
     if (!((uint32_t)atomic_get(&published) & CACHE_READY) || usb_blocks_sleep() || gmk_wired_power_wake_pending() || pm_owner) {
         irq_unlock(key);
         return -EBUSY;
@@ -242,6 +264,7 @@ int __wrap_zmk_pm_soft_off(void) {
     if (k_is_in_isr()) return -EWOULDBLOCK;
     if (usb_blocks_sleep()) return -EBUSY;
     atomic_set(&manual_request, 1);
+    gmk_service_notify();
     return 0;
 }
 
@@ -281,7 +304,11 @@ static void usb_shallow_sleep(void) {
     publish(false, false);
 }
 
-void gmk_power_poll(bool service_ready) {
+/* Preserve the linked safety boundary under LTO. */
+__attribute__((noipa)) void gmk_power_poll(bool service_ready) {
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+    retained_delay = gmk_retained_poll();
+#endif
     ready = service_ready;
     if (!initialized) {
         service_owner = k_current_get();
@@ -332,22 +359,78 @@ void gmk_power_poll(bool service_ready) {
     /* Ordinary LEFT inactivity enters through pinned native activity.c. RIGHT
      * commit and deliberate/critical requests use the same native PM API path
      * from this sole service owner, never a serial/USB/input callback. */
-    if (prepared_ready && (forced || coordinator.role == GMK_POWER_ROLE_RIGHT || usb_shallow_allowed())) {
+    bool returning = false;
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+    returning = gmk_retained_available() && !coordinator.critical;
+#endif
+    if (prepared_ready && (returning || forced || coordinator.role == GMK_POWER_ROLE_RIGHT || usb_shallow_allowed())) {
+        enum zmk_activity_state before = zmk_activity_get_state();
+        if (returning) (void)set_state(ZMK_ACTIVITY_SLEEP);
         int result = zmk_pm_suspend_devices();
         if (!result) {
             if (usb_shallow_allowed()) {
                 usb_shallow_sleep();
                 return;
             }
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+            if (returning) {
+                bool physical = gmk_retained_sleep();
+                if (!physical && gmk_retained_available()) {
+                    /* A pending kernel/maintenance IRQ only defers STOP. Keep
+                     * both peers quiescent; do not send CANCEL or fake activity. */
+                    zmk_pm_resume_devices();
+                    return;
+                }
+                if (!physical) sys_poweroff(); /* RTC failed: existing reset fallback. */
+                atomic_set(&published, atomic_get(&published) & ~CACHE_READY);
+                zmk_pm_resume_devices();
+                gmk_power_coordinator_cancel(&coordinator, &ops);
+                atomic_clear(&manual_request);
+                session_active = session_activity = false;
+                if (physical) {
+                    gmk_power_note_activity();
+#    ifdef CONFIG_ZMK_POINTING
+                    k_work_submit(&note_activity_work);
+#    endif
+                }
+                (void)set_state(physical ? ZMK_ACTIVITY_ACTIVE : before);
+                gmk_battery_request();
+                publish(false, false);
+                return;
+            }
+#endif
             sys_poweroff();
         }
         zmk_pm_resume_devices();
+        if (returning) (void)set_state(before);
         gmk_power_coordinator_cancel(&coordinator, &ops);
         publish(false, true);
     }
 }
 
-_Noreturn void z_sys_poweroff(void) {
+#ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_power_delay(void) {
+    if (coordinator.phase != GMK_POWER_PHASE_IDLE || atomic_get(&mailbox) || atomic_get(&manual_request)) return 1;
+    uint32_t now = k_uptime_get_32(), delay = 1000;
+#    ifdef CONFIG_GMK70_RETAINED_SLEEP
+    if (retained_delay < delay) delay = retained_delay;
+#    endif
+    unsigned key = irq_lock();
+    if (core.inactive) {
+        uint32_t timeout = gmk_controls_sleep_timeout_ms();
+        uint32_t elapsed = now - core.inactive_since;
+        if (timeout) {
+            uint32_t next = elapsed >= timeout ? 20 : timeout - elapsed;
+            if (next < delay) delay = next;
+        }
+    }
+    irq_unlock(key);
+    return delay;
+}
+#endif
+
+/* Preserve the linked safety boundary under LTO. */
+__attribute__((noipa)) _Noreturn void z_sys_poweroff(void) {
     /* Capture routing while GPIO clocks are valid. Peer health may already
      * have timed out independently on both otherwise-connected halves. */
     bool physical_split = gmk_split_available();

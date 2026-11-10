@@ -122,6 +122,33 @@ def validate_radio_linking(
         if name not in symbols:
             raise ValueError(f"Missing linked radio wrapper {name}")
     functions = _function_bodies(disassembly)
+    public_exports = ["endpoint_send_report", "endpoint_send_mouse_report"]
+    public_exports += [
+        f"keymap_{name}"
+        for name in (
+            "set_layer_binding_at_idx",
+            "discard_changes",
+            "reset_settings",
+            "add_layer",
+            "remove_layer",
+            "move_layer",
+            "restore_layer",
+        )
+    ]
+    public_exports += [
+        f"rgb_underglow_{name}" for name in ("set_hsb", "on", "off", "toggle")
+    ]
+    for suffix in public_exports:
+        implementation = f"gmk_native_{suffix}"
+        public = f"zmk_{suffix}"
+        if implementation not in symbols:
+            continue
+        if public not in symbols and f"__wrap_{public}" not in symbols:
+            continue  # Only native same-TU users remain after section GC.
+        if implementation not in _branch_targets(functions.get(public, "")):
+            raise ValueError(f"Native ABI shim bypasses {implementation}")
+        if public not in _branch_targets(functions.get(f"__wrap_{public}", "")):
+            raise ValueError(f"Radio wrapper bypasses public ABI shim {public}")
     if not any(
         _calls(body, "__wrap_zmk_endpoint_send_report")
         for name, body in functions.items()
@@ -521,6 +548,62 @@ def validate_basic_parity_linking(symbols: set[str]) -> None:
         raise ValueError("RGB must follow board sleep without a separate idle cutoff")
 
 
+def validate_retained_sleep_linking(symbols: set[str]) -> bool:
+    """Reject a partial returning-STOP integration; reset-only remains supported."""
+    transport = {
+        "gmk_retained_sleep",
+        "gmk_retained_poll",
+        "__wrap_sys_clock_cycle_get_32",
+        "__wrap_sys_clock_cycle_get_64",
+    }
+    if not transport & symbols:
+        return False
+    required = transport | {
+        "sys_clock_cycle_get_64",
+        "sys_clock_set_timeout",
+        "sys_clock_announce",
+        "wb32_clock_resume",
+        "note_activity_work",
+    }
+    if missing := required - symbols:
+        raise ValueError(f"Missing returning STOP integration: {sorted(missing)}")
+    return True
+
+
+def validate_retained_clock_linking(
+    symbol_types: dict[str, str], disassembly: str
+) -> None:
+    """Weak timer defaults must never replace the actual SysTick setter."""
+    target = "sys_clock_set_timeout"
+    if symbol_types.get(target) != "T":
+        raise ValueError("Returning STOP requires the strong SysTick timeout setter")
+    bodies = _function_bodies(disassembly)
+    if not re.search(
+        r"(?m)^\s*[0-9a-f]+:\s+(?:[0-9a-f]{2,8}\s+)+str(?:[bh]|d)?(?:\.w)?\s",
+        bodies.get(target, ""),
+    ):
+        raise ValueError("SysTick timeout setter has no live register stores")
+    for caller in ("sys_clock_announce", "gmk_retained_sleep"):
+        pending, visited = [caller], set()
+        while pending:
+            name = pending.pop()
+            if name == target:
+                break
+            if name in visited:
+                continue
+            visited.add(name)
+            pending.extend(_branch_targets(bodies.get(name, "")))
+        else:
+            raise ValueError(f"{caller} bypasses the real SysTick timeout setter")
+
+
+def _branch_targets(body: str) -> list[str]:
+    return re.findall(
+        r"(?m)^\s*[0-9a-f]+:\s+(?:[0-9a-f]{2,8}\s+)+b(?:l|lx)?(?:\.w)?\s+[0-9a-f]+\s+<([\w.$]+)>",
+        body,
+    )
+
+
 def check_wired(
     elf: Path, image: Path, variant: str | None
 ) -> dict[str, str | int | list[str]]:
@@ -554,6 +637,11 @@ def check_wired(
         for line in lines.splitlines()
         if len(parts := line.split()) == 3
     }
+    symbol_types = {
+        parts[-1]: parts[1]
+        for line in lines.splitlines()
+        if len(parts := line.split()) == 3
+    }
     result.update(validate_ram_symbols(symbols))
     for name in (
         "main",
@@ -566,7 +654,6 @@ def check_wired(
         "wb32_usb_clock_enable",
         "soc_early_init_hook",
         "gmk_wired_scan",
-        "_k_thread_data_gmk_scan_thread",
         "_k_thread_data_gmk_serial_thread",
     ):
         if name not in symbols:
@@ -584,8 +671,16 @@ def check_wired(
         ):
             if name not in symbols:
                 raise ValueError(f"Missing native ZMK updater symbol {name}")
-    if "__wrap_main" in symbols:
-        raise ValueError("Permanent/qualification wired target must not wrap main")
+    event_scanner = "__wrap_main" in symbols and "gmk_scan_run" in symbols
+    if "__wrap_main" in symbols and not event_scanner:
+        raise ValueError("Permanent wired target contains an unrecognized main wrapper")
+    if event_scanner:
+        if "z_main_stack" not in symbols or "_k_thread_data_gmk_scan_thread" in symbols:
+            raise ValueError(
+                "Event scanner must own main's stack without a duplicate thread"
+            )
+    elif "_k_thread_data_gmk_scan_thread" not in symbols:
+        raise ValueError("Missing native ZMK scanner thread")
     if not qualification and not standalone and "gmk_trial_packet_valid" not in symbols:
         raise ValueError("Missing peer trial validator")
     if qualification and "gmk_trial_packet_valid" in symbols:
@@ -619,6 +714,11 @@ def check_wired(
     validate_radio_linking(set(symbols), disassembly, variant)
     validate_native_update_linking(set(symbols), variant)
     validate_flip_linking(set(symbols), disassembly)
+    retained_sleep = validate_retained_sleep_linking(set(symbols))
+    if retained_sleep:
+        validate_retained_clock_linking(symbol_types, disassembly)
+    if event_scanner:
+        validate_idle_main(disassembly)
     if variant.startswith("wired-studio-"):
         validate_studio_roles(disassembly)
         for name in (
@@ -653,12 +753,34 @@ def check_wired(
         if variant in ("wired-studio-updater", "wired-studio-standalone")
         else "EXPERIMENTAL unlocked",
         trial_backend="absent",
-        main_wrapper="absent",
+        main_wrapper="event scanner" if event_scanner else "absent",
+        scanner_thread="main" if event_scanner else "dedicated",
         updater="absent" if standalone else "present",
+        full_sleep="returning STOP with reset fallback"
+        if retained_sleep
+        else "STOP/reset",
     )
     if variant.startswith("wired-studio-"):
         result["runtime_roles"] = ["left", "right"]
     return result
+
+
+def validate_idle_main(disassembly: str) -> None:
+    """Native initialization must complete before its thread becomes the scanner."""
+    bodies = _function_bodies(disassembly)
+    body = bodies.get("__wrap_main", "")
+    calls = re.findall(r"\bblx?\s+[^\n]*<([^>]+)>", body)
+    if "main" not in calls or "gmk_scan_run" not in calls:
+        raise ValueError("Event scanner bypasses pinned ZMK main or the actual scanner")
+    priority = "z_impl_k_thread_priority_set"
+    if priority not in calls or not (
+        calls.index("main") < calls.index(priority) < calls.index("gmk_scan_run")
+    ):
+        raise ValueError(
+            "Event scanner must restore its priority after native initialization"
+        )
+    if not _calls(bodies.get("bg_thread_main", ""), "__wrap_main"):
+        raise ValueError("Native main thread bypasses the event-scanner entry")
 
 
 def validate_main_wrapping(disassembly: str) -> None:

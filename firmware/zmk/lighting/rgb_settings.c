@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <zmk/rgb_underglow.h>
+#include "../runtime/idle.h"
 
 #if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) || (defined(CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE) && CONFIG_ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE)
 #    include <zephyr/kernel.h>
@@ -143,6 +144,7 @@ static void save_runtime(struct k_work *work) {
     if (!result && !memcmp(value, latest, sizeof(value))) dirty = false;
     saving = false;
     k_spin_unlock(&save_lock, key);
+    gmk_service_notify();
 }
 static K_WORK_DEFINE(rgb_save_work, save_runtime);
 
@@ -160,6 +162,7 @@ int __wrap_settings_save_one(const char *name, const void *value, size_t size) {
     native_snapshot_pending = false;
     dirty                   = true;
     k_spin_unlock(&save_lock, key);
+    gmk_service_notify();
     /* Native RGB ignores the callback's result. Retain its debounced snapshot
      * without blocking system work on an ineligible storage transaction. */
     return 0;

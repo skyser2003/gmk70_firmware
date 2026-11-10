@@ -79,6 +79,8 @@ setup-zmk:
 .PHONY: setup-zmk
 
 test-zmk:
+	bash ./tests/zmk/run_retained_tests.sh
+	bash ./tests/zmk/run_event_idle_tests.sh
 	bash ./tests/zmk/run_controls_tests.sh
 	bash ./tests/zmk/run_native_ids_tests.sh
 	bash ./tests/zmk/run_controls_behavior_tests.sh

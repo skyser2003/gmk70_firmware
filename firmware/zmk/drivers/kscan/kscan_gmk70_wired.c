@@ -7,6 +7,7 @@
 #include "wired.h"
 #include "virtual_keys.h"
 #include "../../lighting/lighting.h"
+#include "../../runtime/idle.h"
 #ifdef CONFIG_GMK70_RECOVERY
 #    include "../../recovery/recovery.h"
 #endif
@@ -34,6 +35,7 @@ static int enable(const struct device *dev) {
     unsigned               key  = irq_lock();
     data->enabled               = true;
     irq_unlock(key);
+    gmk_scan_notify();
     return 0;
 }
 static int disable(const struct device *dev) {
@@ -41,6 +43,7 @@ static int disable(const struct device *dev) {
     unsigned               key  = irq_lock();
     data->enabled               = false;
     irq_unlock(key);
+    gmk_scan_notify();
     return 0;
 }
 static void encoder_step(struct gmk_kscan_data *data, kscan_callback_t callback, bool enabled) {
@@ -96,16 +99,39 @@ static void scan_once(void) {
         encoder_step(data, callback, enabled);
     }
 }
+_Noreturn /* Preserve native-main/scanner call-order verification under LTO. */
+    __attribute__((noipa)) void
+    gmk_scan_run(void) {
+    while (true) {
+        scan_once();
+#ifdef CONFIG_GMK70_EVENT_IDLE
+        uint32_t delay  = gmk_wired_scan_delay();
+        uint32_t lights = gmk_lighting_scan_delay();
+        if (lights < delay) delay = lights;
+        if (scanner) {
+            struct gmk_kscan_data *data = scanner->data;
+            if (data->encoder_key || data->encoder_gap) {
+                uint32_t elapsed = k_uptime_get_32() - data->encoder_at;
+                uint32_t next    = elapsed >= 5 ? 1 : 5 - elapsed;
+                if (next < delay) delay = next;
+                if (elapsed >= 5 && !data->encoder_key) data->encoder_gap = false;
+            }
+        }
+        gmk_scan_wait(delay);
+#else
+        k_sleep(K_MSEC(1));
+#endif
+    }
+}
+#ifndef CONFIG_GMK70_EVENT_IDLE
 static void scan_thread(void *a, void *b, void *c) {
     ARG_UNUSED(a);
     ARG_UNUSED(b);
     ARG_UNUSED(c);
-    while (true) {
-        scan_once();
-        k_sleep(K_MSEC(1));
-    }
+    gmk_scan_run();
 }
 K_THREAD_DEFINE(gmk_scan_thread, 1536, scan_thread, NULL, NULL, NULL, 5, 0, 0);
+#endif
 static int init(const struct device *dev) {
     scanner = dev;
     return 0;

@@ -47,6 +47,9 @@ static uint32_t hw_error;
 static bool     saw_divider;
 static bool     emulate_peer;
 static unsigned uart_transmissions;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+static void (*event_uart_tx)(uint8_t byte);
+#endif
 static bool     arm_race;
 static bool     hw_tx_busy;
 static unsigned power_arm_race;
@@ -84,6 +87,9 @@ void sys_write32(uint32_t value, uintptr_t address) {
         return;
     }
     if (address == REG(0) && *(uint32_t *)REG(0xc) != 0x80) ++uart_transmissions;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    if (address == REG(0) && *(uint32_t *)REG(0xc) != 0x80 && event_uart_tx) event_uart_tx((uint8_t)value);
+#endif
 #ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
     if (capture_native && address == REG(0)) {
         assert(native_tx_size < sizeof(native_tx));

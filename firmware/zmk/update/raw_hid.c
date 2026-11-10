@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "raw_hid.h"
+#include "../runtime/idle.h"
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
@@ -29,18 +30,38 @@ static void out_ready(const struct device *dev) {
         /* Bounded drop on overflow: the host's normal timeout/retry applies.
          * No IRQ/USB callback takes the serial mutex or processes flash. */
         (void)k_msgq_put(&requests, request, K_NO_WAIT);
+        gmk_service_notify();
     }
 }
 
 static int set_report(const struct device *dev, struct usb_setup_packet *setup, int32_t *length, uint8_t **data) {
     ARG_UNUSED(dev);
     if (sys_le16_to_cpu(setup->wValue) != 0x0200 || *length != 32) return -EINVAL;
-    return k_msgq_put(&requests, *data, K_NO_WAIT);
+    int result = k_msgq_put(&requests, *data, K_NO_WAIT);
+    if (!result) gmk_service_notify();
+    return result;
 }
 
-static const struct hid_ops ops = {.int_out_ready = out_ready, .set_report = set_report};
+#ifdef CONFIG_GMK70_EVENT_IDLE
+static void in_ready(const struct device *dev) {
+    ARG_UNUSED(dev);
+    gmk_service_notify();
+}
+uint32_t gmk_zmk_raw_hid_delay(void) {
+    return response_pending || k_msgq_num_used_get(&requests) ? 1 : UINT32_MAX;
+}
+#endif
 
-int gmk_zmk_raw_hid_init(void) {
+static const struct hid_ops ops = {
+    .int_out_ready = out_ready,
+    .set_report    = set_report,
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    .int_in_ready = in_ready,
+#endif
+};
+
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) int gmk_zmk_raw_hid_init(void) {
     hid = device_get_binding("HID_1");
     if (!hid) return -ENODEV;
     usb_hid_register_device(hid, descriptor, sizeof(descriptor), &ops);

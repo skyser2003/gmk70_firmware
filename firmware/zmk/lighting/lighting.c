@@ -5,6 +5,7 @@
 #include "lighting_frame.h"
 #include "wb32_pixels.h"
 #include "wired.h"
+#include "../runtime/idle.h"
 #include <errno.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/led_strip.h>
@@ -85,6 +86,7 @@ int gmk_lighting_battery_set(enum gmk_battery_indicator kind, uint32_t position,
     if (!result) display_dirty = true;
     k_mutex_unlock(&render_lock);
     if (!result && pressed && kind == GMK_BATTERY_LEVEL) gmk_battery_request();
+    if (!result) gmk_scan_notify();
     return result;
 }
 
@@ -94,6 +96,7 @@ int gmk_lighting_battery_release(uint32_t position) {
     k_mutex_lock(&render_lock, K_FOREVER);
     if (gmk_battery_view_release(&battery_view, position)) display_dirty = true;
     k_mutex_unlock(&render_lock);
+    gmk_scan_notify();
     return 0;
 }
 
@@ -135,7 +138,8 @@ static int write_pixels(const uint8_t *rgb, size_t count) {
 #endif
 }
 
-bool gmk_lighting_power_quiesce(bool enabled) {
+/* Preserve the linked safety boundary under LTO. */
+__attribute__((noipa)) bool gmk_lighting_power_quiesce(bool enabled) {
 #ifdef CONFIG_GMK70_POWER
     k_mutex_lock(&render_lock, K_FOREVER);
     bool success = true;
@@ -166,7 +170,32 @@ void gmk_lighting_receive(const uint8_t packet[16]) {
 #endif
         gmk_light_accept(&frame, packet);
     k_spin_unlock(&frame_lock, key);
+    gmk_scan_notify();
 }
+
+#ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_lighting_scan_delay(void) {
+    k_spinlock_key_t key   = k_spin_lock(&frame_lock);
+    uint32_t         delay = UINT32_MAX;
+    if (power_paused) {
+        k_spin_unlock(&frame_lock, key);
+        return delay;
+    }
+    if (frame.ready || frame.pending)
+        delay = 1;
+    else if (gmk_wired_is_left() && frame.cached && gmk_split_available()) {
+        uint32_t elapsed = k_uptime_get_32() - last_frame;
+        delay            = elapsed >= 200 ? 1 : 200 - elapsed;
+    }
+    k_spin_unlock(&frame_lock, key);
+    if (gmk_wired_is_left() && gmk_battery_view_active(&battery_view) && delay > 50) delay = 50;
+    uint32_t now = k_uptime_get_32();
+    if (gmk_wired_is_left() && gmk_controls_visual_token(now) != displayed_controls) return 1;
+    uint32_t visual = gmk_controls_visual_delay(now);
+    if (visual < delay) delay = visual;
+    return delay;
+}
+#endif
 
 void gmk_lighting_wire_poll(const struct gmk_wire_io *io) {
 #ifdef CONFIG_GMK70_RGB_LOCAL_ONLY
@@ -232,6 +261,7 @@ static int update_rgb(const struct device *dev, struct led_rgb *pixels, size_t c
         gmk_battery_get(&status);
         int result = render_battery_locked(&status);
         k_mutex_unlock(&render_lock);
+        gmk_scan_notify();
         return result;
     }
 #endif

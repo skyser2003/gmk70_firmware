@@ -39,3 +39,4 @@ void gmk_controls_radio_leds(uint8_t indicators);
  * The token changes on state/blink transitions so RGB-off frames can refresh. */
 void     gmk_controls_overlay(uint8_t *rgb, size_t count, uint32_t now, bool left, bool enabled);
 uint32_t gmk_controls_visual_token(uint32_t now);
+uint32_t gmk_controls_visual_delay(uint32_t now);

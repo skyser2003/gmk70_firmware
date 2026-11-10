@@ -12,3 +12,22 @@ config GMK70_POWER
 	  advertise the coordinated power protocol before joined sleep is used.
 	  Runtime preference saves use an idle storage lease; updater and Studio
 	  writes retain their existing wired/USB authorization.
+
+config GMK70_EVENT_IDLE
+	bool "GMK70 IRQ and deadline driven idle"
+	depends on GMK70_POWER
+	default y
+	help
+	  Block quiet workers on IRQ notifications and negotiate reliable split
+	  matrix events. Old peers keep the original polling protocol. Scheduling
+	  notifications and maintenance messages never refresh user inactivity.
+
+config GMK70_RETAINED_SLEEP
+	bool "GMK70 returning full-suspend STOP"
+	depends on GMK70_EVENT_IDLE && ZMK_POINTING && CORTEX_M_SYSTICK && CORTEX_M_SYSTICK_64BIT_CYCLE_COUNTER
+	default y
+	help
+	  Retain SRAM/framework state across coordinated STOP. Uses a calibrated
+	  LSI RTC without resetting a foreign backup domain, restores RCC before
+	  GPIO/UART access, and catches up kernel time before normal work resumes.
+	  Native USB shallow sleep and critical-power/reset fallbacks remain.

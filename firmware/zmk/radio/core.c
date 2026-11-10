@@ -143,6 +143,25 @@ bool gmk_radio_core_idle(const struct gmk_radio_core *radio) {
      * owner separately verifies physical TX/RX and parser quiescence. */
     return radio->connection != GMK_RADIO_PAIRING && !radio->count && !radio->release && !radio->inflight && !radio->clear_requested && !gmk_radio_core_control_busy(radio);
 }
+uint32_t gmk_radio_core_delay(const struct gmk_radio_core *radio, uint32_t now) {
+    uint32_t interval = 0, started = radio->sent_at;
+    if (radio->inflight) return 1;
+    if (radio->draining)
+        interval = 20;
+    else if (radio->waiting)
+        interval = 10;
+    else if (usb_quiet(radio))
+        interval = 5500;
+    else if (radio->release || radio->pending_select || radio->pending_pair || radio->sleep_pending || radio->charge_mode != radio->charge_sent || (radio->count && radio->connection == GMK_RADIO_CONNECTED && radio->active == radio->selected))
+        return 1;
+    else if (radio->charge_mode) {
+        interval = 1000;
+        started  = radio->charge_at;
+    } else
+        return UINT32_MAX;
+    uint32_t elapsed = now - started;
+    return elapsed >= interval ? 1 : interval - elapsed;
+}
 int gmk_radio_core_nkro(struct gmk_radio_core *radio, const uint8_t keyboard[8], const uint8_t overflow[14]) {
     return enqueue(radio, GMK_RADIO_TX_NKRO, keyboard, overflow);
 }

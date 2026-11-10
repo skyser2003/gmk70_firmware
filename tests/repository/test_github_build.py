@@ -122,6 +122,20 @@ class GitHubPackageTests(unittest.TestCase):
         (output / "build.log").write_text("build succeeded\n")
         return output
 
+    def test_event_scanner_release_requires_validated_main_owner(self) -> None:
+        for variant in ("zmk", "zmk-standalone"):
+            source = self.fixture(variant)
+            report = source / "image-check.json"
+            checked: dict[str, object] = json.loads(report.read_text())
+            checked["main_wrapper"] = "event scanner"
+            report.write_text(json.dumps(checked))
+            keymap = VARIANTS[variant][1]
+            with self.assertRaises(ValueError):
+                self.build.verify_zmk_report(source, keymap)
+            checked["scanner_thread"] = "main"
+            report.write_text(json.dumps(checked))
+            self.build.verify_zmk_report(source, keymap)
+
     def test_all_variants_publish_only_firmware_and_checksums(self) -> None:
         for variant, (platform, keymap, mode) in VARIANTS.items():
             with self.subTest(variant=variant):

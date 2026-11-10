@@ -195,7 +195,8 @@ void gmk_zmk_receiver_receive(const uint8_t request[32], uint8_t response[32], b
     k_spin_unlock(&lock, key);
 }
 
-void gmk_zmk_receiver_step(const gmk_zmk_update_env_t *env) {
+/* Keep worker dispatch inspectable in the permanent image checks under LTO. */
+__attribute__((noipa)) void gmk_zmk_receiver_step(const gmk_zmk_update_env_t *env) {
     uint8_t          request[32], response[32];
     bool             usb;
     k_spinlock_key_t key = k_spin_lock(&lock);

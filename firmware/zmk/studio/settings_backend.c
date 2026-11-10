@@ -2,6 +2,7 @@
 #include "settings_backend.h"
 #include "settings_store.h"
 #include "settings_ids.h"
+#include "../runtime/idle.h"
 #include "../wired/wired.h"
 #ifdef CONFIG_GMK70_POWER
 #    include "../power/power.h"
@@ -128,6 +129,7 @@ static int submit_operation(const char *name, const char *value, size_t size, en
     job.operation = operation;
     job.pending   = true;
     k_spin_unlock(&job_lock, key);
+    gmk_service_notify();
     /* Startup behavior-ID writes use the same queue. The static board service
      * worker starts before ZMK main and needs no configured USB to serve it.
      * It never calls settings APIs while this caller holds settings_lock. */
@@ -205,7 +207,8 @@ out:
 }
 #endif
 
-void gmk_zmk_settings_poll(const gmk_zmk_service_env_t *env) {
+/* Preserve the native storage-dispatch boundary for the ELF checker. */
+__attribute__((noipa)) void gmk_zmk_settings_poll(const gmk_zmk_service_env_t *env) {
     k_spinlock_key_t key     = k_spin_lock(&job_lock);
     bool             pending = job.pending;
     k_spin_unlock(&job_lock, key);
@@ -235,7 +238,8 @@ void gmk_zmk_settings_poll(const gmk_zmk_service_env_t *env) {
 
 static const struct settings_store_itf itf     = {.csi_load = load, .csi_save = save};
 static struct settings_store           backend = {.cs_itf = &itf};
-int                                    settings_backend_init(void) {
+/* Preserve an inspectable guarded mount despite framework LTO. */
+__attribute__((noipa)) int settings_backend_init(void) {
     /* A universal peripheral has no central settings owner. Do not even read
      * its application tail: it can contain unrelated historical firmware.
      * Native behavior-ID commits may assign RAM IDs; their saves fail below

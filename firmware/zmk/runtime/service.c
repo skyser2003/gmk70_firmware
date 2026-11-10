@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "service.h"
+#include "idle.h"
 #ifdef CONFIG_GMK70_ZMK_UPDATER
 #    include "../update/raw_hid.h"
 #endif
@@ -119,7 +120,44 @@ static void worker(void *a, void *b, void *c) {
 #ifdef CONFIG_GMK70_POWER
         gmk_power_poll(service_ready);
 #endif
+#ifdef CONFIG_GMK70_EVENT_IDLE
+        /* Cable/charge input fallback and settings retry ceiling. These wakes
+         * are maintenance only: they never raise native activity events. */
+        uint32_t delay = gmk_wired_control_delay();
+        uint32_t next  = gmk_battery_delay();
+        if (next < delay) delay = next;
+        next = gmk_radio_delay();
+        if (next < delay) delay = next;
+        next = gmk_power_delay();
+        if (next < delay) delay = next;
+        if (!gmk_zmk_service_idle() && delay > 1) delay = 1;
+#    ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+        if (env.left && env.wired && env.usb_configured && gmk_zmk_settings_ready() && !gmk_zmk_settings_ids_ready()) delay = 1;
+#    endif
+#    ifdef CONFIG_GMK70_ZMK_UPDATER
+        next = gmk_zmk_raw_hid_delay();
+        if (next < delay) delay = next;
+#    endif
+        if (runtime_writes) {
+            bool pending_save = false;
+#    ifdef CONFIG_GMK70_CONTROLS
+            pending_save |= gmk_controls_dirty();
+#    endif
+#    ifdef CONFIG_GMK70_FUNCTION_FLIP
+            pending_save |= gmk_flip_dirty();
+#    endif
+#    ifdef CONFIG_GMK70_NKRO
+            pending_save |= gmk_nkro_dirty();
+#    endif
+#    if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) && defined(CONFIG_GMK70_WB32_RGB)
+            pending_save |= gmk_rgb_settings_dirty();
+#    endif
+            if (pending_save && delay > 250) delay = 250;
+        }
+        gmk_service_wait(delay);
+#else
         k_sleep(K_MSEC(1));
+#endif
     }
 }
 /* Static thread setup runs after APPLICATION init in the pinned Zephyr.

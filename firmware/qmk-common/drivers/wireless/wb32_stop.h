@@ -17,3 +17,6 @@ struct wb32_stop_ops {
 
 void wb32_stop_enter(const struct wb32_stop_ops *ops);
 void wb32_stop_hardware(void);
+
+/* Shared vendor hooks; returning owners manage their own timer and clocks. */
+const struct wb32_stop_ops *wb32_stop_hardware_ops(void);

@@ -3,6 +3,7 @@
 #include "radio.h"
 #include "selection.h"
 #include "../wired/wired.h"
+#include "../runtime/idle.h"
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 #    include "../studio/settings_backend.h"
 #endif
@@ -129,6 +130,7 @@ static void work_handler(struct k_work *item) {
 #endif
         processing = again;
         k_spin_unlock(&lock, key);
+        gmk_service_notify();
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION
         if (request.marker && !request.pending && !request.clear) emit_marker();
 #endif
@@ -169,7 +171,8 @@ void gmk_radio_unhold(uint32_t position) {
     gmk_radio_selector_release(&selector, position);
     k_spin_unlock(&lock, key);
 }
-void gmk_radio_poll(void) {
+/* Preserve the report-routing inspection gate under LTO. */
+__attribute__((noipa)) void gmk_radio_poll(void) {
     uint8_t          raw = gmk_host_switch(), channel;
     uint32_t         now = k_uptime_get_32();
     k_spinlock_key_t key = k_spin_lock(&lock);
@@ -199,6 +202,28 @@ void gmk_radio_poll(void) {
 #endif
     if (pending) k_work_submit(&work);
 }
+#ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_radio_delay(void) {
+    k_spinlock_key_t key   = k_spin_lock(&lock);
+    uint32_t         now   = k_uptime_get_32();
+    uint32_t         delay = !available || quiesced ? UINT32_MAX : gmk_radio_core_delay(&core, now);
+    if (available && !quiesced) {
+        if (mailbox.pending || mailbox.clear) delay = 1;
+        if (selector.have_candidate && (!selector.have_stable || selector.candidate_raw != selector.stable_raw)) {
+            uint32_t elapsed = now - selector.candidate_at;
+            uint32_t next    = elapsed >= 50 ? 1 : 50 - elapsed;
+            if (next < delay) delay = next;
+        }
+        if (selector.holding) {
+            uint32_t elapsed = now - selector.held_at;
+            uint32_t next    = elapsed >= 3000 ? 1 : 3000 - elapsed;
+            if (next < delay) delay = next;
+        }
+    }
+    k_spin_unlock(&lock, key);
+    return delay;
+}
+#endif
 bool gmk_radio_selected(void) {
     k_spinlock_key_t key      = k_spin_lock(&lock);
     bool             selected = available && core.selected != GMK_HOST_USB;
@@ -211,6 +236,7 @@ static int submit(bool consumer, const uint8_t report[8], const uint8_t overflow
     int              result = admission_locked(raw);
     if (!result) result = overflow ? gmk_radio_core_nkro(&core, report, overflow) : gmk_radio_core_report(&core, consumer, report);
     k_spin_unlock(&lock, key);
+    if (!result) gmk_service_notify();
     return result;
 }
 int gmk_radio_submit_keyboard(const uint8_t report[8]) {
@@ -229,17 +255,20 @@ int gmk_radio_submit_mouse(const uint8_t report[5]) {
     int              result = admission_locked(raw);
     if (!result) result = gmk_radio_core_mouse(&core, report);
     k_spin_unlock(&lock, key);
+    if (!result) gmk_service_notify();
     return result;
 }
 void gmk_radio_release(bool consumer) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     if (available) gmk_radio_core_release(&core, consumer);
     k_spin_unlock(&lock, key);
+    gmk_service_notify();
 }
 void gmk_radio_release_mouse(void) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     if (available) gmk_radio_core_release_mouse(&core);
     k_spin_unlock(&lock, key);
+    gmk_service_notify();
 }
 void gmk_radio_notification(uint8_t command, uint8_t value) {
     k_spinlock_key_t key = k_spin_lock(&lock);

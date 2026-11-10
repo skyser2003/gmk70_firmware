@@ -64,7 +64,8 @@ static bool read_frame(const struct gmk_wire_io *io, uint8_t packet[32], bool re
     return true;
 }
 
-bool gmk_native_update_exchange(const struct gmk_wire_io *io, const uint8_t request[32], uint8_t response[32]) {
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) bool gmk_native_update_exchange(const struct gmk_wire_io *io, const uint8_t request[32], uint8_t response[32]) {
     memset(response, 0, packet_size);
     io->clear(io->ctx);
     if (!write_frame(io, request, false) || !read_frame(io, response, true)) {
@@ -75,7 +76,8 @@ bool gmk_native_update_exchange(const struct gmk_wire_io *io, const uint8_t requ
     return true;
 }
 
-bool gmk_native_update_serve(const struct gmk_wire_io *io, gmk_update_wire_handler_t handler) {
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) bool gmk_native_update_serve(const struct gmk_wire_io *io, gmk_update_wire_handler_t handler) {
     uint8_t request[32], response[32] = {0};
     if (!handler || !read_frame(io, request, false)) return false;
     /* Existing handler only queues/reads a cached reply. Flash stays on the

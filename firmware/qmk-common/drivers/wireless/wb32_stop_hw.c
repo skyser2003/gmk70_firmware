@@ -26,7 +26,10 @@ static void resume(void) {
     ((void (*)(void))((uintptr_t)post_lp_code | 1U))();
 }
 
-void wb32_stop_hardware(void) {
+const struct wb32_stop_ops *wb32_stop_hardware_ops(void) {
     static const struct wb32_stop_ops ops = {read32, write32, prepare, wait_for_interrupt, resume};
-    wb32_stop_enter(&ops);
+    return &ops;
+}
+void wb32_stop_hardware(void) {
+    wb32_stop_enter(wb32_stop_hardware_ops());
 }

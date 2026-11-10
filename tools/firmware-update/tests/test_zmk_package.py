@@ -139,6 +139,16 @@ class ZmkPackageTests(unittest.TestCase):
             }
             report.write_text(json.dumps(checked))
             build(image, resident, report, root / "universal")
+            report.write_text(json.dumps(checked | {"main_wrapper": "event scanner"}))
+            with self.assertRaises(ValueError):
+                build(image, resident, report, root / "missing-scanner-owner")
+            report.write_text(
+                json.dumps(
+                    checked
+                    | {"main_wrapper": "event scanner", "scanner_thread": "main"}
+                )
+            )
+            build(image, resident, report, root / "event-scanner")
             report.write_text(
                 json.dumps(checked | {"variant": "wired-studio-native-bridge"})
             )

@@ -20,6 +20,11 @@ bool gmk_wired_remote_matrix(uint16_t rows[5]);
 /* Scanner-facing APIs; local rows use 0..4 on either physical half. */
 void gmk_wired_scan(uint16_t rows[5]);
 void gmk_wired_poll(void);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+/* Scheduling deadlines only; traffic is never user activity. */
+uint32_t gmk_wired_scan_delay(void);
+uint32_t gmk_wired_control_delay(void);
+#endif
 /* LEFT encoder detents only; thread context. Clear discards pending motion. */
 int  gmk_wired_encoder_next(void);
 void gmk_wired_encoder_clear(void);
@@ -42,3 +47,7 @@ bool gmk_wired_power_prepare(bool critical);
 void gmk_wired_power_pause(bool paused);
 bool gmk_wired_power_wake_pending(void);
 void gmk_wired_power_resume(void);
+
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+void gmk_wired_power_peer_wake(void);
+#endif

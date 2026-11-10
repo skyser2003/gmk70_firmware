@@ -12,6 +12,9 @@ void gmk_lighting_wire_poll(const struct gmk_wire_io *);
 void gmk_lighting_poll(void);
 /* Each half blanks its own LEDs before advertising power readiness. */
 bool gmk_lighting_power_quiesce(bool enabled);
+#    ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_lighting_scan_delay(void);
+#    endif
 #else
 static inline void gmk_lighting_receive(const uint8_t packet[16]) {
     (void)packet;
@@ -24,4 +27,9 @@ static inline bool gmk_lighting_power_quiesce(bool enabled) {
     (void)enabled;
     return true;
 }
+#    ifdef CONFIG_GMK70_EVENT_IDLE
+static inline uint32_t gmk_lighting_scan_delay(void) {
+    return UINT32_MAX;
+}
+#    endif
 #endif

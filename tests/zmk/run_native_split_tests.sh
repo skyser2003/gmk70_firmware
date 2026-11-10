@@ -3,7 +3,7 @@ set -euo pipefail
 source "$(dirname "$0")/../../scripts/project.sh"
 mkdir -p artifacts/tests/zmk
 cc_args=(-std=c11 -Wall -Wextra -Werror -fsanitize=undefined -fno-sanitize-recover=all
-    -DCONFIG_ZMK_SPLIT=1 -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=1 -DCONFIG_GMK70_NATIVE_UPDATE_WIRE=1 -DCONFIG_GMK70_POWER=1
+    -DCONFIG_ZMK_SPLIT=1 -DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=1 -DCONFIG_GMK70_NATIVE_UPDATE_WIRE=1 -DCONFIG_GMK70_POWER=1 -DCONFIG_GMK70_EVENT_IDLE=1
     -Itests/zmk/native_split_stubs -Itests/zmk/wired_stubs
     -Itests/zmk/native_encoder_stubs -Idependencies/zmk/app/include
     -Itests/zmk/radio_native_stubs -Ifirmware/zmk/wired

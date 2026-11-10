@@ -31,8 +31,10 @@ with ordinary RGB off and can be held together.
 
 ## Battery implementation
 
-Only LEFT uses UART3, PC10/PC11 AF7 at 115200 baud. The existing worker polls a
-bounded parser and transmitter without a new thread, interrupt or blocking wait.
+Only LEFT uses UART3, PC10/PC11 AF7 at 115200 baud. With event-driven idle,
+UART RX interrupts enqueue bytes and notify the existing worker; the bounded
+parser and transmitter remain single-owner worker operations. The polling path
+remains when that option is disabled. No extra thread is reserved.
 Battery inquiries use `A6 53 F9` and acknowledgments use `61 0D 0A`.
 Automatic queries run every three seconds in wireless mode; the level action
 also requests a refresh on press. Either query cycle permits one bounded retry.

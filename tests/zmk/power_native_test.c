@@ -26,15 +26,22 @@ static bool                    left_role = true, cable, receiver_free = true, le
 static bool                    peer_traffic;
 static unsigned                claims, releases, wake_prepares, radio_quiesces, stops, resets, peer_pulses, report_clears;
 static jmp_buf                 reset_jump;
-static bool                    usb_sleep;
+static bool                    usb_sleep, radio_paused;
 static enum usb_dc_status_code usb_status       = USB_DC_UNKNOWN;
 static enum zmk_usb_conn_state native_usb_state = ZMK_USB_CONN_NONE;
 static uint32_t                systick = 7, scr = 0x10;
 static unsigned                shallow_stops;
-static uint32_t                exti_pending;
-static uint32_t                kernel_pending;
-static bool                    rx_wakes;
-static bool                    split_routing;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+static unsigned scheduling_notifications;
+void            gmk_service_notify(void) {
+    ++scheduling_notifications;
+}
+void gmk_scan_notify(void) {}
+#endif
+static uint32_t exti_pending;
+static uint32_t kernel_pending;
+static bool     rx_wakes;
+static bool     split_routing;
 struct mmio_write {
     uintptr_t address;
     uint32_t  value;
@@ -76,6 +83,7 @@ void gmk_wired_power_pause(bool value) {
     paused = value;
 }
 void gmk_wired_power_resume(void) {
+    assert(!radio_paused); /* Report admission precedes the waking key. */
     paused = false;
 }
 bool gmk_wired_power_wake_pending(void) {
@@ -141,6 +149,7 @@ bool gmk_radio_idle(void) {
     return radio_idle_state;
 }
 bool gmk_radio_power_quiesce(bool enabled) {
+    radio_paused = enabled;
     if (enabled) ++radio_quiesces;
     return radio_idle_state;
 }
@@ -296,6 +305,30 @@ static void test_native_activity_enters_real_stop(void) {
     assert(report_clears == 0 && !critical_prepare);
 }
 
+#ifdef CONFIG_GMK70_EVENT_IDLE
+static void test_maintenance_does_not_move_sleep_deadline(void) {
+    test_power_now = 30001;
+    activity_work_handler(NULL);
+    gmk_power_poll(true);
+    for (test_power_now = 30002; test_power_now < 60001; ++test_power_now) {
+        gmk_service_notify(); /* IRQ/status/heartbeat scheduling, no input edge. */
+        gmk_power_poll(true);
+        assert(!gmk_power_sleep_pending() && !claims);
+    }
+    assert(scheduling_notifications >= 29999);
+    assert(gmk_power_delay() <= 20);
+    gmk_power_poll(true);
+    assert(gmk_power_sleep_pending() && paused && lease);
+    test_power_thread = &activity_thread;
+    test_power_now    = 61001;
+    if (!setjmp(reset_jump)) {
+        activity_work_handler(NULL);
+        assert(false);
+    }
+    assert(stops == 1 && resets == 1 && !report_clears);
+}
+#endif
+
 static void test_critical_reports_clear_once_and_held_key_bypass(void) {
     battery.percentage = 0;
     wired_idle_state   = false;
@@ -316,7 +349,13 @@ static void test_critical_reports_clear_once_and_held_key_bypass(void) {
 }
 
 static void test_manual_release_does_not_cancel_its_own_request(void) {
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    unsigned before = scheduling_notifications;
+#endif
     assert(zmk_pm_soft_off() == 0);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    assert(scheduling_notifications == before + 1);
+#endif
     power_test_listener->callback(&(zmk_event_t){.position = true});
     if (!setjmp(reset_jump)) {
         gmk_power_poll(true);
@@ -553,8 +592,71 @@ static void test_critical_save_flushes_actual_rgb_dirt_while_keys_are_held(void)
 }
 #endif
 
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+static bool     retained_ready = true, retained_physical = true;
+static unsigned retained_entries, refreshes;
+uint32_t        gmk_retained_poll(void) {
+    return UINT32_MAX;
+}
+bool gmk_retained_available(void) {
+    return retained_ready;
+}
+bool gmk_retained_sleep(void) {
+    assert(paused && radio_paused && lease && test_pm_suspend_calls == test_pm_resume_calls + 2);
+    ++retained_entries;
+    if (retained_physical) test_power_now += 3600000;
+    return retained_physical;
+}
+void gmk_battery_request(void) {
+    ++refreshes;
+}
+int k_work_submit(struct k_work *work) {
+    work->handler(work);
+    return 1;
+}
+static void test_returning_native_sleep(bool defer) {
+    gmk_power_poll(true);
+    test_power_now = 30000;
+    activity(ZMK_ACTIVITY_IDLE);
+    test_power_now    = 300001;
+    retained_physical = !defer;
+    gmk_power_poll(true);
+    if (defer) {
+        assert(retained_entries == 1 && paused && radio_paused && lease);
+        assert(gmk_power_sleep_pending() && !resets && !stops && !refreshes);
+        retained_physical = true;
+        gmk_power_poll(true);
+    }
+    assert(retained_entries == (defer ? 2U : 1U) && !paused && !radio_paused && !lease);
+    assert(!stops && !resets && report_clears == 0 && refreshes == 1);
+    assert(!test_native_pm_suspended[0] && !test_native_pm_suspended[1]);
+    assert(zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE);
+    test_power_now += 1000;
+    activity_work_handler(NULL); /* Native last-activity time was refreshed. */
+    assert(zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE);
+}
+#endif
+
 int main(int argc, char **argv) {
     assert(argc == 2);
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+    if (!strcmp(argv[1], "retained") || !strcmp(argv[1], "retained-defer")) {
+        test_returning_native_sleep(!strcmp(argv[1], "retained-defer"));
+        puts("Native returning sleep: ownership, quiet deferral, reports, settings and activity timestamp passed");
+        return 0;
+    }
+    if (!strcmp(argv[1], "retained-unavailable")) {
+        retained_ready = false;
+        test_native_activity_enters_real_stop();
+        return 0;
+    }
+#endif
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    if (!strcmp(argv[1], "maintenance-stop")) {
+        test_maintenance_does_not_move_sleep_deadline();
+        return 0;
+    }
+#endif
     if (!strcmp(argv[1], "gates")) {
         test_native_pm_denies_early_or_usb_sleep();
         test_dirty_settings_can_save_without_opening_sleep();

@@ -37,6 +37,18 @@ static struct gmk_update_route update_route;
 #include <zephyr/sys/atomic.h>
 #include <zephyr/drivers/gpio.h>
 #include <string.h>
+#include "../runtime/idle.h"
+#ifdef CONFIG_GMK70_EVENT_IDLE
+#    include "event_link.h"
+static struct gmk_event_link event_link;
+static bool                  event_mode, event_probed, event_armed, master_ack;
+static uint16_t              event_ack;
+static uint32_t              event_poll_at, event_session, event_rx_at;
+static atomic_t              event_notice;
+static bool                  event_fast;
+static uint8_t               event_failures, event_tag;
+static atomic_t              master_receiving;
+#endif
 
 #define UART_BASE 0x40003800U
 #define UART_IRQ 30
@@ -69,6 +81,25 @@ static bool                        power_prepared, power_paused;
 static uint8_t                     power_inputs;
 static uint8_t                     power_armed;
 static bool                        power_critical;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+static struct gpio_callback mode_callback;
+static bool                 mode_irq_ready;
+static void                 mode_wake(const struct device *dev, struct gpio_callback *callback, gpio_port_pins_t pins) {
+    ARG_UNUSED(dev);
+    ARG_UNUSED(callback);
+    ARG_UNUSED(pins);
+    if (power_prepared) atomic_set(&power_wake, 1);
+    gmk_service_notify();
+    gmk_scan_notify();
+}
+static void mode_irq_arm(void) {
+    const struct device *dev = gpio_ports[2];
+    mode_irq_ready           = !gpio_pin_interrupt_configure(dev, 14, GPIO_INT_EDGE_BOTH) && !gpio_pin_interrupt_configure(dev, 15, GPIO_INT_EDGE_BOTH);
+}
+uint32_t gmk_wired_control_delay(void) {
+    return mode_irq_ready ? 1000 : 50;
+}
+#endif
 
 #define POWER_LOCAL_LINES (BIT(1) | BIT(2) | BIT(3) | BIT(4) | BIT(6) | BIT(7) | BIT(13) | BIT(14) | BIT(15))
 #define EXTI_PENDING_ADDRESS 0x40001814U
@@ -101,6 +132,7 @@ static void encoder_wake(const struct device *dev, struct gpio_callback *cb, gpi
         atomic_set(&power_wake, 1);
         return;
     }
+    gmk_scan_notify();
     if (!initialized || !left || !encoder_ready) return;
     gmk_encoder_sample(&encoder, gmk_native_encoder_sample());
     if (!initialized || !left || !gmk_split_available()) gmk_encoder_clear(&encoder);
@@ -148,6 +180,8 @@ static void matrix_wake(const struct device *dev, struct gpio_callback *callback
     ARG_UNUSED(pins);
     /* IRQs only latch activity; scanning, debounce and reports stay in thread context. */
     atomic_set(&scan_pending, 1);
+    gmk_scan_notify();
+    gmk_service_notify();
     if (power_prepared) atomic_set(&power_wake, 1);
 }
 
@@ -224,6 +258,16 @@ static void uart_isr(const void *unused) {
             atomic_inc(&rx_errors);
             atomic_set(&rx_fault, 1);
         }
+#ifdef CONFIG_GMK70_EVENT_IDLE
+        if (left) {
+            /* Payloads may contain every byte value. Only bytes arriving
+             * outside a master exchange can be unsolicited notices. */
+            if (!atomic_get(&master_receiving)) {
+                if (byte == GMK_EVENT_NOTICE) atomic_set(&event_notice, 1);
+                gmk_scan_notify();
+            }
+        }
+#endif
     }
 }
 static void clear_rx(void *ctx) {
@@ -236,6 +280,18 @@ static void clear_rx(void *ctx) {
 static bool read_uart(void *ctx, uint8_t *out, size_t n) {
     ARG_UNUSED(ctx);
     if (atomic_get(&rx_fault)) return false;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    if (left && master_ack && n) {
+        master_ack = false;
+        uint8_t value;
+        do {
+            int64_t remaining = deadline - k_uptime_get();
+            if (remaining <= 0 || k_msgq_get(&uart_rx, &value, K_MSEC(remaining)) || atomic_get(&rx_fault)) return false;
+        } while (value == GMK_EVENT_NOTICE);
+        *out++ = value;
+        --n;
+    }
+#endif
     if (n && have_first) {
         *out++ = first;
         --n;
@@ -249,6 +305,11 @@ static bool read_uart(void *ctx, uint8_t *out, size_t n) {
 }
 static bool write_uart(void *ctx, const uint8_t *in, size_t n) {
     ARG_UNUSED(ctx);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    /* Native updater frames have no legacy ACK byte. All payload bytes,
+     * including 0xfc, must pass unchanged in both carriers. */
+    if (left && master_ack && n != 1) master_ack = false;
+#endif
     while (n--) {
         while (!(sys_read32(REG(0x7c)) & 2)) {
             if (k_uptime_get() >= deadline) return false;
@@ -264,10 +325,76 @@ static const struct gmk_wire_io wire = {NULL, read_uart, write_uart, clear_rx};
 static void master_clear(void *ctx) {
     clear_rx(ctx);
     deadline = k_uptime_get() + GMK_WIRE_TIMEOUT_MS;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    master_ack = true;
+    atomic_set(&master_receiving, 1);
+#endif
 }
 static const struct gmk_wire_io master_wire = {NULL, read_uart, write_uart, master_clear};
 
-bool gmk_wired_is_left(void) {
+#ifdef CONFIG_GMK70_EVENT_IDLE
+static void event_legacy(void) {
+    event_link.enabled = event_armed = false;
+}
+static bool event_control(const uint8_t request[32], uint8_t response[32]) {
+    if (memcmp(request, "EVT\1", 4)) return false;
+    if (left || power_prepared || power_paused) return true;
+    uint32_t prior   = event_link.token;
+    bool     enabled = event_link.enabled;
+    (void)gmk_event_control(&event_link, debounce.stable, scan_idle, request, response);
+    if (response[5] == 1 && request[4]) {
+        if (!enabled || prior != event_link.token) event_armed = false;
+        event_rx_at = k_uptime_get_32();
+    }
+    return true;
+}
+static bool event_read(const uint8_t request[4], uint8_t response[16]) {
+    if (!event_link.enabled || left || power_prepared || power_paused) return false;
+    if (request[2] != event_link.tag || request[3] != gmk_wire_crc8(request, 3)) return false;
+    event_armed = true; /* A lost enable reply cannot start unsolicited TX. */
+    event_rx_at = k_uptime_get_32();
+    gmk_event_reply(&event_link, (uint16_t)(request[0] | ((uint16_t)request[1] << 8)), response);
+    gmk_scan_notify();
+    return true;
+}
+/* 1 ready, 0 ambiguous/retry, -1 a completed legacy zero reply. */
+static int negotiate_events(bool resume) {
+    uint8_t  request[32] = {'E', 'V', 'T', 1}, response[32];
+    uint32_t token       = resume ? event_session : ++event_session;
+    if (!token) token = ++event_session;
+    bool retained = false;
+    for (unsigned i = 0; i < 4; ++i)
+        request[8 + i] = (uint8_t)(token >> (8 * i));
+    for (unsigned step = 0; step < 2; ++step) {
+        request[4]  = (uint8_t)step;
+        request[31] = gmk_wire_crc8(request, 31);
+        if (!gmk_protocol_split_command(&master_wire, request, response)) return 0;
+        uint8_t nonzero = 0;
+        for (unsigned i = 0; i < sizeof(response); ++i)
+            nonzero |= response[i];
+        if (!nonzero) return -1;
+        if (response[5] != 1 || response[6] > 1 || response[31] != gmk_wire_crc8(response, 31)) return 0;
+        if (!step)
+            retained = resume && response[6];
+        else if (!response[6])
+            return 0;
+        response[5] = response[6] = 0;
+        response[31]              = request[31];
+        if (memcmp(request, response, 32)) return 0;
+    }
+    if (!retained) event_ack = 0;
+    event_fast = true;
+    event_tag  = (uint8_t)(gmk_wire_crc8(request + 8, 4) | 1U);
+    return 1;
+}
+static uint32_t remaining_ms(uint32_t now, uint32_t then, uint32_t interval) {
+    uint32_t elapsed = now - then;
+    return elapsed >= interval ? 0 : interval - elapsed;
+}
+#endif
+
+/* Retain the role probe for the linked settings-admission check under LTO. */
+__attribute__((noipa)) bool gmk_wired_is_left(void) {
     return initialized && left;
 }
 bool gmk_wired_mode(void) {
@@ -299,6 +426,10 @@ static bool power_input_idle(void) {
     if (!initialized || !scan_idle || !scan_irq_ready || atomic_get(&scan_pending) || (left && encoder.count)) return false;
     for (unsigned r = 0; r < 5; ++r)
         if (debounce.candidate[r] || debounce.stable[r]) return false;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    /* Queued input must reach LEFT before a quiet physical matrix can sleep. */
+    if (!left && event_link.enabled && event_link.count) return false;
+#endif
     return true;
 }
 
@@ -342,13 +473,22 @@ static bool power_arm(unsigned port, unsigned pin) {
 static bool power_arm_free(unsigned port, unsigned pin, uint8_t owned) {
     /* GPIO's EXTI arbiter owns ports, not clients on the same port. Refuse
      * every preexisting extra line rather than commandeering another client. */
-    if (sys_read32(EXTI_MASK_ADDRESS) & BIT(pin)) return false;
+    if (sys_read32(EXTI_MASK_ADDRESS) & BIT(pin)) {
+#ifdef CONFIG_GMK70_EVENT_IDLE
+        /* Adopt our persistent mode-switch IRQs in place. Reconfiguring them
+         * clears a pending edge and would both lose wake and block every sleep.
+         * A different port/trigger remains another owner's line. */
+        if (mode_irq_ready && port == 2 && (pin == 14 || pin == 15) && ((sys_read32(0x40001408U + 4U * (pin / 4U)) >> (4U * (pin % 4U))) & 15U) == port && (sys_read32(0x40001808U) & BIT(pin)) && (sys_read32(0x4000180cU) & BIT(pin))) return true;
+#endif
+        return false;
+    }
     if (!power_arm(port, pin)) return false;
     power_armed |= owned;
     return true;
 }
 
-bool gmk_wired_power_prepare(bool critical) {
+/* Preserve the linked safety boundary under LTO. */
+__attribute__((noipa)) bool gmk_wired_power_prepare(bool critical) {
     if (k_is_in_isr() || k_mutex_lock(&wired_lock, K_NO_WAIT)) return false;
     unsigned key = irq_lock();
     bool     ok;
@@ -411,6 +551,19 @@ void gmk_wired_power_pause(bool paused) {
     irq_unlock(key);
 }
 
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+void gmk_wired_power_peer_wake(void) {
+    /* An incoming A10 edge is already the peer waking us. Never echo it or an
+     * RTC-only checkpoint. Restore UART TX AF7 after the bounded wake pulse. */
+    if (!gmk_split_available() || (sys_read32(EXTI_PENDING_ADDRESS) & BIT(10))) return;
+    struct gmk_wired_pin tx = {0, 9};
+    port_of(tx)->bsrr       = BIT(25);
+    pin_mode(tx, 1, 0);
+    k_busy_wait(100);
+    port_of(tx)->bsrr = BIT(9);
+    pin_mode(tx, 2, 0);
+}
+#endif
 void gmk_wired_power_resume(void) {
     if (!initialized || k_is_in_isr()) return;
     k_mutex_lock(&wired_lock, K_FOREVER);
@@ -431,6 +584,15 @@ void gmk_wired_power_resume(void) {
         atomic_set(&scan_pending, 1);
         power_critical = false;
     }
+#ifdef CONFIG_GMK70_RETAINED_SLEEP
+    if (power_paused) {
+        /* Full suspend advances uptime. Rebase a coordinated lease before
+         * unpausing or the first waking tap can disable its own retained queue. */
+        event_rx_at = last_rx_seen = k_uptime_get_32();
+        if (peer.connected) peer.seen = event_rx_at;
+        if (event_mode) event_fast = true;
+    }
+#endif
     power_prepared = power_paused = false;
     if (power_armed & POWER_RESTORE_ENCODER) {
         encoder_irq_ready = power_arm(1, 6) && power_arm(1, 7);
@@ -442,6 +604,10 @@ void gmk_wired_power_resume(void) {
         gpio_pin_interrupt_configure(gpio_ports[1], 6, GPIO_INT_DISABLE);
     }
     power_armed = 0;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    gmk_scan_notify();
+    gmk_service_notify();
+#endif
 out:
     irq_unlock(key);
     k_mutex_unlock(&wired_lock);
@@ -457,7 +623,8 @@ void gmk_wired_set_update_handler(void (*handler)(const uint8_t[32], uint8_t[32]
     protocol.update = handler;
     k_mutex_unlock(&wired_lock);
 }
-bool gmk_wired_update(const uint8_t request[32], uint8_t response[32]) {
+/* Preserve the native updater entry for ELF admission checks under LTO. */
+__attribute__((noipa)) bool gmk_wired_update(const uint8_t request[32], uint8_t response[32]) {
     memset(response, 0, 32);
     if (!gmk_wired_is_left() || !gmk_wired_mode() || k_is_in_isr()) return false;
     k_mutex_lock(&wired_lock, K_FOREVER);
@@ -469,6 +636,9 @@ bool gmk_wired_update(const uint8_t request[32], uint8_t response[32]) {
     bool ok = gmk_protocol_update(&master_wire, request, response);
 #endif
     if (!ok) ++counters.failures;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    atomic_set(&master_receiving, 0);
+#endif
     k_mutex_unlock(&wired_lock);
     return ok;
 }
@@ -478,10 +648,14 @@ bool gmk_wired_split_command(const uint8_t request[32], uint8_t response[32]) {
     k_mutex_lock(&wired_lock, K_FOREVER);
     bool ok = gmk_protocol_split_command(&master_wire, request, response);
     if (!ok) ++counters.failures;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    atomic_set(&master_receiving, 0);
+#endif
     k_mutex_unlock(&wired_lock);
     return ok;
 }
-void gmk_wired_scan(uint16_t rows[5]) {
+/* Preserve the physical/native scanner integration check under LTO. */
+__attribute__((noipa)) void gmk_wired_scan(uint16_t rows[5]) {
     uint16_t raw[5] = {0};
     if (!initialized) {
         memset(rows, 0, 10);
@@ -522,6 +696,18 @@ publish:
     else
         memset(rows, 0, 10);
     gmk_protocol_matrix(&protocol, rows);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    if (!left) {
+        uint32_t now = k_uptime_get_32();
+        if (event_link.enabled && (uint32_t)(now - event_rx_at) >= GMK_EVENT_LEASE_MS) event_legacy();
+        gmk_event_sample(&event_link, rows, scan_idle);
+        if (!power_prepared && !power_paused && event_armed && gmk_event_notice_due(&event_link, now)) {
+            uint8_t notice = GMK_EVENT_NOTICE;
+            deadline       = k_uptime_get() + GMK_WIRE_TIMEOUT_MS;
+            if (write_uart(NULL, &notice, 1)) gmk_event_notified(&event_link, now);
+        }
+    }
+#endif
     k_mutex_unlock(&wired_lock);
 }
 void gmk_wired_poll(void) {
@@ -533,6 +719,70 @@ void gmk_wired_poll(void) {
         return;
     }
     if (gmk_split_available()) {
+#ifdef CONFIG_GMK70_EVENT_IDLE
+        if (!event_probed) {
+            /* Transaction zero disables the peripheral's event queue. Discover
+             * capability first, including after this master reboots/wakes. */
+            int capability = negotiate_events(false);
+            if (!capability) {
+                atomic_set(&master_receiving, 0);
+                k_mutex_unlock(&wired_lock);
+                return;
+            }
+            event_probed = true;
+            event_mode   = capability > 0;
+        }
+        uint32_t now    = k_uptime_get_32();
+        bool     notice = atomic_clear(&event_notice) != 0;
+        if (event_mode && !event_fast && !notice && (uint32_t)(now - event_poll_at) < GMK_EVENT_HEARTBEAT_MS) {
+            gmk_lighting_wire_poll(&master_wire);
+            atomic_set(&master_receiving, 0);
+            k_mutex_unlock(&wired_lock);
+            return;
+        }
+        if (event_mode) {
+            uint8_t  reply[GMK_EVENT_FRAME], flags;
+            uint16_t sequence;
+            ++counters.polls;
+            bool ok       = gmk_protocol_event_poll(&master_wire, event_ack, event_tag, reply) && gmk_event_decode(reply, &sequence, &flags, rows) && reply[14] == event_tag;
+            event_poll_at = k_uptime_get_32();
+            if (ok) {
+                event_failures = 0;
+                if (flags & GMK_EVENT_DATA) event_ack = sequence;
+                gmk_peer_set(&peer, rows, event_poll_at);
+                bool held = false;
+                for (unsigned r = 0; r < 5; ++r)
+                    held |= rows[r] != 0;
+                peer.quiet_timeout_ms = held ? 0 : GMK_EVENT_LEASE_MS;
+                event_fast            = (flags & GMK_EVENT_DATA) || !(flags & GMK_EVENT_QUIET) || held;
+                gmk_lighting_wire_poll(&master_wire);
+                atomic_set(&master_receiving, 0);
+                k_mutex_unlock(&wired_lock);
+                return;
+            }
+            ++counters.failures;
+            /* An invalid/lost snapshot is never acknowledged. Keep the same
+             * queue/session for bounded retries before probing a rebooted peer. */
+            if (++event_failures < 3) {
+                event_fast = true;
+                atomic_set(&master_receiving, 0);
+                k_mutex_unlock(&wired_lock);
+                return;
+            }
+            event_failures = 0;
+            int recovery   = negotiate_events(true);
+            if (recovery >= 0) {
+                /* Preserve a capable peer's queue/session through lost replies.
+                 * An ambiguous probe never admits a destructive legacy read. */
+                event_fast = true;
+                atomic_set(&master_receiving, 0);
+                k_mutex_unlock(&wired_lock);
+                return;
+            }
+            event_mode = event_probed = false;
+            peer.quiet_timeout_ms     = 0;
+        }
+#endif
         ++counters.polls;
         if (gmk_protocol_poll(&master_wire, rows)) {
             gmk_peer_set(&peer, rows, k_uptime_get_32());
@@ -541,8 +791,29 @@ void gmk_wired_poll(void) {
             ++counters.failures;
     } else
         peer.connected = false;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    atomic_set(&master_receiving, 0);
+#endif
     k_mutex_unlock(&wired_lock);
 }
+#ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_wired_scan_delay(void) {
+    if (!initialized) return 1;
+    if (power_paused) return UINT32_MAX;
+    if (!scan_idle || !scan_irq_ready || atomic_get(&scan_pending) || (left && ((encoder_ready && !encoder_irq_ready) || encoder.count))) return 1;
+    uint32_t now = k_uptime_get_32(), delay = UINT32_MAX;
+    if (left && gmk_split_available() && !power_prepared) {
+        delay = !event_mode || event_fast || atomic_get(&event_notice) ? 1 : remaining_ms(now, event_poll_at, GMK_EVENT_HEARTBEAT_MS);
+    } else if (!left && event_link.enabled && !power_prepared) {
+        delay = remaining_ms(now, event_rx_at, GMK_EVENT_LEASE_MS);
+        if (event_armed && event_link.count) {
+            uint32_t retry = event_link.notified ? remaining_ms(now, event_link.notice_at, 20) : 0;
+            if (retry < delay) delay = retry;
+        }
+    }
+    return delay;
+}
+#endif
 bool gmk_wired_remote_matrix(uint16_t rows[5]) {
     k_mutex_lock(&wired_lock, K_FOREVER);
     if (!gmk_split_available()) peer.connected = false;
@@ -555,7 +826,11 @@ static void stats_locked(struct gmk_wired_stats *stats) {
     stats->rx_errors = (uint32_t)atomic_get(&rx_errors);
     stats->uptime_ms = k_uptime_get_32();
     uint16_t rows[5];
-    stats->peer = left ? gmk_peer_rows(&peer, stats->uptime_ms, rows) : (have_last_rx && (uint32_t)(stats->uptime_ms - last_rx_seen) < GMK_PEER_TIMEOUT_MS);
+    uint32_t timeout = GMK_PEER_TIMEOUT_MS;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    if (!left && event_link.enabled && event_armed) timeout = GMK_EVENT_LEASE_MS;
+#endif
+    stats->peer = left ? gmk_peer_rows(&peer, stats->uptime_ms, rows) : (have_last_rx && (uint32_t)(stats->uptime_ms - last_rx_seen) < timeout);
     if (!gmk_split_available()) stats->peer = false;
 }
 void gmk_wired_get_stats(struct gmk_wired_stats *stats) {
@@ -581,7 +856,11 @@ static void serial_thread(void *a, void *b, void *c) {
     ARG_UNUSED(c);
     while (true) {
         if (!initialized || left) {
+#ifdef CONFIG_GMK70_EVENT_IDLE
+            k_sleep(K_FOREVER); /* PB9 role is fixed at startup. */
+#else
             k_sleep(K_MSEC(20));
+#endif
             continue;
         }
         if (k_msgq_get(&uart_rx, &first, K_FOREVER) != 0) continue;
@@ -598,6 +877,8 @@ static void serial_thread(void *a, void *b, void *c) {
             ++counters.failures;
             clear_rx(NULL);
         }
+        gmk_service_notify();
+        gmk_scan_notify();
         have_first = false;
         k_mutex_unlock(&wired_lock);
     }
@@ -605,6 +886,11 @@ static void serial_thread(void *a, void *b, void *c) {
 K_THREAD_DEFINE(gmk_serial_thread, 1536, serial_thread, NULL, NULL, NULL, 4, 0, 0);
 static int wired_init(void) {
     protocol.lighting = gmk_lighting_receive;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    protocol.event_control = event_control;
+    protocol.event_read    = event_read;
+    protocol.legacy_read   = event_legacy;
+#endif
 #ifdef CONFIG_GMK70_NATIVE_SPLIT
     protocol.split_command = gmk_native_split_receive;
 #endif
@@ -625,6 +911,10 @@ static int wired_init(void) {
     scan_idle = false;
     atomic_set(&scan_pending, 0);
     scan_irq_ready = matrix_irq_init();
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    gpio_init_callback(&mode_callback, mode_wake, BIT(14) | BIT(15));
+    if (!gpio_add_callback(gpio_ports[2], &mode_callback)) mode_irq_arm();
+#endif
     encoder_init();
     /* UART1 A9/A10 AF7, push-pull, 115200 8N1, FIFO enabled. */
     for (unsigned pin = 9; pin <= 10; ++pin) {

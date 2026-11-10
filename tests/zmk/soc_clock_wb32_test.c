@@ -16,6 +16,7 @@
 static uint32_t     registers[MMIO_BYTES / sizeof(uint32_t)];
 static size_t       gpio_page_size;
 static unsigned int reads;
+static unsigned int nvic_cleared;
 
 uint32_t sys_read32(uintptr_t address) {
     assert(++reads < 1000);
@@ -34,6 +35,12 @@ uint32_t sys_read32(uintptr_t address) {
 }
 
 void sys_write32(uint32_t value, uintptr_t address) {
+    if (address == 0xe000e180U || address == 0xe000e184U || address == 0xe000e280U || address == 0xe000e284U) {
+        assert(value == UINT32_MAX && nvic_cleared < 4);
+        ++nvic_cleared;
+        return;
+    }
+    assert(nvic_cleared == 4);
     assert(address >= MMIO_BASE && address < MMIO_BASE + MMIO_BYTES);
     assert(address % sizeof(uint32_t) == 0);
     registers[(address - MMIO_BASE) / 4] = value;
@@ -52,6 +59,7 @@ int main(void) {
     assert(gpio == (void *)WB32_GPIOA_BASE);
     assert(sys_read32(WB32_RCC_BASE + 0x1c) == 0);
     soc_early_init_hook();
+    assert(nvic_cleared == 4);
     assert(sys_read32(WB32_RCC_BASE + 0x1c) == BIT(7));
     assert(sys_read32(WB32_RCC_BASE + 0x20) == BIT(7));
     assert(sys_read32(WB32_RCC_BASE + 0x08) == 2);
@@ -71,6 +79,10 @@ int main(void) {
     assert(sys_read32(WB32_RCC_BASE + 0x6c) == 0);
     assert(sys_read32(WB32_RCC_BASE + 0x7c) == 0);
     assert(((struct wb32_gpio *)WB32_GPIOA_BASE)->bsrr == BIT(28));
+    uint32_t matrix_mode = ((struct wb32_gpio *)WB32_GPIOA_BASE)->moder;
+    assert(wb32_clock_resume());
+    assert(nvic_cleared == 4); /* Resume never repeats startup sanitization. */
+    assert(((struct wb32_gpio *)WB32_GPIOA_BASE)->moder == matrix_mode);
     assert(munmap(gpio, gpio_page_size) == 0);
     puts("WB32 SoC clock tests passed (GPIO blocked until APB1 source enabled)");
     return 0;

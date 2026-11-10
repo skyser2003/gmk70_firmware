@@ -10,3 +10,8 @@ static inline void atomic_set(atomic_t *v, int value) {
 static inline void atomic_inc(atomic_t *v) {
     ++*v;
 }
+static inline int atomic_clear(atomic_t *v) {
+    int old = *v;
+    *v      = 0;
+    return old;
+}

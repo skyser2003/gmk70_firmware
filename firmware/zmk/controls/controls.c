@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "controls.h"
+#include "../runtime/idle.h"
 #include "../wired/wired.h"
 #include "../radio/core.h"
 #ifdef CONFIG_GMK70_RADIO
@@ -61,6 +62,10 @@ static bool update_flag(uint8_t flag, bool enabled, bool toggle) {
         }
     }
     k_spin_unlock(&preferences.lock, key);
+    if (changed) {
+        gmk_service_notify();
+        gmk_scan_notify();
+    }
     return changed;
 }
 
@@ -114,13 +119,15 @@ int gmk_controls_usb_sleep_set(bool enabled) {
 static int set_selector(bool bluetooth, uint8_t value) {
     if (!gmk_wired_is_left()) return -ENODEV;
     if (bluetooth ? value < GMK_HOST_BT1 || value > GMK_HOST_BT5 : value > 7) return -EINVAL;
-    k_spinlock_key_t key   = k_spin_lock(&preferences.lock);
-    uint8_t         *field = bluetooth ? &preferences.value.bt_slot : &preferences.value.sleep_selector;
+    k_spinlock_key_t key     = k_spin_lock(&preferences.lock);
+    uint8_t         *field   = bluetooth ? &preferences.value.bt_slot : &preferences.value.sleep_selector;
+    bool             changed = *field != value;
     if (*field != value) {
         *field                 = value;
         preferences.changed_at = k_uptime_get_32();
     }
     k_spin_unlock(&preferences.lock, key);
+    if (changed) gmk_service_notify();
     return 0;
 }
 int gmk_controls_bt_slot_set(uint8_t slot) {
@@ -130,7 +137,8 @@ int gmk_controls_sleep_selector_set(uint8_t selector) {
     return set_selector(false, selector);
 }
 
-uint8_t gmk_controls_project_modifiers(uint8_t modifiers) {
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) uint8_t gmk_controls_project_modifiers(uint8_t modifiers) {
     uint8_t flags = current().flags;
     return (flags & (GUI_LOCK | MAC_MODE)) == GUI_LOCK ? (uint8_t)(modifiers & (uint8_t)~0x88U) : modifiers;
 }
@@ -156,8 +164,10 @@ static void save_preferences(struct k_work *work) {
     if (!result) preferences.stored = value;
     preferences.saving = false;
     k_spin_unlock(&preferences.lock, key);
+    gmk_service_notify();
 }
-void gmk_controls_poll(bool writes_allowed) {
+/* The image checker uses this entry to require all basic-feature hooks. */
+__attribute__((noipa)) void gmk_controls_poll(bool writes_allowed) {
     if (!writes_allowed || !gmk_wired_is_left()) return;
     uint32_t         now   = k_uptime_get_32();
     k_spinlock_key_t key   = k_spin_lock(&preferences.lock);
@@ -180,7 +190,8 @@ void gmk_controls_radio_state(uint8_t selected, uint8_t connection) {
 #ifdef CONFIG_GMK70_RADIO
     bluetooth_mode = gmk_host_switch() == 2;
 #endif
-    k_spinlock_key_t key = k_spin_lock(&preferences.lock);
+    k_spinlock_key_t key     = k_spin_lock(&preferences.lock);
+    bool             changed = preferences.channel != selected || preferences.connection != connection;
     /* The service owner can publish its old default host after settings load
      * and before the asynchronous restore request executes. Suppress that
      * stale selection until the loaded slot is seen or the selector leaves BT. */
@@ -197,15 +208,21 @@ void gmk_controls_radio_state(uint8_t selected, uint8_t connection) {
         ++preferences.visual_generation;
     }
     k_spin_unlock(&preferences.lock, key);
+    if (changed) {
+        gmk_scan_notify();
+        gmk_service_notify();
+    }
 }
 void gmk_controls_radio_leds(uint8_t indicators) {
     if (!gmk_wired_is_left()) return;
-    k_spinlock_key_t key = k_spin_lock(&preferences.lock);
+    k_spinlock_key_t key     = k_spin_lock(&preferences.lock);
+    bool             changed = preferences.radio_leds != indicators;
     if (preferences.radio_leds != indicators) {
         preferences.radio_leds = indicators;
         ++preferences.visual_generation;
     }
     k_spin_unlock(&preferences.lock, key);
+    if (changed) gmk_scan_notify();
 }
 
 /* 0 restores ordinary lighting; 1 and 2 explicitly draw the on/off phases. */
@@ -225,6 +242,21 @@ uint32_t gmk_controls_visual_token(uint32_t now) {
     uint32_t         token = (uint32_t)preferences.visual_generation << 4 | (uint32_t)os_phase(now) << 2 | radio_phase(now);
     k_spin_unlock(&preferences.lock, key);
     return token;
+}
+uint32_t gmk_controls_visual_delay(uint32_t now) {
+    if (!gmk_wired_is_left()) return UINT32_MAX;
+    k_spinlock_key_t key   = k_spin_lock(&preferences.lock);
+    uint32_t         delay = UINT32_MAX;
+    if (radio_phase(now)) {
+        uint32_t interval = preferences.connection == GMK_RADIO_PAIRING ? 200U : 500U;
+        delay             = interval - (now - preferences.radio_started) % interval;
+    }
+    if (os_phase(now)) {
+        uint32_t next = 250U - (now - preferences.os_started) % 250U;
+        if (next < delay) delay = next;
+    }
+    k_spin_unlock(&preferences.lock, key);
+    return delay;
 }
 static void color(uint8_t *rgb, size_t count, unsigned index, uint8_t r, uint8_t g, uint8_t b) {
     if (index >= count) return;
@@ -258,12 +290,14 @@ static int control_listener(const zmk_event_t *event) {
     if (!gmk_wired_is_left()) return ZMK_EV_EVENT_BUBBLE;
     const struct zmk_hid_indicators_changed *leds = as_zmk_hid_indicators_changed(event);
     if (leds) {
-        k_spinlock_key_t key = k_spin_lock(&preferences.lock);
-        if (preferences.usb_leds != leds->indicators) {
+        k_spinlock_key_t key     = k_spin_lock(&preferences.lock);
+        bool             changed = preferences.usb_leds != leds->indicators;
+        if (changed) {
             preferences.usb_leds = leds->indicators;
             ++preferences.visual_generation;
         }
         k_spin_unlock(&preferences.lock, key);
+        if (changed) gmk_scan_notify();
     }
     const struct zmk_layer_state_changed *layer = as_zmk_layer_state_changed(event);
     if (layer && layer->layer == 2 && update_flag(MAC_MODE, layer->state, false)) (void)zmk_endpoint_send_report(7);

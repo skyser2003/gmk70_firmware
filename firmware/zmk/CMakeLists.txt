@@ -16,7 +16,93 @@ if(CONFIG_BOARD_GMK70_WIRED)
   add_subdirectory(drivers/kscan)
   zephyr_library()
   zephyr_library_include_directories(wired)
+  zephyr_library_include_directories(${ZEPHYR_BASE}/kernel/include ${ZEPHYR_BASE}/arch/arm/include)
   zephyr_library_sources(wired/wired_protocol.c wired/wired_wb32.c wired/encoder.c wired/encoder_native.c)
+  zephyr_library_sources_ifdef(CONFIG_GMK70_EVENT_IDLE wired/event_link.c runtime/idle.c runtime/main.c)
+  if(CONFIG_GMK70_EVENT_IDLE)
+    zephyr_ld_options(-Wl,--wrap=main)
+  endif()
+  if(CONFIG_LTO)
+    zephyr_compile_options(-fipa-pta)
+    zephyr_ld_options(-flto-partition=one)
+    if(CONFIG_GMK70_RADIO)
+      zephyr_library_sources(runtime/native_endpoints.c runtime/native_keymap.c)
+    endif()
+    if(CONFIG_GMK70_WB32_RGB)
+      zephyr_library_sources(runtime/native_rgb.c)
+    endif()
+    # The updater's fixed application slot must also fit event-driven idle.
+    # Wrapped native definitions MUST stay outside LTO: even noipa cannot
+    # preserve GNU --wrap when LTO binds a call to its original definition.
+    # Maintained board owners share optimization; linked image checks retain
+    # explicit native initialization, clock, storage and routing boundaries.
+    function(gmk_preserve_wrap_boundaries)
+      get_property(gmk_libraries GLOBAL PROPERTY ZEPHYR_LIBS)
+      list(APPEND gmk_libraries app subsys__usb__device__class__hid)
+      list(REMOVE_DUPLICATES gmk_libraries)
+      foreach(gmk_library IN LISTS gmk_libraries)
+        if(TARGET ${gmk_library} AND (gmk_library MATCHES "firmware__zmk" OR gmk_library STREQUAL "app" OR gmk_library STREQUAL "subsys__usb__device__class__hid"))
+          get_target_property(gmk_sources ${gmk_library} SOURCES)
+          get_target_property(gmk_directory ${gmk_library} SOURCE_DIR)
+          foreach(gmk_source IN LISTS gmk_sources)
+            if(gmk_source MATCHES "\\.c$")
+              if(NOT IS_ABSOLUTE "${gmk_source}")
+                set(gmk_source "${gmk_directory}/${gmk_source}")
+              endif()
+              set(gmk_boundary OFF)
+              if(gmk_library STREQUAL "app")
+                if(CONFIG_GMK70_RADIO AND gmk_source MATCHES "/endpoints\\.c$")
+                  # Public wrapped exports live in the non-LTO shim above.
+                  # Macro renaming preserves native same-TU call semantics.
+                  set_property(SOURCE "${gmk_source}" TARGET_DIRECTORY app APPEND PROPERTY COMPILE_DEFINITIONS
+                    zmk_endpoint_send_report=gmk_native_endpoint_send_report
+                    zmk_endpoint_send_mouse_report=gmk_native_endpoint_send_mouse_report)
+                  set_property(SOURCE "${gmk_source}" TARGET_DIRECTORY app APPEND PROPERTY COMPILE_OPTIONS
+                    -include "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/runtime/native_endpoints_boundary.h")
+                elseif(CONFIG_GMK70_RADIO AND gmk_source MATCHES "/keymap\\.c$")
+                  set_property(SOURCE "${gmk_source}" TARGET_DIRECTORY app APPEND PROPERTY COMPILE_DEFINITIONS
+                    zmk_keymap_set_layer_binding_at_idx=gmk_native_keymap_set_layer_binding_at_idx
+                    zmk_keymap_discard_changes=gmk_native_keymap_discard_changes
+                    zmk_keymap_reset_settings=gmk_native_keymap_reset_settings
+                    zmk_keymap_add_layer=gmk_native_keymap_add_layer
+                    zmk_keymap_remove_layer=gmk_native_keymap_remove_layer
+                    zmk_keymap_move_layer=gmk_native_keymap_move_layer
+                    zmk_keymap_restore_layer=gmk_native_keymap_restore_layer)
+                  set_property(SOURCE "${gmk_source}" TARGET_DIRECTORY app APPEND PROPERTY COMPILE_OPTIONS
+                    -include "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/runtime/native_keymap_boundary.h")
+                elseif(CONFIG_GMK70_WB32_RGB AND gmk_source MATCHES "/rgb_underglow\\.c$")
+                  set_property(SOURCE "${gmk_source}" TARGET_DIRECTORY app APPEND PROPERTY COMPILE_DEFINITIONS
+                    zmk_rgb_underglow_set_hsb=gmk_native_rgb_underglow_set_hsb
+                    zmk_rgb_underglow_on=gmk_native_rgb_underglow_on
+                    zmk_rgb_underglow_off=gmk_native_rgb_underglow_off
+                    zmk_rgb_underglow_toggle=gmk_native_rgb_underglow_toggle)
+                elseif(gmk_source MATCHES "/(hid|keymap|endpoints|rgb_underglow|pm|usb|settings|main|activity)\\.c$"
+                    OR gmk_source MATCHES "/events/(position_state_changed|keycode_state_changed|activity_state_changed)\\.c$"
+                    OR gmk_source MATCHES "/studio/core\\.c$")
+                  set(gmk_boundary ON)
+                endif()
+              elseif(gmk_library STREQUAL "subsys__usb__device__class__hid")
+                set(gmk_boundary ON)
+              elseif(NOT gmk_source MATCHES "/(event_link|wired_protocol|wired_wb32|encoder|encoder_native|split|raw_hid|studio_feature|nkro|flip|lighting|lighting_frame|wb32_pixels|image|radio|battery|battery_sensor|battery_view|bool_setting|settings_store|settings_backend|receiver|service|storage|idle|retained|retained_clock|rgb_settings|endpoint|radio_keys|battery_holds|stock_power|battery_status|kscan_gmk70_wired|power|platform|wb32_flash|native_update_wire|usb_dc_wb32|gpio_wb32|behavior|control|controls|selection|protocol|coordinator|core)\\.c$"
+                  OR gmk_source MATCHES "/recovery/(startup|behavior)\\.c$")
+                set(gmk_boundary ON)
+              endif()
+              if(gmk_boundary)
+                set_property(SOURCE "${gmk_source}" TARGET_DIRECTORY ${gmk_library} APPEND PROPERTY COMPILE_OPTIONS -fno-lto)
+              endif()
+            endif()
+          endforeach()
+        endif()
+      endforeach()
+      set_property(SOURCE "${ZEPHYR_BASE}/lib/os/reboot.c" "${ZEPHYR_BASE}/subsys/settings/src/settings_store.c"
+        TARGET_DIRECTORY zephyr APPEND PROPERTY COMPILE_OPTIONS -fno-lto)
+      set_property(SOURCE "${ZEPHYR_BASE}/drivers/timer/cortex_m_systick.c" "${ZEPHYR_BASE}/drivers/timer/sys_clock_init.c"
+        TARGET_DIRECTORY drivers__timer APPEND PROPERTY COMPILE_OPTIONS -fno-lto)
+      set_property(SOURCE "${ZEPHYR_BASE}/kernel/main_weak.c"
+        TARGET_DIRECTORY kernel APPEND PROPERTY COMPILE_OPTIONS -fno-lto)
+    endfunction()
+    cmake_language(DEFER DIRECTORY ${APPLICATION_SOURCE_DIR} CALL gmk_preserve_wrap_boundaries)
+  endif()
   if(CONFIG_GMK70_NATIVE_UPDATE_WIRE)
     zephyr_library_include_directories(${APPLICATION_SOURCE_DIR}/include ${APPLICATION_SOURCE_DIR}/src/split
       ../qmk-common/keyboards/zuoya/gmk70/update)

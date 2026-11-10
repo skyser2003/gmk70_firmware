@@ -7,7 +7,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 from firmware_assets import asset_name, asset_stem, write_package
 
@@ -33,6 +33,7 @@ class ZmkReport(TypedDict):
     sha256: str
     bytes: int
     main_wrapper: str
+    scanner_thread: NotRequired[str]
     trial_backend: str
     updater: str
 
@@ -49,7 +50,11 @@ def verify_zmk_report(source: Path, variant: str) -> None:
         or report.get("updater") != ("absent" if standalone else "present")
         or report.get("runtime_roles") != ["left", "right"]
         or report.get("trial_backend") != "absent"
-        or report.get("main_wrapper") != "absent"
+        or report.get("main_wrapper") not in ("absent", "event scanner")
+        or (
+            report.get("main_wrapper") == "event scanner"
+            and report.get("scanner_thread") != "main"
+        )
         or report.get("bytes") != len(application)
         or report.get("sha256") != hashlib.sha256(application).hexdigest()
         or application != (source / "zmk.bin").read_bytes()

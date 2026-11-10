@@ -7,8 +7,15 @@
 #include "wired_protocol.h"
 #include <string.h>
 
-static const uint8_t input_sizes[19]  = {0, 0, 10, 0, 0, 0, 4, 1, 1, 1, 4, 16, 12, 4, 32, 1, 0, 0, 0};
-static const uint8_t output_sizes[19] = {1, 10, 0, 1, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, 0};
+#ifdef CONFIG_GMK70_EVENT_IDLE
+#    define EVENT_IN 4
+#    define EVENT_OUT 16
+#else
+#    define EVENT_IN 0
+#    define EVENT_OUT 0
+#endif
+static const uint8_t input_sizes[19]  = {0, 0, 10, 0, 0, 0, 4, 1, 1, 1, 4, 16, 12, 4, 32, 1, 0, 0, EVENT_IN};
+static const uint8_t output_sizes[19] = {1, 10, 0, 1, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 32, 0, EVENT_OUT};
 
 uint8_t gmk_wire_crc8(const void *data, size_t size) {
     const uint8_t *bytes = data;
@@ -41,7 +48,7 @@ static bool supported_rpc(uint8_t id) {
 #endif
 }
 bool gmk_protocol_serve(struct gmk_protocol *p, const struct gmk_wire_io *io) {
-    uint8_t id, in[32] = {0}, out[32] = {0};
+    uint8_t id, in[32], out[32] = {0};
     if (!io->read(io->ctx, &id, 1) || id >= 19) goto fail;
     uint8_t ack = id ^ GMK_WIRE_TRANSACTIONS;
     if (!io->write(io->ctx, &ack, 1)) goto fail;
@@ -57,6 +64,9 @@ bool gmk_protocol_serve(struct gmk_protocol *p, const struct gmk_wire_io *io) {
     if (ni && !io->read(io->ctx, in, ni)) goto fail;
     switch (id) {
         case 0:
+#ifdef CONFIG_GMK70_EVENT_IDLE
+            if (p->legacy_read) p->legacy_read();
+#endif
             out[0] = gmk_wire_crc8(p->matrix, 10);
             break;
         case 1:
@@ -87,7 +97,10 @@ bool gmk_protocol_serve(struct gmk_protocol *p, const struct gmk_wire_io *io) {
         case 15:
             if (!p->info_valid || !p->request_valid || in[0] != p->rpc_id) goto fail;
             if (p->rpc_id == 17 && p->split_command && p->request_size == 32 && p->response_size == 32) {
-                p->split_command(p->request, p->response);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+                if (!p->event_control || !p->event_control(p->request, p->response))
+#endif
+                    p->split_command(p->request, p->response);
             }
 #ifdef CONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE
             if (p->rpc_id == 18) {
@@ -103,6 +116,11 @@ bool gmk_protocol_serve(struct gmk_protocol *p, const struct gmk_wire_io *io) {
         case 16:
             memcpy(out, p->response, no);
             break;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+        case 18:
+            if (!p->event_read || !p->event_read(in, out)) goto fail;
+            break;
+#endif
         default:
             break; /* Consume core synchronization without EEPROM/radio side effects. */
     }
@@ -120,14 +138,13 @@ static bool transaction(const struct gmk_wire_io *io, uint8_t id, const uint8_t 
     return io->write(io->ctx, &id, 1) && io->read(io->ctx, &ack, 1) && ack == (id ^ 19) && (!ni || io->write(io->ctx, in, ni)) && (!no || io->read(io->ctx, out, no));
 }
 static bool rpc(const struct gmk_wire_io *io, uint8_t id, const uint8_t in[32], uint8_t out[32]) {
-    uint8_t info[4] = {0, id, 32, 32}, response[32] = {0};
-    memset(out, 0, 32);
-    info[0] = gmk_wire_crc8(info + 1, 3);
-    if (!transaction(io, 13, info, 4, NULL, 0) || !transaction(io, 14, in, 32, NULL, 0) || !transaction(io, 15, &id, 1, NULL, 0) || !transaction(io, 16, NULL, 0, response, 32)) {
+    uint8_t info[4] = {0, id, 32, 32};
+    info[0]         = gmk_wire_crc8(info + 1, 3);
+    if (!transaction(io, 13, info, 4, NULL, 0) || !transaction(io, 14, in, 32, NULL, 0) || !transaction(io, 15, &id, 1, NULL, 0) || !transaction(io, 16, NULL, 0, out, 32)) {
+        memset(out, 0, 32);
         io->clear(io->ctx);
         return false;
     }
-    memcpy(out, response, 32);
     return true;
 }
 #ifdef CONFIG_GMK70_NATIVE_UPDATE_LEGACY_BRIDGE
@@ -149,6 +166,13 @@ bool gmk_protocol_poll(const struct gmk_wire_io *io, uint16_t rows[5]) {
         rows[r] = (uint16_t)(data[2 * r] | ((uint16_t)data[2 * r + 1] << 8));
     return true;
 }
+#ifdef CONFIG_GMK70_EVENT_IDLE
+bool gmk_protocol_event_poll(const struct gmk_wire_io *io, uint16_t acknowledged, uint8_t tag, uint8_t response[16]) {
+    uint8_t request[4] = {(uint8_t)acknowledged, (uint8_t)(acknowledged >> 8), tag, 0};
+    request[3]         = gmk_wire_crc8(request, 3);
+    return transaction(io, 18, request, sizeof(request), response, 16);
+}
+#endif
 void gmk_matrix_debounce(struct gmk_debounce *d, const uint16_t raw[5], uint32_t now) {
     for (unsigned r = 0; r < 5; ++r)
         for (unsigned c = 0; c < 9; ++c) {
@@ -166,7 +190,11 @@ void gmk_peer_set(struct gmk_peer *p, const uint16_t rows[5], uint32_t now) {
     p->connected = true;
 }
 bool gmk_peer_rows(struct gmk_peer *p, uint32_t now, uint16_t rows[5]) {
-    if (p->connected && (uint32_t)(now - p->seen) >= GMK_PEER_TIMEOUT_MS) p->connected = false;
+    uint32_t timeout = GMK_PEER_TIMEOUT_MS;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    if (p->quiet_timeout_ms) timeout = p->quiet_timeout_ms;
+#endif
+    if (p->connected && (uint32_t)(now - p->seen) >= timeout) p->connected = false;
     if (p->connected)
         memcpy(rows, p->rows, 10);
     else

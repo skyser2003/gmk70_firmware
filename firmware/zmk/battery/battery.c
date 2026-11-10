@@ -17,6 +17,28 @@
 #include <zephyr/irq.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/sys_io.h>
+#include "../runtime/idle.h"
+#ifdef CONFIG_GMK70_EVENT_IDLE
+#    include <zephyr/sys/atomic.h>
+K_MSGQ_DEFINE(radio_rx, 1, 128, 1);
+static atomic_t radio_rx_fault;
+static void     radio_uart_isr(const void *unused) {
+    ARG_UNUSED(unused);
+    for (unsigned count = 0; count < 64; ++count) {
+        uint32_t status = sys_read32(0x40008414U);
+        if (status & 0x9eU) {
+            atomic_set(&radio_rx_fault, 1);
+            sys_write32(3, 0x40008408U); /* Clear damaged RX, preserve TX. */
+            break;
+        }
+        if (!(status & 1U)) break;
+        uint8_t byte = (uint8_t)sys_read32(0x40008400U);
+        if (k_msgq_put(&radio_rx, &byte, K_NO_WAIT)) atomic_set(&radio_rx_fault, 1);
+    }
+    /* Parsing, ACK attribution and all UART writes remain worker-owned. */
+    gmk_service_notify();
+}
+#endif
 
 #define BATTERY_UART_BASE 0x40008400U
 #define BATTERY_QUERY_MS 3000U
@@ -81,10 +103,14 @@ void gmk_battery_request(void) {
     k_spinlock_key_t key = k_spin_lock(&cache_lock);
     cache.requested      = true;
     k_spin_unlock(&cache_lock, key);
+    gmk_service_notify();
 }
 bool gmk_battery_idle(void) {
     if (!state.initialized || !gmk_wired_is_left()) return true;
     if (state.transmitting != BATTERY_TX_NONE || state.waiting_ack || state.acknowledgements || state.parser.count) return false;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    if (k_msgq_num_used_get(&radio_rx) || atomic_get(&radio_rx_fault)) return false;
+#endif
     /* LSR.TEMT includes the physical shift register; FIFO admission alone does
      * not establish that the last byte has left the module's UART wire. */
     uint32_t status = sys_read32(BATTERY_UART_BASE + 0x14);
@@ -93,6 +119,9 @@ bool gmk_battery_idle(void) {
 bool gmk_battery_power_quiesce(bool enabled) {
     if (enabled && !gmk_battery_idle()) return false;
     state.quiesced = enabled;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    if (state.initialized && gmk_wired_is_left()) sys_write32(enabled ? 0 : 5, BATTERY_UART_BASE + 4);
+#endif
     if (enabled) state.query_pending = false;
     return true;
 }
@@ -200,6 +229,16 @@ static void drain_rx(uint32_t now) {
         ++state.status.errors;
     }
     for (unsigned count = 0; count < 64; ++count) {
+#ifdef CONFIG_GMK70_EVENT_IDLE
+        if (atomic_clear(&radio_rx_fault)) {
+            if (!quarantine_raw_frame()) state.parser.count = 0;
+            k_msgq_purge(&radio_rx);
+            ++state.status.errors;
+        }
+        uint8_t byte;
+        if (k_msgq_get(&radio_rx, &byte, K_NO_WAIT)) break;
+        receive_byte(byte, now);
+#else
         uint32_t status = sys_read32(BATTERY_UART_BASE + 0x14);
         if (status & 0x9e) {
             /* Drop the damaged FIFO, preserving any raw discard budget: the
@@ -212,6 +251,7 @@ static void drain_rx(uint32_t now) {
         }
         if (!(status & 1)) break;
         receive_byte((uint8_t)sys_read32(BATTERY_UART_BASE), now);
+#endif
     }
 }
 static void schedule_query(uint32_t now) {
@@ -318,6 +358,33 @@ void gmk_battery_poll(void) {
     transmit(now);
     publish();
 }
+#ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_battery_delay(void) {
+    if (!state.initialized || !gmk_wired_is_left() || state.quiesced) return UINT32_MAX;
+    if (k_msgq_num_used_get(&radio_rx) || atomic_get(&radio_rx_fault) || state.transmitting != BATTERY_TX_NONE || state.acknowledgements || state.query_pending) return 1;
+    uint32_t now = k_uptime_get_32(), delay = 1000;
+    if (state.waiting_ack) {
+        uint32_t elapsed = now - state.ack_ms;
+        delay            = elapsed >= BATTERY_TIMEOUT_MS ? 1 : BATTERY_TIMEOUT_MS - elapsed;
+    }
+    if (state.parser.count && !state.parser.discard) {
+        uint32_t elapsed = now - state.parser.last_byte_ms;
+        uint32_t next    = elapsed >= BATTERY_TIMEOUT_MS ? 1 : BATTERY_TIMEOUT_MS - elapsed;
+        if (next < delay) delay = next;
+    }
+    if (!gmk_wired_mode()) {
+        uint32_t elapsed = now - state.cycle_ms;
+        uint32_t next    = !state.have_cycle || elapsed >= BATTERY_QUERY_MS ? 1 : BATTERY_QUERY_MS - elapsed;
+        if (next < delay) delay = next;
+    }
+    k_spinlock_key_t key = k_spin_lock(&cache_lock);
+    if (cache.requested) delay = 1;
+    k_spin_unlock(&cache_lock, key);
+    /* A7 cable/charge pins share EXTI lines with encoder/mode inputs. This
+     * bounded fallback samples them without stealing an input wake source. */
+    return delay;
+}
+#endif
 static int battery_init(void) {
     memset(&state, 0, sizeof(state));
     cache.requested = false;
@@ -344,6 +411,11 @@ static int battery_init(void) {
     sys_write32(0, BATTERY_UART_BASE + 0x9c);
     sys_write32(1, BATTERY_UART_BASE + 0x98);
     state.initialized = true;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    IRQ_CONNECT(32, 1, radio_uart_isr, NULL, 0);
+    irq_enable(32);
+    sys_write32(5, BATTERY_UART_BASE + 4); /* RX data and line status, no TX IRQ. */
+#endif
     return 0;
 }
 SYS_INIT(battery_init, POST_KERNEL, 86);

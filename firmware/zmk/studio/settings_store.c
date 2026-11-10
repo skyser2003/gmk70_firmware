@@ -190,7 +190,8 @@ static int scan_snapshot(gmk_settings_store_t *s, unsigned bank) {
     return s->count == count ? (int)pages : -EIO;
 }
 
-int gmk_settings_store_mount(gmk_settings_store_t *s, const uint8_t bytes[GMK_SETTINGS_BYTES], gmk_settings_write_fn write, void *context) {
+/* Preserve the native role-guarded mount boundary under LTO. */
+__attribute__((noipa)) int gmk_settings_store_mount(gmk_settings_store_t *s, const uint8_t bytes[GMK_SETTINGS_BYTES], gmk_settings_write_fn write, void *context) {
     if (!s || !bytes || !write) return -EINVAL;
     memset(s, 0, sizeof(*s));
     s->bytes         = bytes;

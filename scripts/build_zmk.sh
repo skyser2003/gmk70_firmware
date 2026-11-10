@@ -58,14 +58,21 @@ exec 9>.work/locks/zmk-$variant.lock
 flock 9
 export PATH="$zmk_tools:$PATH"
 export ZEPHYR_BASE="$project_root/dependencies/zephyr"
-export ZEPHYR_TOOLCHAIN_VARIANT=cross-compile
+export ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb
 export CROSS_COMPILE="$(dirname "$(command -v arm-none-eabi-gcc)")/arm-none-eabi-"
+export GNUARMEMB_TOOLCHAIN_PATH="$(dirname "$(dirname "$(command -v arm-none-eabi-gcc)")")"
 export PYTHONDONTWRITEBYTECODE=1
 build_dir="$project_root/.work/zmk/$variant/$mode"
 output="$project_root/artifacts/zmk/$variant"
+# Zephyr otherwise reloads the old .config after a toolchain capability change,
+# retaining previously rejected local-ISR/LTO choices instead of studio.conf.
+if [[ -f "$build_dir/CMakeCache.txt" ]] && grep -q '^ZEPHYR_TOOLCHAIN_VARIANT:.*=cross-compile$' "$build_dir/CMakeCache.txt"; then
+    rm -f "$build_dir/zephyr/.config"
+fi
 user_cache="$project_root/.work/zmk/cache"
 [[ "$board" != gmk70_wired ]] || user_cache="$build_dir/cache"
 cmake -S dependencies/zmk/app -B "$build_dir" -G Ninja \
+    -DZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb -DGNUARMEMB_TOOLCHAIN_PATH="$GNUARMEMB_TOOLCHAIN_PATH" \
     -DBOARD="$board" \
     -DZephyr_DIR="$ZEPHYR_BASE/share/zephyr-package/cmake" \
     -DZEPHYR_MODULES="$modules" \

@@ -23,7 +23,8 @@ const uint8_t *gmk_flash_view(uint32_t address) {
     return (const uint8_t *)(uintptr_t)address;
 }
 
-uint32_t gmk_running_size(void) {
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) uint32_t gmk_running_size(void) {
     extern const uint8_t __gmk_image_end;
 #    ifdef CONFIG_GMK70_STAGING_QUALIFICATION
     const uintptr_t base = GMK_STAGE_BASE;
@@ -65,7 +66,8 @@ static bool addressed_operation(uint32_t address, uint32_t op) {
 static bool replace_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]);
 
 #ifndef CONFIG_GMK70_STANDALONE
-bool gmk_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) bool gmk_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
     bool staging = address >= GMK_STAGE_BASE && address < GMK_STAGE_BASE + GMK_APP_SIZE;
     if (!data || address % GMK_PAGE_SIZE || (!staging && address != GMK_COMMIT_BASE)) return false;
 #    ifdef CONFIG_GMK70_STAGING_QUALIFICATION
@@ -82,7 +84,8 @@ bool gmk_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
 #endif
 
 #if defined(CONFIG_GMK70_ZMK_STUDIO_SETTINGS) && !defined(CONFIG_GMK70_STAGING_QUALIFICATION)
-bool gmk_zmk_settings_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
+/* Preserve the guarded storage-write boundary in the linked image. */
+__attribute__((noipa)) bool gmk_zmk_settings_flash_page(uint32_t address, const uint8_t data[GMK_PAGE_SIZE]) {
     if (!data || address % GMK_PAGE_SIZE || address < 0x0801c000U || address >= 0x08020000U) return false;
     return replace_page(address, data);
 }

@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 if SOC_WB32FQ95
 config NUM_IRQS
+	# Canonical board drivers stop at EXTI15_10 (33). Startup still sanitizes
+	# all 64 physical NVIC lines. Extend this before adding higher IRQ drivers.
+	default 35 if BOARD_GMK70_WIRED && GMK70_RETAINED_SLEEP
+	default 34 if BOARD_GMK70_WIRED && GMK70_EVENT_IDLE
 	default 64
 config SYS_CLOCK_HW_CYCLES_PER_SEC
 	default 96000000

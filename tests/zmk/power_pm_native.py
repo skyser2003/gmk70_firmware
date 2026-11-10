@@ -72,9 +72,15 @@ static uint32_t activity_last_uptime;
         "int set_state(enum zmk_activity_state state)",
         "enum zmk_activity_state zmk_activity_get_state(void)",
         "void activity_work_handler(struct k_work *work)",
+        "static int note_activity(void)",
+        "static void note_activity_work_cb(struct k_work *_work)",
     ):
         activity_functions.append(NkroBootTests.function(activity_source, signature))
-    Path(sys.argv[2]).write_text(activity_prelude + "\n".join(activity_functions))
+    Path(sys.argv[2]).write_text(
+        activity_prelude
+        + "\n".join(activity_functions)
+        + "\nK_WORK_DEFINE(note_activity_work, note_activity_work_cb);\n"
+    )
 
 
 if __name__ == "__main__":

@@ -640,7 +640,8 @@ int usb_dc_ep_mps(uint8_t ep) {
     return endpoint(ep)->mps;
 }
 
-int usb_dc_wakeup_request(void) {
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) int usb_dc_wakeup_request(void) {
     unsigned int key = irq_lock();
     if (!attached) {
         irq_unlock(key);

@@ -10,6 +10,11 @@ int64_t         fake_ms = 20;
 static bool     left = true, available = true, host_wired = true;
 static int      selected;
 static unsigned events, commands, invoked, remote_state, capability_calls;
+static unsigned scheduling_notifications;
+void            gmk_service_notify(void) {
+    ++scheduling_notifications;
+}
+void gmk_scan_notify(void) {}
 #ifdef CONFIG_GMK70_POWER
 static unsigned power_calls;
 void            gmk_power_receive(const uint8_t request[32], uint8_t response[32]) {
@@ -133,16 +138,19 @@ static void behavior_commands(void) {
     assert(zmk_split_central_invoke_behavior(0, &binding, event, true) == 0);
     assert(zmk_split_central_invoke_behavior(0, &binding, event, false) == 0);
     assert(zmk_split_central_invoke_behavior(0, &binding, event, true) == -ENOSPC);
-    assert(commands == 0); /* Event callbacks never block on UART. */
+    assert(commands == 0);        /* Event callbacks never block on UART. */
+    scheduling_notifications = 0; /* The worker consumed the coalesced wake. */
     gmk_native_split_poll();
+    assert(scheduling_notifications == 1); /* The queued release gets another pass. */
     assert(commands == 1 && transmitted[0] == 1 && transmitted[30] == 1 && transmitted[31] == gmk_wire_crc8(transmitted, 31));
     uint8_t press[32], release[32], response[32];
     memcpy(press, transmitted, 32);
     gmk_native_split_poll();
     memcpy(release, transmitted, 32);
     assert(commands == 2 && !release[30]);
+    scheduling_notifications = 0;
     gmk_native_split_poll();
-    assert(commands == 2);
+    assert(commands == 2 && !scheduling_notifications); /* No empty-queue wake loop. */
     gmk_native_split_receive(press, response);
     assert(!response[0]); /* LEFT may not execute a peripheral command. */
     left      = false;

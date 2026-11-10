@@ -2,6 +2,7 @@
 #include "split.h"
 #include "wired.h"
 #include "wired_protocol.h"
+#include "../runtime/idle.h"
 #ifdef CONFIG_GMK70_NATIVE_UPDATE_WIRE
 #    include "native_update_wire.h"
 #endif
@@ -38,7 +39,9 @@ static int source_ids(uint8_t *sources) {
 static int send_command(uint8_t source, struct zmk_split_transport_central_command command) {
     if (source != 0 || !gmk_wired_is_left() || !gmk_split_available()) return -ENODEV;
     if (command.type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_INVOKE_BEHAVIOR) return -ENOTSUP;
-    return k_msgq_put(&native_commands, &command, K_NO_WAIT);
+    int result = k_msgq_put(&native_commands, &command, K_NO_WAIT);
+    if (!result) gmk_service_notify();
+    return result;
 }
 static int report_event(const struct zmk_split_transport_peripheral_event *event) {
     ARG_UNUSED(event);
@@ -97,12 +100,18 @@ void gmk_native_split_receive(const uint8_t request[32], uint8_t response[32]) {
     command.data.invoke_behavior.position     = sys_get_le32(request + 25);
     command.data.invoke_behavior.event_source = request[29];
     command.data.invoke_behavior.state        = request[30];
-    if (k_msgq_put(&native_commands, &command, K_NO_WAIT) == 0) response[0] = 0x5a;
+    if (k_msgq_put(&native_commands, &command, K_NO_WAIT) == 0) {
+        response[0] = 0x5a;
+        gmk_service_notify();
+    }
 }
 
 void gmk_native_split_poll(void) {
     struct zmk_split_transport_central_command command;
     if (k_msgq_get(&native_commands, &command, K_NO_WAIT)) return;
+    /* Queue notifications coalesce. Keep one follow-up pass for a burst that
+     * arrived before the worker consumed its semaphore; an empty pass stops. */
+    gmk_service_notify();
     if (!gmk_split_available()) return;
     if (gmk_wired_is_left()) {
         if (command.type != ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_INVOKE_BEHAVIOR) return;

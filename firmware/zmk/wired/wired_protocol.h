@@ -19,6 +19,11 @@ struct gmk_protocol {
     void (*update)(const uint8_t[32], uint8_t[32]);
     void (*lighting)(const uint8_t[16]);
     void (*split_command)(const uint8_t[32], uint8_t[32]);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    bool (*event_control)(const uint8_t[32], uint8_t[32]);
+    bool (*event_read)(const uint8_t[4], uint8_t[16]);
+    void (*legacy_read)(void);
+#endif
 };
 struct gmk_debounce {
     uint16_t candidate[5], stable[5];
@@ -28,6 +33,9 @@ struct gmk_peer {
     uint16_t rows[5];
     uint32_t seen;
     bool     connected;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    uint16_t quiet_timeout_ms;
+#endif
 };
 uint8_t gmk_wire_crc8(const void *data, size_t size);
 void    gmk_protocol_matrix(struct gmk_protocol *, const uint16_t rows[5]);
@@ -36,6 +44,9 @@ bool    gmk_protocol_update(const struct gmk_wire_io *, const uint8_t[32], uint8
 bool    gmk_protocol_split_command(const struct gmk_wire_io *, const uint8_t[32], uint8_t[32]);
 bool    gmk_protocol_lighting(const struct gmk_wire_io *, const uint8_t[16]);
 bool    gmk_protocol_poll(const struct gmk_wire_io *, uint16_t rows[5]);
-void    gmk_matrix_debounce(struct gmk_debounce *, const uint16_t raw[5], uint32_t now);
-void    gmk_peer_set(struct gmk_peer *, const uint16_t rows[5], uint32_t now);
-bool    gmk_peer_rows(struct gmk_peer *, uint32_t now, uint16_t rows[5]);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+bool gmk_protocol_event_poll(const struct gmk_wire_io *, uint16_t acknowledged, uint8_t tag, uint8_t response[16]);
+#endif
+void gmk_matrix_debounce(struct gmk_debounce *, const uint16_t raw[5], uint32_t now);
+void gmk_peer_set(struct gmk_peer *, const uint16_t rows[5], uint32_t now);
+bool gmk_peer_rows(struct gmk_peer *, uint32_t now, uint16_t rows[5]);

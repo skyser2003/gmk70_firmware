@@ -27,7 +27,8 @@ void gmk_zmk_storage_release(void) {
     busy                 = false;
     k_spin_unlock(&lock, key);
 }
-bool gmk_zmk_service_idle(void) {
+/* Retain standalone service admission in the linked image checks. */
+__attribute__((noipa)) bool gmk_zmk_service_idle(void) {
     k_spinlock_key_t key  = k_spin_lock(&lock);
     bool             idle = !busy;
     k_spin_unlock(&lock, key);

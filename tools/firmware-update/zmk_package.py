@@ -46,7 +46,11 @@ def build(image: Path, resident: Path, report: Path, output: Path) -> None:
         or checked.get("bytes") != len(payload)
         or checked.get("image_end") != 0x08002000 + len(payload)
         or checked.get("sha256") != hashlib.sha256(payload).hexdigest()
-        or checked.get("main_wrapper") != "absent"
+        or checked.get("main_wrapper") not in ("absent", "event scanner")
+        or (
+            checked.get("main_wrapper") == "event scanner"
+            and checked.get("scanner_thread") != "main"
+        )
         or checked.get("trial_backend") != "absent"
     ):
         raise ValueError(

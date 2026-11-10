@@ -17,6 +17,9 @@ void gmk_battery_request(void);
 /* Call from the existing service/UART owner, never from an IRQ or input worker. */
 bool gmk_battery_idle(void);
 bool gmk_battery_power_quiesce(bool enabled);
+#    ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_battery_delay(void);
+#    endif
 #else
 static inline void gmk_battery_poll(void) {}
 static inline void gmk_battery_request(void) {}
@@ -30,4 +33,9 @@ static inline bool gmk_battery_power_quiesce(bool enabled) {
     (void)enabled;
     return true;
 }
+#    ifdef CONFIG_GMK70_EVENT_IDLE
+static inline uint32_t gmk_battery_delay(void) {
+    return UINT32_MAX;
+}
+#    endif
 #endif

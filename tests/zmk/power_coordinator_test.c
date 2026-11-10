@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-enum action { CLAIM, QUIESCE, ARM, DISARM, RESUME, RELEASE, EXCHANGE };
+enum action { CLAIM, QUIESCE, ARM, RESUME, DISARM, RELEASE, EXCHANGE };
 struct gmk_power_platform {
     struct gmk_power_coordinator *owner;
     struct gmk_power_platform    *peer;
@@ -37,7 +37,7 @@ static void release_storage(struct gmk_power_platform *platform) {
 }
 static bool quiesce(struct gmk_power_platform *platform, bool enabled) {
     record(platform, enabled ? QUIESCE : RESUME);
-    assert(platform->claimed && !platform->armed);
+    assert(platform->claimed && (!enabled || !platform->armed));
     platform->quiesced = enabled; /* Even a failed preparation can need unwind. */
     return !enabled || platform->quiesce_ok;
 }
@@ -49,7 +49,7 @@ static bool prepare_wake(struct gmk_power_platform *platform) {
 }
 static void cancel_wake(struct gmk_power_platform *platform) {
     record(platform, DISARM);
-    assert(platform->claimed && platform->quiesced && platform->armed);
+    assert(platform->claimed && !platform->quiesced && platform->armed);
     platform->armed = false;
 }
 static bool wake_pending(struct gmk_power_platform *platform) {
@@ -107,7 +107,7 @@ static void assert_unwound(const struct gmk_power_platform *platform) {
     assert(!platform->claimed && !platform->quiesced && !platform->armed);
     assert(!platform->owner->claimed && !platform->owner->quiesced && !platform->owner->armed);
 }
-static void standalone_acquires_in_order_and_cancels_in_reverse(void) {
+static void standalone_restores_reports_before_reopening_scanning(void) {
     for (unsigned role = 0; role <= 1; ++role) {
         struct gmk_power_coordinator coordinator;
         struct gmk_power_platform    platform;
@@ -119,7 +119,7 @@ static void standalone_acquires_in_order_and_cancels_in_reverse(void) {
         struct gmk_power_ops ops = operations(&platform);
         gmk_power_coordinator_cancel(&coordinator, &ops);
         assert_unwound(&platform);
-        assert(platform.count == 6 && platform.actions[3] == DISARM && platform.actions[4] == RESUME && platform.actions[5] == RELEASE);
+        assert(platform.count == 6 && platform.actions[3] == RESUME && platform.actions[4] == DISARM && platform.actions[5] == RELEASE);
         gmk_power_coordinator_cancel(&coordinator, &ops);
         assert(platform.count == 6);
     }
@@ -380,7 +380,7 @@ static void roles_bounds_sessions_and_wrapping_deadlines_fail_closed(void) {
     assert(!gmk_power_coordinator_command(&state, &command, 1000, &ops));
 }
 int main(void) {
-    standalone_acquires_in_order_and_cancels_in_reverse();
+    standalone_restores_reports_before_reopening_scanning();
     failed_or_racing_preparation_releases_only_owned_resources();
     right_requires_matching_left_authorization_and_preserves_commit_delay();
     left_probes_prepares_and_commits_once_then_confirms_status();

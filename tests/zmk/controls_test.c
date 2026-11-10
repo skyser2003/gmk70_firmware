@@ -329,6 +329,9 @@ static void test_stock_slot_pairing_and_os_feedback(void) {
     uint8_t rgb[3 * GMK_LIGHT_PIXELS] = {0};
     gmk_controls_radio_state(1, GMK_RADIO_PAIRING);
     assert(gmk_controls_bt_slot() == 1);
+    assert(gmk_controls_visual_delay(0) == 200);
+    assert(gmk_controls_visual_delay(199) == 1);
+    assert(gmk_controls_visual_delay(200) == 200);
     uint32_t token = gmk_controls_visual_token(0);
     gmk_controls_overlay(rgb, GMK_LIGHT_PIXELS, 0, true, true);
     assert_pixel(rgb, 14, 0, 0, 80);
@@ -336,11 +339,17 @@ static void test_stock_slot_pairing_and_os_feedback(void) {
     assert_pixel(rgb, 14, 0, 0, 0);
     assert(gmk_controls_visual_token(200) != token);
     gmk_controls_radio_state(6, GMK_RADIO_CONNECTED);
+    assert(gmk_controls_visual_delay(0) == 500);
+    assert(gmk_controls_visual_delay(999) == 1);
+    assert(gmk_controls_visual_delay(1000) == UINT32_MAX);
     gmk_controls_overlay(rgb, GMK_LIGHT_PIXELS, 0, true, true);
     assert_pixel(rgb, 11, 0, 80, 0);
     assert(gmk_controls_mac_set(true) == 0);
     gmk_controls_overlay(rgb, GMK_LIGHT_PIXELS, 0, true, true);
     assert_pixel(rgb, 20, 80, 80, 80);
+    assert(gmk_controls_visual_delay(1249) == 1);
+    assert(gmk_controls_visual_delay(1250) == 250);
+    assert(gmk_controls_visual_delay(1500) == UINT32_MAX);
     token = gmk_controls_visual_token(1250);
     assert(gmk_controls_visual_token(1500) != token);
     memset(rgb, 9, sizeof(rgb));

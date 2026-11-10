@@ -25,14 +25,32 @@ static void analog_lock(void) {
     sys_write32(0, PWR(0x2c));
 }
 
-void soc_early_init_hook(void) {
-    struct wb32_gpio *const portd = (void *)WB32_GPIOD_BASE;
+/* Keep this native initialization boundary inspectable under framework LTO. */
+__attribute__((noipa)) void soc_early_init_hook(void) {
+    /* Startup alone sanitizes all physical NVIC lines. Resume preserves them. */
+    for (unsigned bank = 0; bank < 2; ++bank) {
+        sys_write32(UINT32_MAX, 0xe000e180U + 4U * bank);
+        sys_write32(UINT32_MAX, 0xe000e280U + 4U * bank);
+    }
+    __DSB();
+    __ISB();
+    while (!wb32_clock_resume()) {
+    }
+}
 
+static bool clock_wait(uintptr_t reg, uint32_t mask, uint32_t expected) {
+    for (unsigned attempt = 0; attempt < 1000000; ++attempt)
+        if ((sys_read32(reg) & mask) == expected) return true;
+    return false;
+}
+
+/* Boot and retained resume share this complete, inspectable sequence. */
+__attribute__((noipa)) bool wb32_clock_resume(void) {
+    struct wb32_gpio *const portd = (void *)WB32_GPIOD_BASE;
     analog_unlock();
     /* A staging launch inherits a running PLL. Move to MHSI before changing it. */
     sys_write32(1, ANCTL(0x2c));
-    while (!(sys_read32(ANCTL(0x30)) & 1U)) {
-    }
+    if (!clock_wait(ANCTL(0x30), 1, 1)) return false;
     sys_write32(0, RCC(0x08));
     sys_write32(1, RCC(0x0c));
     __DSB();
@@ -51,16 +69,14 @@ void soc_early_init_hook(void) {
     portd->moder  = 0x0fU;
     sys_write32(2, ANCTL(0x50));
     sys_write32(1, ANCTL(0x4c));
-    while (!(sys_read32(ANCTL(0x58)) & 1U)) {
-    }
+    if (!clock_wait(ANCTL(0x58), 1, 1)) return false;
     /* 12 MHz HSE / 2 * 16 = 96 MHz; AHB/APB1/APB2 divide by one. */
     sys_write32(0x03000013, 0x40015400U); /* cache + prefetch + three wait states */
     sys_write32(1, RCC(0x04));
     sys_write32(BIT(5) | 1U, RCC(0x00));
     sys_write32(2U << 6, ANCTL(0x74));
     sys_write32(1, ANCTL(0x78));
-    while (sys_read32(ANCTL(0x7c)) != 3U) {
-    }
+    if (!clock_wait(ANCTL(0x7c), UINT32_MAX, 3)) return false;
     sys_write32(2, RCC(0x08));
     sys_write32(1, RCC(0x0c));
     __DSB();
@@ -68,9 +84,11 @@ void soc_early_init_hook(void) {
     analog_lock();
     sys_set_bits(RCC(0x48), BIT(15));
     sys_set_bits(RCC(0x4c), BIT(11));
+    return true;
 }
 
-void wb32_usb_clock_enable(void) {
+/* Retain the inspectable peripheral-clock boundary under LTO. */
+__attribute__((noipa)) void wb32_usb_clock_enable(void) {
     struct wb32_gpio *const porta = (void *)WB32_GPIOA_BASE;
 
     sys_set_bits(RCC(0x40), BIT(8) | BIT(1));

@@ -20,13 +20,15 @@ bool gmk_power_coordinator_request(struct gmk_power_coordinator *coordinator, en
 static void cancel(struct gmk_power_coordinator *coordinator, const struct gmk_power_ops *ops, bool notify_peer) {
     bool                           notify  = notify_peer && coordinator->role == GMK_POWER_ROLE_LEFT && coordinator->have_peer && coordinator->peer_prepared;
     const struct gmk_power_command command = {.operation = GMK_POWER_CANCEL, .session = coordinator->session, .critical = coordinator->critical};
-    if (coordinator->armed) {
-        ops->cancel_wake(ops->context);
-        coordinator->armed = false;
-    }
+    /* Restore report admission before reopening scanning. A higher-priority
+     * scanner can otherwise deliver the wake key while the radio is paused. */
     if (coordinator->quiesced) {
         (void)ops->quiesce(ops->context, false);
         coordinator->quiesced = false;
+    }
+    if (coordinator->armed) {
+        ops->cancel_wake(ops->context);
+        coordinator->armed = false;
     }
     if (coordinator->claimed) {
         ops->release_storage(ops->context);
@@ -125,7 +127,8 @@ static void peer_step(struct gmk_power_coordinator *coordinator, uint32_t now, c
         coordinator->stage = COMPLETE;
     }
 }
-void gmk_power_coordinator_step(struct gmk_power_coordinator *coordinator, uint32_t now, bool allowed, bool busy, const struct gmk_power_ops *ops) {
+/* Preserve the linked safety boundary under LTO. */
+__attribute__((noipa)) void gmk_power_coordinator_step(struct gmk_power_coordinator *coordinator, uint32_t now, bool allowed, bool busy, const struct gmk_power_ops *ops) {
     if (coordinator->phase == GMK_POWER_PHASE_IDLE) return;
     if (!allowed || busy || (uint32_t)(now - coordinator->started_at) >= TRANSACTION_MS || ops->wake_pending(ops->context)) {
         cancel(coordinator, ops, true);

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "raw_hid.h"
+#include "../runtime/idle.h"
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
@@ -45,8 +46,18 @@ static int set_report(const struct device *dev, struct usb_setup_packet *setup, 
         result         = 0;
     }
     k_spin_unlock(&lock, key);
+    if (!result) gmk_service_notify();
     return result;
 }
+
+#ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_zmk_raw_hid_delay(void) {
+    k_spinlock_key_t key   = k_spin_lock(&lock);
+    uint32_t         delay = pending ? 1 : UINT32_MAX;
+    k_spin_unlock(&lock, key);
+    return delay;
+}
+#endif
 
 void __real_usb_hid_register_device(const struct device *, const uint8_t *, size_t, const struct hid_ops *);
 void __wrap_usb_hid_register_device(const struct device *dev, const uint8_t *desc, size_t size, const struct hid_ops *ops) {
@@ -62,7 +73,8 @@ void __wrap_usb_hid_register_device(const struct device *dev, const uint8_t *des
     __real_usb_hid_register_device(dev, descriptor, sizeof(descriptor), &callbacks);
 }
 
-int gmk_zmk_raw_hid_init(void) {
+/* Preserve the linked integration witness under LTO. */
+__attribute__((noipa)) int gmk_zmk_raw_hid_init(void) {
     hid = device_get_binding("HID_0");
     return hid ? 0 : -ENODEV;
 }

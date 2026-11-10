@@ -3,15 +3,16 @@
 The native GMK70 scanner now stops local row/column sweeps when all five local
 rows are released and the existing 5 ms debounce has settled. It drives the
 populated columns low through open drains and arms falling-edge interrupts on
-the row inputs. A row interrupt latches activity; the existing scanner thread
-resumes GPIO sweeps and debounce on its next maintenance cycle. Interrupt
-handlers never interpret bindings,
-send reports, run split transactions or write settings.
+the row inputs. A row interrupt schedules scanning and debounce; the native
+key event updates activity only after a real matrix transition. Interrupt
+handlers never interpret bindings, send reports, run split transactions or
+write settings.
 
 This applies to both roles in the universal image. Both halves need the new
-application to gain the local scanning change. The split protocol, resident
-ABI, updater admission, saved keymap/settings and no-watchdog policy are
-unchanged. There is no added thread or stack reservation.
+application for event-driven split input. New peers negotiate that extension;
+older peers retain polling. Resident ABI, updater admission, saved keymap/settings
+and no-watchdog policy are unchanged. See [event-driven power](ZMK-EVENT-POWER.md)
+for worker deadlines and the reused initialization thread.
 
 ## Transition and failure handling
 
@@ -34,19 +35,24 @@ scanner retains ordinary polling. It does not take another port's EXTI line.
 
 ## What continues while the local matrix is idle
 
-The existing scanner thread still runs its maintenance cycle: LEFT polls RIGHT
-over the request/response UART link, publishes peer state, handles disconnect
-releases and services lighting. Its 1 ms pause remains. The separate updater,
-radio, settings and USB workers retain their existing scheduling. A right-side
-press therefore does not depend on a new left-side key press to reach the host.
+With `GMK70_EVENT_IDLE` enabled, the scanner waits for GPIO/UART notifications
+or its next input, transport or lighting deadline. Quiet updated peers exchange
+health snapshots every 500 ms, while held keys and active debounce retain the
+fast path. A right-side tap is queued until acknowledged. CRC failures and
+master restarts preserve pending snapshots; completed legacy capability replies
+admit the old polling path.
 
-This is interrupt-triggered **local matrix scanning**, not system deep sleep.
-It removes idle column-drive/read sweeps but does not make the whole application
-wait indefinitely for a key interrupt. `CONFIG_ZMK_SLEEP` and system PM remain
-disabled; no radio sleep policy, clocks, LED auto-off timing or USB suspend
-behavior is changed. Battery-current savings have not been measured. Matching
-Sofle's whole-system low-power behavior needs a separate WB32 PM design that
-also handles split wake, radio, USB, timers and peripheral restoration.
+The service worker also waits on real radio, battery, settings, USB-updater and
+power deadlines. Routine traffic schedules work without raising native activity.
+Sleep preparation silences maintenance before the UART wake barrier. The kernel
+was already tickless; these waits allow it to remain in normal CPU idle longer.
+
+Normal interrupt wait preserves application state. Coordinated inactivity sleep
+also supports returning STOP with retained SRAM/input state and calibrated RTC
+time catch-up. A foreign RTC configuration or incompatible hardware option uses
+the existing STOP/reset fallback. Clock/timebase restoration has native regression
+coverage; physical retention, first-key delivery and current consumption still
+need hardware qualification. This does not establish Sofle-like battery lifetime.
 
 ## Verification
 

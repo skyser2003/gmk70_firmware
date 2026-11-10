@@ -99,6 +99,38 @@ class RadioImageTests(unittest.TestCase):
                 "wired-studio-updater",
             )
 
+    def test_native_abi_shims_require_both_real_forwarding_hops(self) -> None:
+        for suffix in ("endpoint_send_report", "keymap_add_layer"):
+            implementation = f"gmk_native_{suffix}"
+            public = f"zmk_{suffix}"
+            assembly = (
+                ASSEMBLY
+                + f"""08003000 <{public}>:
+ 8003000: f000 b800 b.w 8003200 <{implementation}>
+08003100 <__wrap_{public}>:
+ 8003100: f000 f800 bl 8003000 <{public}>
+08003200 <{implementation}>:
+ 8003200: 4770 bx lr
+"""
+            )
+            symbols = set(RADIO_SYMBOLS) | {implementation, public, f"__wrap_{public}"}
+            check_image.validate_radio_linking(
+                symbols, assembly, "wired-studio-updater"
+            )
+            for branch in (
+                f"b.w 8003200 <{implementation}>",
+                f"bl 8003000 <{public}>",
+            ):
+                with (
+                    self.subTest(suffix=suffix, branch=branch),
+                    self.assertRaises(ValueError),
+                ):
+                    check_image.validate_radio_linking(
+                        symbols,
+                        assembly.replace(branch, "bx lr"),
+                        "wired-studio-updater",
+                    )
+
     def test_marker_requires_exact_explicit_profile_even_without_radio_poll(
         self,
     ) -> None:

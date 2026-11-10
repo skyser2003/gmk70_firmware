@@ -4,3 +4,6 @@
 int gmk_zmk_raw_hid_init(void);
 /* Runs only in the updater worker. Callbacks merely enqueue 32-byte reports. */
 void gmk_zmk_raw_hid_poll(const gmk_zmk_update_env_t *env);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_zmk_raw_hid_delay(void);
+#endif

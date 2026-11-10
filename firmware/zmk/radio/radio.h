@@ -18,6 +18,9 @@ void gmk_radio_release(bool consumer);
 void gmk_radio_release_mouse(void);
 void gmk_radio_clear_hid(void);
 void gmk_radio_poll(void);
+#ifdef CONFIG_GMK70_EVENT_IDLE
+uint32_t gmk_radio_delay(void);
+#endif
 void gmk_radio_get(struct gmk_radio_status *out);
 void gmk_radio_notification(uint8_t command, uint8_t value);
 void gmk_radio_ack(void);

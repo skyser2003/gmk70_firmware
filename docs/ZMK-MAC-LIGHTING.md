@@ -86,7 +86,8 @@ channel prevents buffer reuse.
 Wired transaction 11 retains its original 16-byte input and transaction count.
 Native packets carry magic, frame ID, chunk index, 12 RGB bytes and CRC8. Eleven
 chunks supply the right frame; incomplete/malformed frames never become ready.
-The scanner sends one chunk after a successful matrix poll. It displays a claimed
+The scanner sends one chunk after a successful matrix exchange, including
+when only a lighting deadline required work. It displays a claimed
 right frame outside the wire/spin locks. New frames supersede queued animation
 data, and cached frames replay every 200 ms after completion/failure so “off”,
 packet loss and a restarted right half recover without another key press.

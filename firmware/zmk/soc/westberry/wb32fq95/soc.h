@@ -6,7 +6,9 @@
 
 #ifndef _ASMLANGUAGE
 #    include <stdint.h>
+#    include <stdbool.h>
 
+bool wb32_clock_resume(void);
 void wb32_usb_clock_enable(void);
 void wb32_usb_disconnect(void);
 void wb32_usb_clock_disable(void);

@@ -18,7 +18,8 @@ void gmk_power_core_activity(struct gmk_power_core *core, bool active, uint32_t 
         core->inactive_since = transition_ms;
     }
 }
-enum gmk_power_request gmk_power_core_decide(struct gmk_power_core *core, const struct gmk_power_inputs *inputs) {
+/* Preserve the linked safety boundary under LTO. */
+__attribute__((noipa)) enum gmk_power_request gmk_power_core_decide(struct gmk_power_core *core, const struct gmk_power_inputs *inputs) {
     if (!critical_reading(inputs))
         core->critical = false;
     else if (!core->critical) {
