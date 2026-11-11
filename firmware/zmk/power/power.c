@@ -96,6 +96,11 @@ static bool radio_idle(void) {
     return true;
 #endif
 }
+static void radio_wake(void) {
+#ifdef CONFIG_GMK70_RADIO
+    gmk_radio_wake();
+#endif
+}
 static bool preferences_dirty(void) {
     if (!gmk_wired_is_left()) return false; /* RIGHT has no persistent owner. */
     bool dirty = false;
@@ -297,6 +302,7 @@ static void usb_shallow_sleep(void) {
     __set_BASEPRI(basepri);
     __set_PRIMASK(primask);
     zmk_pm_resume_devices();
+    if (gmk_wired_power_wake_pending()) radio_wake();
     gmk_power_coordinator_cancel(&coordinator, &ops);
     atomic_clear(&manual_request);
     session_active = session_activity = false;
@@ -384,6 +390,7 @@ __attribute__((noipa)) void gmk_power_poll(bool service_ready) {
                 if (!physical) sys_poweroff(); /* RTC failed: existing reset fallback. */
                 atomic_set(&published, atomic_get(&published) & ~CACHE_READY);
                 zmk_pm_resume_devices();
+                if (physical) radio_wake();
                 gmk_power_coordinator_cancel(&coordinator, &ops);
                 atomic_clear(&manual_request);
                 session_active = session_activity = false;

@@ -30,7 +30,9 @@ void gmk_radio_sent(uint32_t now, bool success);
 bool gmk_radio_control_busy(void);
 bool gmk_radio_idle(void);
 /* Called by the service owner after UART idle; admission rejects new input. */
-bool    gmk_radio_power_quiesce(bool enabled);
+bool gmk_radio_power_quiesce(bool enabled);
+/* Service-owner physical wake, while input and UART remain paused. */
+void    gmk_radio_wake(void);
 uint8_t gmk_radio_last_bt(void);
 int     gmk_radio_restore_last_bt(uint8_t channel);
 int     gmk_radio_hold(uint8_t channel, uint32_t position);

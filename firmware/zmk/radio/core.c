@@ -8,7 +8,9 @@
 #include <string.h>
 
 enum {
-    ACK_DRAIN_MS = 20,
+    ACK_DRAIN_MS     = 20,
+    CONNECT_WAIT_MS  = 5000,
+    CONNECT_ATTEMPTS = 3,
 #if defined(CONFIG_ZMK_POINTING) && CONFIG_ZMK_POINTING
     RELEASE_ALL = 15
 #else
@@ -21,6 +23,11 @@ static bool wireless(uint8_t channel) {
 }
 static bool usb_quiet(const struct gmk_radio_core *radio) {
     return radio->last_control == GMK_RADIO_TX_SELECT && radio->selected == GMK_HOST_USB && radio->active == GMK_HOST_USB && radio->accept_status && !radio->faulted;
+}
+static uint32_t connect_delay(const struct gmk_radio_core *radio, uint32_t now) {
+    if ((!radio->connect_attempts && !radio->resuming) || (radio->connection != GMK_RADIO_UNKNOWN && radio->connection != GMK_RADIO_DISCONNECTED)) return UINT32_MAX;
+    uint32_t elapsed = now - radio->connect_at;
+    return elapsed >= CONNECT_WAIT_MS ? 0 : CONNECT_WAIT_MS - elapsed;
 }
 static bool acknowledged_control(uint8_t kind) {
     return (kind >= GMK_RADIO_TX_SELECT && kind <= GMK_RADIO_TX_PAIR) || (kind >= GMK_RADIO_TX_SLEEP_BT && kind <= GMK_RADIO_TX_CHARGER);
@@ -54,15 +61,16 @@ static void abandon(struct gmk_radio_core *radio, uint8_t kind, uint32_t now) {
      * retain a fully sent SELECT's status context. Clear ownership once and
      * attempt bounded zero reports; repeatedly recreating that work on a
      * failed UART would itself prevent battery protection. */
+    if (!radio->resuming && (kind != GMK_RADIO_TX_SELECT || !radio->accept_status)) radio->connect_attempts = 0;
     if (!radio->faulted) {
         if (wireless(radio->active) || wireless(radio->selected)) radio->release |= RELEASE_ALL;
-        radio->clear_requested = true;
+        if (!radio->resuming) radio->clear_requested = true;
     }
     radio->faulted = true;
     radio->waiting = radio->pending_select = radio->pending_pair = radio->accept_status = radio->retransmit = false;
     radio->connection                                                                                       = GMK_RADIO_UNKNOWN;
     radio->retries                                                                                          = 0;
-    discard(radio);
+    if (!radio->resuming) discard(radio);
     retire(radio, kind);
     if (kind == GMK_RADIO_TX_CHARGER) {
         /* Abandon this snapshot until its next heartbeat. A changed physical
@@ -78,15 +86,18 @@ void gmk_radio_core_init(struct gmk_radio_core *radio) {
 int gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pair) {
     if (channel > GMK_HOST_DONGLE || (pair && !wireless(channel))) return -EINVAL;
     bool outstanding = radio->waiting || radio->inflight;
-    if (!pair && channel == radio->selected && radio->accept_status && !radio->faulted && !radio->pending_select && !radio->pending_pair && !outstanding && radio->connection != GMK_RADIO_PAIRING) return 0;
+    bool select      = channel != radio->active || !radio->accept_status || radio->faulted || radio->waiting || acknowledged_control(radio->inflight) || (wireless(channel) && radio->connection != GMK_RADIO_CONNECTED);
+    if (!pair && channel == radio->selected && !radio->pending_select && !radio->pending_pair && !outstanding && !select) return 0;
     radio->obsolete |= outstanding;
     discard(radio);
     if (wireless(radio->active)) radio->release |= RELEASE_ALL;
     radio->selected = channel;
     if (channel >= GMK_HOST_BT1 && channel <= GMK_HOST_BT5) radio->last_bt = channel;
-    radio->pending_select = channel != radio->active || !radio->accept_status || radio->faulted || radio->waiting || acknowledged_control(radio->inflight) || radio->connection == GMK_RADIO_PAIRING;
-    radio->faulted        = false;
-    radio->pending_pair   = pair;
+    radio->pending_select   = select;
+    radio->faulted          = false;
+    radio->pending_pair     = pair;
+    radio->resuming         = false;
+    radio->connect_attempts = !pair && wireless(channel) ? CONNECT_ATTEMPTS : 0;
     /* A same-channel PAIR remains cancellable until its frame is emitted.
      * pending_pair inhibits reports without losing a live connection when
      * release or Studio reassignment cancels the queued pairing request. */
@@ -94,8 +105,14 @@ int gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pa
     radio->accept_status = !radio->pending_select;
     return 0;
 }
+void gmk_radio_core_wake(struct gmk_radio_core *radio) {
+    if (!wireless(radio->selected)) return;
+    radio->connection = GMK_RADIO_UNKNOWN;
+    (void)gmk_radio_core_select(radio, radio->selected, false);
+    radio->resuming = true;
+}
 static int enqueue(struct gmk_radio_core *radio, uint8_t kind, const uint8_t bytes[8], const uint8_t overflow[14]) {
-    if (radio->faulted || !wireless(radio->selected) || radio->active != radio->selected || radio->connection != GMK_RADIO_CONNECTED || radio->pending_pair) return -ENOTCONN;
+    if ((!radio->resuming && (radio->faulted || radio->connection != GMK_RADIO_CONNECTED)) || !wireless(radio->selected) || radio->active != radio->selected || radio->pending_pair) return -ENOTCONN;
     bool full = radio->count == 8;
     if (full) {
         discard(radio);
@@ -145,6 +162,7 @@ bool gmk_radio_core_idle(const struct gmk_radio_core *radio) {
 }
 uint32_t gmk_radio_core_delay(const struct gmk_radio_core *radio, uint32_t now) {
     uint32_t interval = 0, started = radio->sent_at;
+    uint32_t connect = connect_delay(radio, now);
     if (radio->inflight) return 1;
     if (radio->draining)
         interval = 20;
@@ -158,9 +176,10 @@ uint32_t gmk_radio_core_delay(const struct gmk_radio_core *radio, uint32_t now) 
         interval = 1000;
         started  = radio->charge_at;
     } else
-        return UINT32_MAX;
+        return connect ? connect : 1;
     uint32_t elapsed = now - started;
-    return elapsed >= interval ? 1 : interval - elapsed;
+    uint32_t delay   = elapsed >= interval ? 1 : interval - elapsed;
+    return connect < delay ? (connect ? connect : 1) : delay;
 }
 int gmk_radio_core_nkro(struct gmk_radio_core *radio, const uint8_t keyboard[8], const uint8_t overflow[14]) {
     return enqueue(radio, GMK_RADIO_TX_NKRO, keyboard, overflow);
@@ -185,11 +204,18 @@ void gmk_radio_core_notification(struct gmk_radio_core *radio, uint8_t command, 
             return;
     }
     if (connection == radio->connection) return;
+    bool preserve     = radio->resuming && (connection == GMK_RADIO_CONNECTED || connection == GMK_RADIO_DISCONNECTED);
     radio->connection = connection;
     if (connection == GMK_RADIO_CONNECTED) radio->faulted = false;
-    discard(radio);
+    if (connection == GMK_RADIO_DISCONNECTED && !radio->resuming)
+        radio->connect_attempts = CONNECT_ATTEMPTS;
+    else if (connection != GMK_RADIO_DISCONNECTED) {
+        radio->connect_attempts = 0;
+        radio->resuming         = false;
+    }
+    if (!preserve) discard(radio);
     radio->release |= RELEASE_ALL;
-    radio->clear_requested = true;
+    if (!preserve) radio->clear_requested = true;
 }
 void gmk_radio_core_ack(struct gmk_radio_core *radio) {
     if (!radio->waiting) return;
@@ -259,6 +285,17 @@ bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_
         radio->last_control = GMK_RADIO_TX_NONE;
     }
     radio->retransmit = false;
+    if (!connect_delay(radio, now)) {
+        if (radio->connect_attempts)
+            radio->pending_select = true;
+        else {
+            /* No stale typing replay if the host remains unavailable. Only
+             * the finite same-host wake window admits disconnected input. */
+            radio->resuming = false;
+            discard(radio);
+            radio->clear_requested = true;
+        }
+    }
     if (radio->release & 1) {
         frame->bytes[0] = 0xa1;
         return claim(radio, frame, GMK_RADIO_TX_RELEASE_KEYBOARD, 10);
@@ -275,7 +312,11 @@ bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_
         frame->bytes[0] = 0xa8;
         return claim(radio, frame, GMK_RADIO_TX_RELEASE_MOUSE, 7);
     }
-    if (radio->pending_select || (!radio->faulted && radio->selected != radio->active)) return control(radio, frame, GMK_RADIO_TX_SELECT, radio->selected);
+    if (radio->pending_select || (!radio->faulted && radio->selected != radio->active)) {
+        radio->connect_at = now;
+        if (radio->connect_attempts) --radio->connect_attempts;
+        return control(radio, frame, GMK_RADIO_TX_SELECT, radio->selected);
+    }
     if (radio->pending_pair) return control(radio, frame, GMK_RADIO_TX_PAIR, radio->selected);
     if (radio->sleep_pending & 1) return control(radio, frame, GMK_RADIO_TX_SLEEP_BT, radio->active);
     if (radio->sleep_pending & 2) return control(radio, frame, GMK_RADIO_TX_SLEEP_DONGLE, radio->active);

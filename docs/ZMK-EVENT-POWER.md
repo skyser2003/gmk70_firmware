@@ -35,6 +35,10 @@ retention, first-key delivery and current consumption still need hardware tests.
 - A sleep preparation stops routine work before wake IRQs are armed. Both halves
   must quiesce and acknowledge; key races abort sleep. No heartbeat or queued
   notification is permitted after committing sleep.
+- A physical wake refreshes the selected radio profile before report producers
+  resume. Lost connection notifications have a bounded retry window that retains
+  first-key snapshots; quiet deferral never triggers that hook. See
+  [radio reconnect](ZMK-WIRELESS.md#sleep-and-reconnect).
 - UART interrupts wake the existing service worker; parsers retain single-thread
   ownership. Battery queries, retries, settings saves and mode debouncing use
   deadlines. USB/settings/updater mutation gates and saved formats are preserved.
@@ -104,19 +108,24 @@ pending.
 
 | Variant | Flash bytes / slot | Reserved RAM / capacity | Unallocated RAM |
 | --- | ---: | ---: | ---: |
-| Studio updater | 106,480 / 106,496 | 28,020 / 28,544 | 524 |
-| Studio standalone | 101,136 / 114,688 | 27,172 / 28,544 | 1,372 |
+| Studio updater | 106,440 / 106,496 | 28,028 / 28,544 | 516 |
+| Studio standalone | 101,080 / 114,688 | 27,180 / 28,544 | 1,364 |
 
 These figures include the unified [Studio controls menu](ZMK-BASIC-PARITY.md#integration-and-operation).
 Its metadata initializes 624 bytes of static RAM from compact name tables,
 trading RAM for flash while retaining the descriptive dropdowns. No heap or new
-thread is involved. The profile disables unused dynamic settings handlers,
+thread is involved. Names now occupy one NUL-separated flash table, with the
+same enum values and display strings. The bounded radio-reconnect state adds
+eight bytes of private RAM. The board link enables internal parameter
+specialization (`-fipa-sra`), while native public/linker-wrap definitions remain
+outside LTO. Both images pass the wrap-object audit, image checks and native
+ABI regression with and without specialization. The profile disables unused dynamic settings handlers,
 already-inactive time slicing (the previous slice size was zero), and device
 power-domain support (no enabled device has a `power-domains` dependency).
 Ordinary device suspend/resume and static settings handlers remain enabled;
 image checks reject new dependencies on the disabled facilities.
 
-The updater has 16 flash bytes spare. Bounds checks remain strict; a future
+The updater has 56 flash bytes spare. Bounds checks remain strict; a future
 compiler or feature change may require more size work. Unallocated RAM is a
 linker quantity, not a measured runtime peak. Stack reservations are unchanged
 except that main now owns the scanner's reservation and its separate thread is

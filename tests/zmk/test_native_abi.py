@@ -141,18 +141,23 @@ class NativeAbiTests(unittest.TestCase):
                     text=True,
                 )
                 objects.append(str(output))
-            program = temp / "native-abi"
-            subprocess.run(
-                [
-                    "cc",
-                    "-flto",
-                    *objects,
-                    *(f"-Wl,--wrap=zmk_{name}" for name in EXPORTS),
-                    "-o",
-                    str(program),
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            subprocess.run([str(program)], check=True, capture_output=True, text=True)
+            for specialization in ("-fno-ipa-sra", "-fipa-sra"):
+                with self.subTest(specialization=specialization):
+                    program = temp / "native-abi"
+                    subprocess.run(
+                        [
+                            "cc",
+                            "-flto",
+                            specialization,
+                            *objects,
+                            *(f"-Wl,--wrap=zmk_{name}" for name in EXPORTS),
+                            "-o",
+                            str(program),
+                        ],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    subprocess.run(
+                        [str(program)], check=True, capture_output=True, text=True
+                    )

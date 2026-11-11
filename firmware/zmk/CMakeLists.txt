@@ -24,7 +24,10 @@ if(CONFIG_BOARD_GMK70_WIRED)
   endif()
   if(CONFIG_LTO)
     zephyr_compile_options(-fipa-pta)
-    zephyr_ld_options(-flto-partition=one)
+    # Retain native/public --wrap boundaries outside LTO below. Within the
+    # remaining closed units, GCC may specialize internal parameters; this
+    # keeps bounded radio reconnect inside the unchanged updater slot.
+    zephyr_ld_options(-flto-partition=one -fipa-sra)
     if(CONFIG_GMK70_RADIO)
       zephyr_library_sources(runtime/native_endpoints.c)
     endif()

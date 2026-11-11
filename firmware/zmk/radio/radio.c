@@ -332,6 +332,11 @@ bool gmk_radio_power_quiesce(bool enabled) {
     k_spin_unlock(&lock, key);
     return ready;
 }
+void gmk_radio_wake(void) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    if (available && quiesced) gmk_radio_core_wake(&core);
+    k_spin_unlock(&lock, key);
+}
 uint8_t gmk_radio_last_bt(void) {
     k_spinlock_key_t key     = k_spin_lock(&lock);
     uint8_t          channel = core.last_bt;

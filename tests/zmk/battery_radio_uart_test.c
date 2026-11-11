@@ -354,7 +354,12 @@ static void test_power_quiesce_drains_uart_then_suppresses_periodic_queries(void
     assert(mmio_reads == reads && mmio_writes == writes);
     assert(snapshot().queries == 1);
     assert(gmk_battery_power_quiesce(false));
+    size_t before = tx_count;
     gmk_battery_poll();
+    const uint8_t selection[] = {0xa6, 0x31, 0xd7};
+    expect_bytes(before, selection, sizeof(selection)); /* Missing CONNECTED also requires a status refresh. */
+    ack();                                              /* The reconnect SELECT owns this ACK, not the overdue query. */
+    assert(snapshot().queries == 1);
     ack(); /* Refresh charger state before the overdue query resumes. */
     assert(snapshot().queries == 2);
     reset_radio();

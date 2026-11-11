@@ -336,6 +336,30 @@ static void power_quiesce_requires_drained_reports_and_blocks_new_work(void) {
     start(false);
     assert(gmk_radio_idle() && gmk_radio_power_quiesce(true));
 }
+static void wake_keeps_native_modifiers_and_is_silent_while_paused(void) {
+    start(true);
+    connect_radio();
+    const unsigned before = clears;
+    assert(gmk_radio_idle() && gmk_radio_power_quiesce(true));
+    gmk_radio_wake();
+    struct gmk_radio_frame frame;
+    assert(!gmk_radio_next(radio_test_time + 100000, &frame));
+    assert(gmk_radio_submit_keyboard((const uint8_t[8]){0}) == -EBUSY);
+    assert(gmk_radio_power_quiesce(false));
+    keyboard.body.modifiers = 4;
+    assert(!gmk_radio_submit_keyboard((const uint8_t[8]){4, 0, 0x2b}));
+    assert(!gmk_radio_submit_keyboard((const uint8_t[8]){4}));
+    settle(); /* SELECT current host, with all transport ACKs but no CONNECTED. */
+    assert(core.resuming && core.count == 2 && core.selected == 2 && core.active == 2);
+    gmk_radio_notification(0x5b, 0x32);
+    gmk_radio_poll();
+    run_work();
+    assert(clears == before && keyboard.body.modifiers == 4 && core.count == 2);
+    settle();
+    assert(!core.resuming && !core.count && !core.pending_pair);
+    gmk_radio_wake(); /* A stray callback outside a paused wake has no effect. */
+    assert(!core.pending_select);
+}
 static void restoring_bt_slot_does_not_select_or_transmit(void) {
     start(true);
     assert(gmk_radio_restore_last_bt(0) == -EINVAL);
@@ -548,6 +572,7 @@ static void unsaved_native_ids_block_binding_mutation(void) {
 #endif
 }
 int main(void) {
+    wake_keeps_native_modifiers_and_is_silent_while_paused();
     slider_transition_retires_an_old_select_lease();
     slider_bypasses_usb_quiet_without_reusing_its_ack();
     unsaved_native_ids_block_binding_mutation();

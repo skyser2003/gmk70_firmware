@@ -379,7 +379,86 @@ static void ack_retirement_window_spans_uptime_rollover(void) {
     const uint8_t key[8] = {0, 0, 4};
     assert(!gmk_radio_core_report(&radio, false, key));
 }
+static void wake_reselects_same_host_and_preserves_alt_tab_snapshots(void) {
+    for (unsigned nkro = 0; nkro < 2; ++nkro)
+        for (uint8_t channel = GMK_HOST_BT1; channel <= GMK_HOST_DONGLE; ++channel) {
+            struct gmk_radio_core radio;
+            settle(&radio, channel);
+            radio.clear_requested = false;
+            gmk_radio_core_wake(&radio);
+            assert(radio.selected == channel && radio.resuming && !radio.pending_pair && !radio.clear_requested);
+            expect_releases(&radio, 10);
+            const uint8_t select[] = {0xa6, channel == GMK_HOST_DONGLE ? 0x30 : (uint8_t)(0x30 + channel), channel == GMK_HOST_DONGLE ? 0xd6 : (uint8_t)(0xd6 + channel)};
+            expect_frame(&radio, 10, select, sizeof(select));
+            gmk_radio_core_ack(&radio);
+            const uint8_t tab_down[8] = {4, 0, 0x2b}, tab_up[8] = {4}, alt_up[8] = {0};
+            const uint8_t overflow_down[14] = {[13] = 8}, overflow_up[14] = {0};
+            if (nkro) {
+                assert(!gmk_radio_core_nkro(&radio, tab_down, overflow_down));
+                assert(!gmk_radio_core_nkro(&radio, tab_up, overflow_up));
+                assert(!gmk_radio_core_nkro(&radio, alt_up, overflow_up));
+            } else {
+                assert(!gmk_radio_core_report(&radio, false, tab_down));
+                assert(!gmk_radio_core_report(&radio, false, tab_up));
+                assert(!gmk_radio_core_report(&radio, false, alt_up));
+            }
+            gmk_radio_core_notification(&radio, 0x5b, 0x33);
+            assert(radio.resuming && radio.count == 3 && !radio.clear_requested);
+            gmk_radio_core_notification(&radio, 0x5b, 0x32);
+            assert(!radio.resuming && radio.count == 3 && !radio.clear_requested);
+            expect_releases(&radio, 1000);
+            for (unsigned i = 0; i < 3; ++i) {
+                struct gmk_radio_frame frame;
+                assert(gmk_radio_core_next(&radio, 1001 + i, &frame));
+                assert(frame.bytes[0] == 0xa1 && frame.bytes[1] == (i < 2 ? 4 : 0));
+                assert(frame.bytes[3] == (i ? 0 : 0x2b));
+                gmk_radio_core_sent(&radio, 1001 + i, true);
+                if (nkro) {
+                    assert(gmk_radio_core_next(&radio, 1001 + i, &frame));
+                    assert(frame.bytes[0] == 0xa2);
+                    assert(!memcmp(frame.bytes + 1, i ? overflow_up : overflow_down, 14));
+                    gmk_radio_core_sent(&radio, 1001 + i, true);
+                }
+            }
+            assert(!radio.count && !radio.connect_attempts);
+        }
+}
+static void lost_connected_status_retries_stop_and_never_pair(void) {
+    for (unsigned wake = 0; wake < 2; ++wake) {
+        struct gmk_radio_core radio;
+        if (wake) {
+            settle(&radio, GMK_HOST_BT1);
+            radio.clear_requested = false;
+            gmk_radio_core_wake(&radio);
+        } else {
+            gmk_radio_core_init(&radio);
+            assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
+        }
+        unsigned selects = 0;
+        uint32_t first   = UINT32_MAX - 3000U;
+        for (uint32_t elapsed = 0; elapsed < 100000; elapsed += 100) {
+            struct gmk_radio_frame frame;
+            uint32_t               now = first + elapsed;
+            for (unsigned n = 0; n < 8 && gmk_radio_core_next(&radio, now, &frame); ++n) {
+                if (radio.inflight == GMK_RADIO_TX_SELECT) ++selects;
+                assert(radio.inflight != GMK_RADIO_TX_PAIR);
+                gmk_radio_core_sent(&radio, now, true);
+                gmk_radio_core_ack(&radio);
+            }
+            if (wake && elapsed == 100) {
+                const uint8_t key[8] = {0, 0, 4};
+                assert(!gmk_radio_core_report(&radio, false, key));
+            }
+        }
+        assert(selects == 3 && !radio.resuming && !radio.connect_attempts && !radio.count);
+        if (wake) assert(radio.clear_requested);
+        assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
+        assert(radio.pending_select); /* An explicit retry of the same profile works. */
+    }
+}
 int main(void) {
+    wake_reselects_same_host_and_preserves_alt_tab_snapshots();
+    lost_connected_status_retries_stop_and_never_pair();
     newest_profile_survives_an_old_select_lease();
     newer_selection_survives_a_claimed_frame_success_or_failure();
     explicit_selection_cancels_old_pair_retries_even_on_the_same_profile();

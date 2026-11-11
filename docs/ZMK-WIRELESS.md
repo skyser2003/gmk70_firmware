@@ -28,6 +28,36 @@ position, service readiness and the existing storage gates. Read-only radio
 status remains available with USB connected in a wireless switch position.
 Changing output clears keyboard and consumer reports before the new selection.
 
+## Sleep and reconnect
+
+A physical wake from retained STOP reselects the current Bluetooth/dongle
+profile before reopening the scanner. A physical wake from USB shallow sleep
+uses the same hook; a selected USB output needs no radio reselection. Quiet
+sleep deferral and routine peer/UART maintenance do not request a reconnect.
+
+SELECT's UART acknowledgment and the radio's CONNECTED notification are separate.
+Missing connection status now permits three SELECT attempts, spaced five seconds
+apart, with the existing finite transport-ACK retries and drain barriers. A new
+DISCONNECTED transition also starts a bounded recovery window. PAIRING and
+REJECTED stop automatic recovery; it never sends PAIR, CLEAN or identity changes.
+An explicit selection of the same disconnected profile can restart recovery.
+
+During the same-host wake window, the existing eight-snapshot FIFO retains native
+keyboard/NKRO, consumer and mouse reports. CONNECTED does not clear those queued
+wake events or native held modifiers. Reserved zero reports precede their delivery.
+If the host remains unavailable after the final five-second wait, queued wake
+events are discarded and native input is cleared so typing cannot replay much
+later. A host change uses the existing clear/discard boundary immediately.
+Retry deadlines do not count as user activity or an indefinite sleep veto, and
+the paused UART/radio owners transmit nothing during full sleep.
+
+The captured stock application (SHA256
+`100e2ecdad6d253ea6d177d91579c2e22ea8d5968d3f09d691ed599f7fe7512c`)
+supports this non-destructive refresh: SELECT helper `0x10011A68` takes the
+already-connected, same-profile branch at `0x10011B12` to emit status `0x32`
+through `0x10011B80`. The original capture stays outside version control.
+This is instruction evidence, not Bluetooth hardware confirmation of this fix.
+
 ## Implementation and scope
 
 The existing worker and battery UART owner serialize complete radio, battery and

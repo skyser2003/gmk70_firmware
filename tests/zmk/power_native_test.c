@@ -24,7 +24,7 @@ k_tid_t                        test_power_thread = &service_thread;
 uint32_t                       test_power_now, test_primask, test_basepri;
 static bool                    left_role = true, cable, receiver_free = true, lease, dirty, radio_idle_state = true, battery_idle_state = true, wired_idle_state = true, wake_pending, paused, critical_prepare, input_during_claim;
 static bool                    peer_traffic;
-static unsigned                claims, releases, wake_prepares, radio_quiesces, stops, resets, peer_pulses, report_clears;
+static unsigned                claims, releases, wake_prepares, radio_quiesces, stops, resets, peer_pulses, report_clears, radio_wakes;
 static jmp_buf                 reset_jump;
 static bool                    usb_sleep, radio_paused;
 static enum usb_dc_status_code usb_status       = USB_DC_UNKNOWN;
@@ -152,6 +152,10 @@ bool gmk_radio_power_quiesce(bool enabled) {
     radio_paused = enabled;
     if (enabled) ++radio_quiesces;
     return radio_idle_state;
+}
+void gmk_radio_wake(void) {
+    assert(radio_paused && paused); /* Reselect before first physical wake key. */
+    ++radio_wakes;
 }
 bool gmk_battery_idle(void) {
     return battery_idle_state;
@@ -383,6 +387,7 @@ static void test_usb_suspend_keeps_controller_and_returns_without_reset(void) {
     test_basepri   = 0x40;
     gmk_power_poll(true);
     assert(shallow_stops == (kernel_pending ? 0U : 1U) && stops == 0 && resets == 0);
+    assert(radio_wakes == (kernel_pending ? 0U : 1U));
     assert(systick == 7 && scr == 0x10 && test_basepri == 0x40 && test_primask == 0);
     assert(!lease && !paused && !gmk_power_sleep_pending());
     assert(test_pm_suspend_calls == 2 && test_pm_resume_calls == 2);
@@ -624,11 +629,13 @@ static void test_returning_native_sleep(bool defer) {
     if (defer) {
         assert(retained_entries == 1 && paused && radio_paused && lease);
         assert(gmk_power_sleep_pending() && !resets && !stops && !refreshes);
+        assert(!radio_wakes); /* A quiet/maintenance deferral is not a wake. */
         retained_physical = true;
         gmk_power_poll(true);
     }
     assert(retained_entries == (defer ? 2U : 1U) && !paused && !radio_paused && !lease);
     assert(!stops && !resets && report_clears == 0 && refreshes == 1);
+    assert(radio_wakes == 1);
     assert(!test_native_pm_suspended[0] && !test_native_pm_suspended[1]);
     assert(zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE);
     test_power_now += 1000;

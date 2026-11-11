@@ -18,13 +18,15 @@ struct gmk_radio_report {
 struct gmk_radio_core {
     /* Private RAM only: short metadata offsets keep Cortex-M3 loads compact. */
     uint8_t                 head, count, selected, active, last_bt, retries, release, inflight, tx_channel, last_control, connection, sleep_pending;
-    bool                    waiting, pending_select, pending_pair, accept_status, retransmit, clear_requested, faulted, overflow_pending, obsolete, draining;
-    uint8_t                 charge_mode, charge_sent;
-    uint32_t                sent_at, errors, selections, reports, charge_at;
+    bool                    waiting, pending_select, pending_pair, accept_status, retransmit, clear_requested, faulted, overflow_pending, obsolete, draining, resuming;
+    uint8_t                 charge_mode, charge_sent, connect_attempts;
+    uint32_t                sent_at, errors, selections, reports, charge_at, connect_at;
     struct gmk_radio_report queue[8];
 };
-void     gmk_radio_core_init(struct gmk_radio_core *radio);
-int      gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pair);
+void gmk_radio_core_init(struct gmk_radio_core *radio);
+int  gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pair);
+/* An idle, paused same-host wake retains the first native input snapshots. */
+void     gmk_radio_core_wake(struct gmk_radio_core *radio);
 int      gmk_radio_core_report(struct gmk_radio_core *radio, bool consumer, const uint8_t bytes[8]);
 int      gmk_radio_core_mouse(struct gmk_radio_core *radio, const uint8_t bytes[5]);
 int      gmk_radio_core_nkro(struct gmk_radio_core *radio, const uint8_t keyboard[8], const uint8_t overflow[14]);
