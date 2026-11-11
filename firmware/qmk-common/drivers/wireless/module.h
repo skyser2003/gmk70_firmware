@@ -128,5 +128,7 @@ bool    md_reports_inhibited(void);
 bool     md_take_report_reset(void);
 bool     md_battery_is_fresh(void);
 uint8_t *md_getp_state(void);
+// Accepted notifications, including repeats; optional state is the same snapshot.
+uint32_t md_connection_generation(uint8_t *state);
 uint8_t *md_getp_bat(void);
 uint8_t *md_getp_indicator(void);

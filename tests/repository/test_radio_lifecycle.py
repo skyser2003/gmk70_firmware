@@ -150,6 +150,14 @@ class RadioLifecycleTests(unittest.TestCase):
                         "reset",
                         "usb-switch",
                         "same-channel",
+                        "wake-refresh",
+                        "wake-status-lost",
+                        "disconnect-status-lost",
+                        "select-status-lost",
+                        "sleep-no-retry",
+                        "pair-no-retry",
+                        "reject-no-retry",
+                        "usb-no-retry",
                         "physical-mode",
                     ):
                         with self.subTest(nkro=nkro, scenario=scenario):

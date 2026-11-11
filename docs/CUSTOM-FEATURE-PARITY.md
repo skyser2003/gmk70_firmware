@@ -52,9 +52,11 @@ BLE support. The existing radio RAM experiment implements Vial rather than Studi
   accepts cable/USB for local critical recovery. ZMK propagates critical mode to
   RIGHT and arms additional switch/knob/peer wake sources. Harmonization needs a
   deliberate board power-policy choice.
-- **Wake:** QMK resumes its ordinary low-power path in place. ZMK reboots after
-  WB32 STOP wake, as permitted by its integration specification. First wake tap
-  and knob retention still require physical qualification.
+- **Wake:** QMK resumes its ordinary low-power path in place. Current ZMK uses
+  returning STOP with retained state when its RTC/hardware contract is available;
+  critical power and unavailable retention keep the reset fallback. Physical
+  wake reselects the current radio profile before scanning resumes. First wake
+  tap and knob retention still require physical qualification.
 - **OS and NKRO changes:** ZMK preserves unrelated held layers and projects
   six-key reports through its native NKRO descriptor. QMK changes its default
   layer/report mode and clears report ownership. The controls exist on all three
@@ -82,7 +84,6 @@ BLE support. The existing radio RAM experiment implements Vial rather than Studi
 | Priority | Finding | Evidence and next action |
 | --- | --- | --- |
 | High | QMK/VIA and QMK/Vial critical-battery qualification depends on RGB rendering. | `bat_indicators()` has its sole caller in the advanced RGB callback. Both pinned frameworks skip that callback for effect zero; the RGB-off board wrapper renders held indicators only. Move power qualification into ordinary board housekeeping, preserving the recovered stock timer policy. This establishes a firmware path defect, not failure of hardware battery protection. |
-| High | ZMK has no automatic recovery when a successful profile SELECT loses its CONNECTED notification. | A fresh probe of the current core acknowledges all transmitted frames but omits CONNECTED. For 100 simulated seconds, HID submission returns `-ENOTCONN`, only one SELECT is emitted, and charger maintenance continues. A later CONNECTED restores admission. Add bounded recovery for this waiting state while preserving held-key release ownership and avoiding pairing. This is a reproduced software fault path, not proof of the earlier physical incident's trigger. |
 | Medium | The QMK/Vial held settings-reset action also depends on RGB rendering. | `EE_CLR` starts/cancels `ee_clr_timer`; its only expiry check and `hs_reset_settings()` dispatch are in the same advanced RGB callback. Holding reset with ordinary RGB off cannot complete that path. Service the timer independently of rendering. This additional defect was identified in this audit. |
 | Medium | ZMK omits radio-driven suspend/resume and the stock disconnected timeout. | QMK handles radio `0x60` in `md_receive_host_cb()` and requests sleep after about 30 seconds disconnected. ZMK ACKs the notification but its core ignores it; its power inputs have no equivalent host/disconnection state. Define how these should interact with the user's saved sleep timeout, especially Never. |
 | Medium | Wireless mouse scroll axes differ between stacks. | QMK sends horizontal/vertical in payload bytes 3/4; ZMK sends vertical/horizontal. Both feed the same stock radio command. The existing ZMK test asserts its own ordering and cannot establish the hardware contract. Decode the receiver or test separate horizontal/vertical scrolling before choosing which implementation to change. |
@@ -100,6 +101,14 @@ Source evidence: [QMK board callbacks](../firmware/qmk-common/keyboards/zuoya/gm
 The callback gate is present in both pinned `quantum/rgb_matrix/rgb_matrix.c`
 implementations. Existing held-battery-overlay and power-policy tests do not
 exercise critical/reset dispatch through that actual RGB-off callback gate.
+
+All three builds now refresh the same radio profile on physical wake and bound
+retries when CONNECTED status is missing. ZMK retains wake snapshots and held
+Alt/Tab within a finite reconnect window; VIA/Vial preserve their same-host
+native input state. Host changes retain their clear boundaries. See
+[ZMK reconnect](ZMK-WIRELESS.md#sleep-and-reconnect) and
+[VIA/Vial reconnect](SLEEP-WAKE-REGRESSION.md#radio-reconnect-after-wake) for
+protocol evidence, bounds and the remaining hardware-validation requirement.
 
 ### Remaining feature and migration work
 

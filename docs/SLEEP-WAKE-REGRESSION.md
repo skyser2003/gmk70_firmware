@@ -1,5 +1,28 @@
 # Sleep-entry wake regression
 
+## Radio reconnect after wake
+
+VIA and Vial now explicitly refresh the current Bluetooth/dongle selection from
+the physical-wake callback. An unchanged slider otherwise made no selection,
+and the disconnected RGB callback only refreshed its indicator. Neither path
+could recover a missing connection notification by itself.
+
+The shared wireless owner sends the same-profile SELECT without PAIR, CLEAN,
+identity changes, an EEPROM write or a native input reset. A fresh accepted
+CONNECTED notification, even if the cached state was already connected, ends
+recovery. UART ACKs alone do not end it. A selection/wake permits two additional
+refreshes at five-second intervals; a new DISCONNECTED transition permits three.
+PAIRING/REJECT stop them. Retries neither count as user activity nor execute in
+PRE/STOP. The existing thirty-second disconnected sleep policy is unchanged.
+
+The native QMK and Vial lifecycle fixtures exercise lost status, same-host held
+Alt/Tab, reconnect after disconnect, bounded retries, pairing, reject, USB and
+sleep silence in both six-key and NKRO modes. They simulate UART notifications;
+the user's actual Bluetooth failure still requires hardware confirmation.
+ZMK has its own [retained-wake implementation](ZMK-WIRELESS.md#sleep-and-reconnect),
+including a finite wake-report queue; the three stacks do not share a power
+state machine.
+
 For failures that require power-cycling, use the new
 [persistent debug-updater recorder](PERSISTENT-SLEEP-LOG.md). The RAM capture
 procedure below still applies to applications that only have the earlier recorder.

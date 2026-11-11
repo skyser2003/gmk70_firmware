@@ -6,12 +6,54 @@
 #include "wireless.h"
 #include "split_diagnostics.h"
 #include "radio_keys.h"
+#include "smsg.h"
 
 #ifndef WLS_INQUIRY_BAT_TIME
 #    define WLS_INQUIRY_BAT_TIME 3000
 #endif
 
-static uint8_t wls_devs = DEVS_USB;
+static uint8_t  wls_devs = DEVS_USB;
+static uint8_t  reconnect_attempts, reconnect_state;
+static uint32_t reconnect_at, reconnect_generation;
+
+static void reconnect_start(bool pair) {
+    reconnect_generation = md_connection_generation(NULL);
+    reconnect_state      = MD_STATE_DISCONNECTED;
+    reconnect_at         = sync_timer_read32();
+    // The caller sends the first SELECT. Two additional status refreshes are
+    // enough to recover a lost CONNECTED without retrying forever or pairing.
+    reconnect_attempts = wls_devs != DEVS_USB && !pair ? 2 : 0;
+}
+
+void wireless_wake(void) {
+    if (!is_keyboard_master() || wls_devs == DEVS_USB) return;
+    reconnect_start(false);
+    md_devs_change(wls_devs, false);
+}
+
+static void reconnect_task(void) {
+    if (!is_keyboard_master() || wls_devs == DEVS_USB) return;
+    uint8_t  state;
+    uint32_t generation = md_connection_generation(&state);
+    if (generation != reconnect_generation) {
+        reconnect_generation = generation;
+        if (state == MD_STATE_DISCONNECTED) {
+            if (reconnect_state != state) {
+                reconnect_attempts = 3;
+                reconnect_at       = sync_timer_read32();
+            }
+        } else {
+            reconnect_attempts = 0;
+        }
+        reconnect_state = state;
+    }
+    // Maintenance never wakes STOP/PRE, resets the idle timer, or occupies the
+    // queue behind an outstanding control. ACK is not a connection status.
+    if (!reconnect_attempts || lpwr_get_state() != LPWR_NORMAL || smsg_is_busy() || sync_timer_elapsed32(reconnect_at) < 5000) return;
+    --reconnect_attempts;
+    reconnect_at = sync_timer_read32();
+    md_devs_change(wls_devs, false);
+}
 
 void last_matrix_activity_trigger(void);
 
@@ -30,6 +72,7 @@ host_driver_t wireless_driver = {
 };
 
 void wireless_init(void) {
+    reconnect_attempts = 0;
     md_init();
 }
 
@@ -158,6 +201,7 @@ void wireless_devs_change(uint8_t old_devs, uint8_t new_devs, bool reset) {
     last_matrix_activity_trigger();
     lpwr_activity_trigger();
 
+    reconnect_start(reset);
     md_devs_change(new_devs, reset);
     wireless_devs_change_kb(old_devs, new_devs, reset);
     wireless_devs_change_user(old_devs, new_devs, reset);
@@ -176,6 +220,7 @@ void wireless_post_task(void) {}
 void wireless_task(void) {
     wireless_pre_task();
     lpwr_task();
+    reconnect_task();
 #ifndef GMK70_RADIO_THREAD
     md_main_task();
 #endif

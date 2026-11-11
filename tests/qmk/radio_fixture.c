@@ -19,6 +19,13 @@ bool md_reports_inhibited(void) {
 bool md_take_report_reset(void) {
     return false;
 }
+uint32_t md_connection_generation(uint8_t *state) {
+    if (state) *state = radio_fixture.state;
+    return 0;
+}
+bool smsg_is_busy(void) {
+    return false;
+}
 void set_transport(transport_t transport) {
     radio_fixture.transport = transport;
 }

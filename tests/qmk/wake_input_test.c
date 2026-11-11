@@ -81,6 +81,9 @@ void wireless_devs_change(uint8_t old_devs, uint8_t new_devs, bool reset) {
         lpwr_set_prepare_class(LPWR_PREPARE_ORDINARY);
     }
 }
+void wireless_wake(void) {
+    if (fixture.device != DEVS_USB) ++selections;
+}
 static void send_report(void) {
     report = (input_report_t){.mods = mods | weak_mods, .tab = keys[0x2B], .a = keys[4]};
 }
@@ -113,7 +116,7 @@ static void reset_input(uint8_t device) {
     consumer = system_usage = 0;
     send_report();
 }
-static void wireless_wake(uint8_t device) {
+static void enter_wireless_wake(uint8_t device) {
     reset_input(device);
     enter_stop();
     fixture.wake_source = LPWR_WAKEUP_MATRIX;
@@ -122,7 +125,7 @@ static void wireless_wake(uint8_t device) {
 }
 static void test_alt_tab_after_idle(void) {
     for (uint8_t dev = DEVS_BT1; dev <= DEVS_2G4; ++dev) {
-        wireless_wake(dev);
+        enter_wireless_wake(dev);
         mod_edge(0x04, true);
         key_edge(0x2B, true);
         assert(report.mods == 0x04 && report.tab);
@@ -143,7 +146,7 @@ static void test_alt_tab_after_idle(void) {
     }
 }
 static void test_held_keys_and_weak_mods(void) {
-    wireless_wake(DEVS_BT1);
+    enter_wireless_wake(DEVS_BT1);
     weak_mods    = 0x02;
     mouse_button = programmable_button = true;
     consumer                           = 0xE9;
@@ -162,7 +165,7 @@ static void test_held_keys_and_weak_mods(void) {
     assert(report.mods == 0 && !report.a && !report.tab);
 }
 static void test_release_before_wake_completion(void) {
-    wireless_wake(DEVS_BT1);
+    enter_wireless_wake(DEVS_BT1);
     mod_edge(0x04, true);
     key_edge(0x2B, true);
     tick(199);

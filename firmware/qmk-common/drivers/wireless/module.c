@@ -78,6 +78,7 @@ typedef struct {
     bool     inhibit_reports;
     bool     battery_valid;
     uint32_t battery_sample_ms;
+    uint32_t connection_generation;
 } md_info_t;
 
 typedef struct {
@@ -114,6 +115,7 @@ static void md_set_connection_state(uint8_t state, bool inhibit_reports) {
     // Latch transitions so a loss followed by reconnect between main-loop
     // passes cannot hide stale native input. Never call report APIs here.
     if (md_info.state != state) report_reset_pending = true;
+    ++md_info.connection_generation;
     md_info.state           = state;
     md_info.inhibit_reports = inhibit_reports;
 #ifdef GMK70_RADIO_THREAD
@@ -449,6 +451,18 @@ void md_wait_for_commands(void) {
 
 uint8_t *md_getp_state(void) {
     return &md_info.state;
+}
+
+uint32_t md_connection_generation(uint8_t *state) {
+#ifdef GMK70_RADIO_THREAD
+    chSysLock();
+#endif
+    uint32_t generation = md_info.connection_generation;
+    if (state) *state = md_info.state;
+#ifdef GMK70_RADIO_THREAD
+    chSysUnlock();
+#endif
+    return generation;
 }
 
 uint8_t *md_getp_bat(void) {

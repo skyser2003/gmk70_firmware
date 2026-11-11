@@ -30,6 +30,7 @@ static bool           gpio_bt, gpio_2g4 = true;
 static bool           flip_enabled;
 static bool           parsing;
 static unsigned       report_count;
+static unsigned       selects, pairs, cleans, activity_calls;
 static lpwr_state_t   power_state;
 static lpwr_prepare_t power_class;
 keymap_config_t       keymap_config;
@@ -74,6 +75,11 @@ uint8_t uart_read(void) {
     return rx[rx_cursor++];
 }
 void uart_transmit(const uint8_t *data, uint32_t length) {
+    if (data[0] == MD_SND_CMD_DEVCTRL) {
+        selects += data[1] >= MD_SND_CMD_DEVCTRL_2G4 && data[1] <= MD_SND_CMD_DEVCTRL_BT5;
+        pairs += data[1] == MD_SND_CMD_DEVCTRL_PAIR;
+        cleans += data[1] == MD_SND_CMD_DEVCTRL_CLEAN;
+    }
     if (data[0] >= MD_SND_CMD_SEND_KB && data[0] <= MD_SND_CMD_SEND_SYSTEM) {
         assert(!parsing && "Native report recovery must run outside radio parser ownership");
         ++report_count;
@@ -106,9 +112,11 @@ void wait_ms(unsigned ms) {
 void lpwr_set_timeout_manual(bool value) {
     (void)value;
 }
-void         last_matrix_activity_trigger(void) {}
-void         lpwr_task(void) {}
-void         lpwr_activity_trigger(void) {}
+void last_matrix_activity_trigger(void) {}
+void lpwr_task(void) {}
+void lpwr_activity_trigger(void) {
+    ++activity_calls;
+}
 lpwr_state_t lpwr_get_state(void) {
     return power_state;
 }
@@ -210,6 +218,50 @@ static void physical_modes(void) {
                 assert(selected_device_allowed(device) == allowed && "Physical admission must reject both-low regardless of the old logical device");
             }
         }
+    }
+}
+static void advance(unsigned ms) {
+    now += ms;
+    wireless_task();
+    drain();
+}
+static void reconnect(bool wake, bool status_lost) {
+    unsigned before = selects, active = activity_calls;
+    if (wake) {
+        // The stock disconnected-sleep path parks the radio in USB without
+        // changing the logical host. Wake must reassert that saved selection.
+        md_send_devctrl(MD_SND_CMD_DEVCTRL_USB);
+        drain();
+        key(KC_LALT, true);
+        wireless_wake();
+        drain();
+        assert(selects == before + 1);
+        // A same-host status refresh must preserve an Alt held during wake.
+        key(KC_TAB, true);
+        assert(get_mods() == MOD_BIT(KC_LALT) && radio_has(KC_TAB));
+        key(KC_TAB, false);
+    } else {
+        status(MD_REV_CMD_DEVCTRL_DISCONNECTED, true);
+    }
+    if (status_lost) {
+        for (unsigned tick = 0; tick < 20; ++tick)
+            advance(5000);
+        assert(selects == before + 3 && "Status retries must stop after three SELECTs even when every command is ACKed");
+    }
+    status(MD_REV_CMD_DEVCTRL_CONNECTED, true);
+    unsigned connected = selects;
+    advance(10000);
+    assert(selects == connected && activity_calls == active && pairs == 0 && cleans == 0);
+    if (wake) {
+        key(KC_TAB, true);
+        assert(get_mods() == MOD_BIT(KC_LALT) && radio_keyboard[0] == MOD_BIT(KC_LALT));
+        key(KC_TAB, false);
+        key(KC_LALT, false);
+        assert(get_mods() == 0 && radio_keyboard[0] == 0);
+    } else {
+        key(KC_B, true);
+        assert(radio_has(KC_B));
+        key(KC_B, false);
     }
 }
 int main(int argc, char **argv) {
@@ -314,6 +366,53 @@ int main(int argc, char **argv) {
         key(KC_A, true);
         wireless_devs_change(DEVS_BT1, DEVS_BT1, false);
         assert(is_key_pressed(KC_A) && radio_has(KC_A));
+    } else if (!strcmp(argv[1], "wake-refresh"))
+        reconnect(true, false);
+    else if (!strcmp(argv[1], "wake-status-lost"))
+        reconnect(true, true);
+    else if (!strcmp(argv[1], "disconnect-status-lost"))
+        reconnect(false, true);
+    else if (!strcmp(argv[1], "select-status-lost")) {
+        wireless_devs_change(DEVS_BT1, DEVS_BT2, false);
+        drain();
+        unsigned before = selects;
+        for (unsigned tick = 0; tick < 20; ++tick)
+            advance(5000);
+        assert(selects == before + 2 && pairs == 0 && cleans == 0);
+        status(MD_REV_CMD_DEVCTRL_CONNECTED, true);
+        key(KC_B, true);
+        assert(radio_has(KC_B));
+        key(KC_B, false);
+    } else if (!strcmp(argv[1], "sleep-no-retry")) {
+        wireless_wake();
+        drain();
+        unsigned before = selects;
+        power_state     = LPWR_STOP;
+        advance(60000);
+        assert(selects == before && power_state == LPWR_STOP);
+        power_state = LPWR_PRESLEEP;
+        advance(60000);
+        assert(selects == before && power_state == LPWR_PRESLEEP);
+    } else if (!strcmp(argv[1], "pair-no-retry")) {
+        wireless_devs_change(DEVS_BT1, DEVS_BT1, true);
+        drain();
+        unsigned before = selects;
+        advance(60000);
+        assert(selects == before && pairs == 1 && cleans == 1);
+    } else if (!strcmp(argv[1], "reject-no-retry")) {
+        wireless_wake();
+        drain();
+        status(MD_REV_CMD_DEVCTRL_REJECT, true);
+        unsigned before = selects;
+        advance(60000);
+        assert(selects == before && pairs == 0);
+    } else if (!strcmp(argv[1], "usb-no-retry")) {
+        wireless_devs_change(DEVS_BT1, DEVS_USB, false);
+        drain();
+        unsigned before = selects;
+        wireless_wake();
+        advance(60000);
+        assert(selects == before && pairs == 0);
     } else if (!strcmp(argv[1], "physical-mode"))
         physical_modes();
     else

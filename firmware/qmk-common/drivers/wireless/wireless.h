@@ -14,3 +14,5 @@ void    wireless_pre_task(void);
 void    wireless_post_task(void);
 void    wireless_process_connection_changes(void);
 void    wireless_reports_reset_kb(void);
+// Physical same-host wake: refresh selection without clearing held input.
+void wireless_wake(void);

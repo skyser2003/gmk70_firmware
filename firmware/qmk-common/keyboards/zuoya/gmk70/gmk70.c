@@ -1177,6 +1177,7 @@ void hs_reset_settings(void) {
 void lpwr_wakeup_hook(void) {
     if (is_keyboard_master()) {
         hs_mode_scan(false, confinfo.devs, confinfo.last_btdevs);
+        wireless_wake();
     }
 
     if (rgb_matrix_is_enabled()) {
