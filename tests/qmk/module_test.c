@@ -334,7 +334,27 @@ static void test_stop_command_drain(void) {
     md_wait_for_commands();
     assert(!smsg_is_busy() && cursor == received);
 }
+static void test_explicit_battery_refresh_waits_and_coalesces(void) {
+    parser_reset();
+    md_send_devctrl(MD_SND_CMD_DEVCTRL_USB);
+    md_main_task();
+    unsigned before = sends;
+    for (unsigned i = 0; i < 100; ++i)
+        md_request_battery();
+    md_main_task();
+    assert(sends == before); /* The USB-selection ACK still owns the queue. */
+    ack();
+    md_main_task();
+    const uint8_t query[] = {0xa6, 0x53, 0xf9};
+    assert(last_length == sizeof(query) && !memcmp(last_packet, query, sizeof(query)));
+    assert(sends == before + 1);
+    ack();
+    for (unsigned i = 0; i < 100; ++i)
+        md_main_task();
+    assert(!smsg_is_busy() && sends == before + 1);
+}
 int main(int argc, char **argv) {
+    test_explicit_battery_refresh_waits_and_coalesces();
     typedef struct {
         const char *name;
         void (*run)(void);

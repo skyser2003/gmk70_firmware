@@ -6,10 +6,14 @@
 #include "transactions.h"
 
 static unsigned sends;
-static bool     transport_ok = true;
-static uint8_t  last_command;
-static uint8_t  pixels[77][3];
-static bool     right_half;
+static unsigned refreshes;
+void            md_request_battery(void) {
+    ++refreshes;
+}
+static bool    transport_ok = true;
+static uint8_t last_command;
+static uint8_t pixels[77][3];
+static bool    right_half;
 
 bool transaction_rpc_exec(int8_t id, uint8_t request_length, const void *request, uint8_t response_length, void *response) {
     assert(id == USER_SYNC_MMS && request_length == 5 && response_length == 5);
@@ -41,8 +45,6 @@ void rgb_matrix_set_color_all(uint8_t red, uint8_t green, uint8_t blue) {
 
 static void test_key_events(void) {
     stock_battery_key(0x0004, true, true);
-    stock_battery_key(0x7E1B, true, false);
-    stock_battery_key(0x7E1B, false, false);
     assert(sends == 0 && !stock_battery_level_requested());
     stock_battery_key(0x7E1B, true, true);
     assert(sends == 1 && last_command == 0xA4);
@@ -146,7 +148,9 @@ static void test_position_holds(void) {
     stock_battery_key_at(0x7E1B, 0, true, false);
     stock_battery_key_at(0x7E1B, 90, true, true);
     stock_battery_release_position(255);
-    assert(!stock_battery_level_requested() && sends == before);
+    assert(stock_battery_level_requested() && sends == before + 1);
+    stock_battery_release_position(0);
+    assert(!stock_battery_level_requested() && sends == before + 2);
     stock_battery_key_at(0x7E1B, 63, true, true);
     stock_battery_key_at(0x7E1B, 63, false, false);
     assert(!stock_battery_level_requested());
@@ -164,6 +168,19 @@ static void test_sample_age_and_range(void) {
     stock_battery_sample(0, 500);
     assert(stock_battery_sample_read(500) == 0);
 }
+static void test_wired_refresh_and_duplicate_holds(void) {
+    unsigned before = refreshes;
+    stock_battery_key_at(0x7E1B, 12, true, false);
+    stock_battery_key_at(0x7E1B, 55, true, false);
+    assert(stock_battery_level_requested() && refreshes == before + 1);
+    stock_battery_release_position(12);
+    assert(stock_battery_level_requested());
+    stock_battery_release_position(55);
+    assert(!stock_battery_level_requested());
+    stock_battery_key_at(0x7E07, 12, true, false);
+    stock_battery_release_position(12);
+    assert(refreshes == before + 1); /* Charging and releases do not query. */
+}
 
 int main(void) {
     test_key_events();
@@ -171,5 +188,6 @@ int main(void) {
     test_unknown_percentage();
     test_position_holds();
     test_sample_age_and_range();
-    puts("Stock battery: event packets, USB guard, failed-send behavior and both halves' shared bar passed");
+    test_wired_refresh_and_duplicate_holds();
+    puts("Stock battery: event packets, wired refresh, failed-send behavior and both halves' shared bar passed");
 }

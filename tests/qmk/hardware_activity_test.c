@@ -11,6 +11,7 @@ static unsigned key_activity, wired_wake, user_calls;
 static uint8_t  device       = DEVS_BT1;
 static bool     user_accepts = true;
 static unsigned battery_commands;
+void            md_request_battery(void) {}
 
 bool transaction_rpc_exec(int8_t id, uint8_t in_length, const void *in, uint8_t out_length, void *out) {
     (void)in;

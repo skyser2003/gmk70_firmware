@@ -101,12 +101,13 @@ static md_info_t md_info = {
     .state     = MD_STATE_NONE,
 };
 
-static uint8_t  selected_device;
-static uint8_t  status_context;
-static uint32_t smsg_timer;
-static uint8_t  smsg_retry;
-static uint8_t  smsg_limit;
-static bool     report_reset_pending;
+static uint8_t       selected_device;
+static uint8_t       status_context;
+static uint32_t      smsg_timer;
+static uint8_t       smsg_retry;
+static uint8_t       smsg_limit;
+static bool          report_reset_pending;
+static volatile bool battery_requested;
 
 static void md_set_connection_state(uint8_t state, bool inhibit_reports) {
 #ifdef GMK70_RADIO_THREAD
@@ -421,6 +422,7 @@ void md_init(void) {
     smsg_timer           = 0;
     smsg_retry           = 0;
     report_reset_pending = false;
+    battery_requested    = false;
     selected_device = status_context = 0;
 
     memset(md_pkt_payload, 0, sizeof(md_pkt_payload));
@@ -436,6 +438,11 @@ void md_main_task(void) {
     if (md_info.battery_valid && sync_timer_elapsed32(md_info.battery_sample_ms) > MD_BATTERY_FRESH_MS) md_info.battery_valid = false;
     md_send_pkt_task();
     md_receive_msg_task();
+    if (battery_requested && md_inquire_bat()) battery_requested = false;
+}
+
+void md_request_battery(void) {
+    battery_requested = true;
 }
 
 void md_wait_for_commands(void) {

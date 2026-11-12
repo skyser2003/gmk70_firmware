@@ -5,6 +5,7 @@
 #include "transactions.h"
 #include "rgb_matrix.h"
 #include "battery_holds.h"
+#include "module.h"
 
 enum {
     LEVEL_PRESS      = 0xA4,
@@ -36,6 +37,7 @@ static bool key_action(uint16_t keycode, enum gmk_battery_action *action) {
 static void notify(enum gmk_battery_action action, bool previous) {
     bool active = gmk_battery_holds_active(&held, action);
     if (active == previous) return;
+    if (active && action == GMK_BATTERY_ACTION_LEVEL) md_request_battery();
     uint8_t       command     = action == GMK_BATTERY_ACTION_LEVEL ? (active ? LEVEL_PRESS : LEVEL_RELEASE) : (active ? CHARGING_PRESS : CHARGING_RELEASE);
     const uint8_t request[5]  = {command, 0, 0, 0, 0};
     uint8_t       response[5] = {0};
@@ -45,7 +47,8 @@ static void notify(enum gmk_battery_action action, bool previous) {
 
 static void set_key(uint16_t keycode, unsigned position, bool pressed, bool wireless_mode) {
     enum gmk_battery_action action;
-    if (!key_action(keycode, &action) || (pressed && action == GMK_BATTERY_ACTION_LEVEL && !wireless_mode)) return;
+    (void)wireless_mode;
+    if (!key_action(keycode, &action)) return;
     bool previous = gmk_battery_holds_active(&held, action);
     (void)gmk_battery_holds_set(&held, action, position, pressed);
     notify(action, previous);

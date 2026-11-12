@@ -14,6 +14,7 @@ static lpwr_state_t state;
 static uint32_t     now;
 static unsigned     power, power_writes, flushes, native_calls;
 static unsigned     housekeeping_calls;
+void                md_request_battery(void) {}
 static uint8_t      frame[77][3], shown[77][3];
 void                __wrap_rgb_matrix_task(void);
 void                __wrap_housekeeping_task(void);
