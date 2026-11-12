@@ -23,7 +23,10 @@ if(CONFIG_BOARD_GMK70_WIRED)
     zephyr_ld_options(-Wl,--wrap=main)
   endif()
   if(CONFIG_LTO)
-    zephyr_compile_options(-fipa-pta)
+    # Defer board inlining until the full program is visible, and prefer
+    # callee-save registers over repeated call-site spills in this small image.
+    zephyr_library_compile_options(-fno-early-inlining)
+    zephyr_compile_options(-fipa-pta -fno-caller-saves)
     # Retain native/public --wrap boundaries outside LTO below. Within the
     # remaining closed units, GCC may specialize internal parameters; this
     # keeps bounded radio reconnect inside the unchanged updater slot.
@@ -88,15 +91,15 @@ if(CONFIG_BOARD_GMK70_WIRED)
                     zmk_rgb_underglow_on=gmk_native_rgb_underglow_on
                     zmk_rgb_underglow_off=gmk_native_rgb_underglow_off
                     zmk_rgb_underglow_toggle=gmk_native_rgb_underglow_toggle)
-                elseif(gmk_source MATCHES "/(hid|keymap|endpoints|rgb_underglow|pm|usb|settings|main|activity)\\.c$"
+                elseif(gmk_source MATCHES "/(hid|keymap|endpoints|rgb_underglow|pm|usb|settings|main)\\.c$"
                     OR gmk_source MATCHES "/events/(position_state_changed|keycode_state_changed|activity_state_changed)\\.c$"
                     OR gmk_source MATCHES "/studio/core\\.c$")
                   set(gmk_boundary ON)
                 endif()
               elseif(gmk_library STREQUAL "subsys__usb__device__class__hid")
                 set(gmk_boundary ON)
-              elseif(NOT gmk_source MATCHES "/(event_link|wired_protocol|wired_wb32|encoder|encoder_native|split|raw_hid|studio_feature|nkro|flip|lighting|lighting_frame|wb32_pixels|image|radio|battery|battery_sensor|battery_view|bool_setting|settings_store|settings_backend|receiver|service|storage|idle|retained|retained_clock|rgb_settings|endpoint|radio_keys|battery_holds|stock_power|battery_status|kscan_gmk70_wired|power|platform|wb32_flash|native_update_wire|usb_dc_wb32|gpio_wb32|behavior|bindings|metadata|control|controls|selection|protocol|coordinator|core)\\.c$"
-                  OR gmk_source MATCHES "/recovery/(startup|behavior)\\.c$")
+              elseif(NOT gmk_source MATCHES "/(event_link|wired_protocol|wired_wb32|encoder|encoder_native|split|raw_hid|studio_feature|nkro|flip|lighting|lighting_frame|wb32_pixels|image|radio|battery|battery_sensor|battery_view|bool_setting|settings|settings_store|settings_backend|receiver|service|storage|idle|retained|retained_clock|rgb_settings|endpoint|radio_keys|battery_holds|stock_power|battery_status|kscan_gmk70_wired|power|platform|wb32_flash|native_update_wire|usb_dc_wb32|gpio_wb32|behavior|bindings|metadata|control|controls|selection|protocol|coordinator|core)\\.c$"
+                  OR gmk_source MATCHES "/recovery/startup\\.c$")
                 set(gmk_boundary ON)
               endif()
               if(gmk_boundary)

@@ -64,9 +64,10 @@ BLE support. The existing radio RAM experiment implements Vial rather than Studi
 - **Pairing:** stock QMK sends CLEAN and profile/dongle identity information.
   ZMK preserves existing radio identities/bonds and sends selection/PAIR without
   those destructive or renaming steps.
-- **Settings reset:** QMK's physical hold handler is available without a wired
-  gate and triggers while held. ZMK requires a three-second hold plus release,
-  LEFT wired USB authorization, then resets only ZMK application settings.
+- **Physical settings reset:** both act after a three-second hold, from either
+  half in any output mode, without rebooting. ZMK clears its application bank
+  and restores factory bindings, names, order, RGB and board preferences live.
+  Its startup recovery remains a separate LEFT wired USB operation that reboots.
 - **Settings persistence:** VIA preserves its stock magic across rebuilds.
   Normal Vial retains upstream random-build-ID invalidation, so a different
   build can reset dynamic configuration despite an unchanged schema. Only its
@@ -85,7 +86,7 @@ BLE support. The existing radio RAM experiment implements Vial rather than Studi
 | --- | --- | --- |
 | High | QMK/VIA and QMK/Vial critical-battery qualification depends on RGB rendering. | `bat_indicators()` has its sole caller in the advanced RGB callback. Both pinned frameworks skip that callback for effect zero; the RGB-off board wrapper renders held indicators only. Move power qualification into ordinary board housekeeping, preserving the recovered stock timer policy. This establishes a firmware path defect, not failure of hardware battery protection. |
 | Medium | The QMK/Vial held settings-reset action also depends on RGB rendering. | `EE_CLR` starts/cancels `ee_clr_timer`; its only expiry check and `hs_reset_settings()` dispatch are in the same advanced RGB callback. Holding reset with ordinary RGB off cannot complete that path. Service the timer independently of rendering. This additional defect was identified in this audit. |
-| Medium | ZMK omits radio-driven suspend/resume and the stock disconnected timeout. | QMK handles radio `0x60` in `md_receive_host_cb()` and requests sleep after about 30 seconds disconnected. ZMK ACKs the notification but its core ignores it; its power inputs have no equivalent host/disconnection state. Define how these should interact with the user's saved sleep timeout, especially Never. |
+| Medium | ZMK omits radio-driven host suspend/resume. | QMK handles radio `0x60` in `md_receive_host_cb()`; ZMK ACKs it without changing sleep policy. Its separate accepted-DISCONNECTED timeout now requests coordinated sleep after 30 seconds, including with saved Never. USB and storage safety gates still apply. |
 | Medium | Wireless mouse scroll axes differ between stacks. | QMK sends horizontal/vertical in payload bytes 3/4; ZMK sends vertical/horizontal. Both feed the same stock radio command. The existing ZMK test asserts its own ordering and cannot establish the hardware contract. Decode the receiver or test separate horizontal/vertical scrolling before choosing which implementation to change. |
 | Medium | Battery operating conditions remain different. | QMK regular queries are wireless-only; ZMK queries periodically only in wireless mode and refreshes on a battery-level key press. ZMK retains USB while wireless and a 5.5-second sampler-recovery interval. Both use the unchanged radio estimator. The cable-insertion jump occurred while Bluetooth remained selected, so wired polling alone is not an established cause. |
 | Medium | RIGHT update acknowledgment is not fully qualified. | An INSTALL acknowledgment can be lost before restart. Retain once-only INSTALL dispatch and independent image/resident readback when investigating response delivery. |
@@ -110,14 +111,17 @@ native input state. Host changes retain their clear boundaries. See
 [VIA/Vial reconnect](SLEEP-WAKE-REGRESSION.md#radio-reconnect-after-wake) for
 protocol evidence, bounds and the remaining hardware-validation requirement.
 
-### Remaining feature and migration work
+### Factory map and remaining migration work
 
-- ZMK factory bindings omit stock Bluetooth/dongle selectors, battery actions,
-  function/media flip, GUI lock, settings reset and the four MOR shortcut keys,
-  although the required actions or ordinary shortcuts can already be expressed.
-  This concerns the compiled defaults; it does not describe the user's saved
-  Studio map. OS selection is observed by the controls layer and persisted;
-  the older `&to` default bindings are not evidence of a missing OS listener.
+ZMK now follows all 72 physical positions of each maintained QMK factory layer,
+including Ctrl+Z/X/C/V, Bluetooth/dongle selection, OS selection, battery/charging,
+function flip, GUI lock, NKRO and settings reset. Its two appended knob positions
+remain Studio-editable. The stock logo-effect key (`RL_MOD`) is an explicit no-op
+because ZMK has no independent logo engine; reserved stock no-ops stay inert.
+Saved Studio bindings keep priority; positions without saved overrides use
+the new defaults. A deliberate settings reset removes those overrides.
+
+
 - Hold-tap, sticky keys/layers, tap dance, macros, toggle-layer, Caps Word and
   repeat behavior instances are absent from this canonical ZMK image. Their
   implementations exist in the pinned upstream tree. They can be integrated
@@ -141,24 +145,27 @@ protocol evidence, bounds and the remaining hardware-validation requirement.
 
 ### Wired battery and system-key clarification
 
-The automatic three-second UART inquiry is wireless-only. Pressing the battery-level action queues one coalesced refresh through
-the existing UART worker, including the existing single bounded retry. Charging
+The automatic three-second UART inquiry is wireless-only. Pressing the
+battery-level action queues one coalesced refresh through the existing UART
+worker, including its bounded retry. Charging
 status and key release do not request percentages. Wired entry cancels queued
 periodic work; a partial frame may finish and retain ownership of its ACK, but
 does not start periodic retries. Wireless cadence is unchanged.
 
-Native ZMK still samples its configured sensor while active regardless of the
-endpoint. That sensor reads the GMK70 cache only and does not cause wired UART
-queries. The ten-second freshness limit remains: cold/expired data appears
+The native state-of-charge sensor exposes the GMK70 cache and does not cause
+wired UART queries. Canonical USB Studio disables the extra native battery
+broadcast timer: native BLE BAS and display widgets are absent, and RIGHT does
+not initialize this LEFT-owned sensor. The stock radio supplies host battery
+information; GMK70 indicators and sleep policy read the board cache directly. The ten-second freshness limit remains: cold/expired data appears
 unknown until a valid reply arrives, and holding the display beyond that limit
 requires another press for a fresh query. Charger GPIO reporting, notifications
 and the 5.5-second USB sampler-recovery interval remain. This policy does not correct the radio estimator's transient percentages.
 
 Charge-present and charge-complete indications are different: A7/A15 provide
-them without a percentage inquiry. Maintained QMK/VIA and QMK/Vial explicitly
-reject a held percentage-display press in wired mode in `stock_battery.c`, while
-allowing charging status there. They do not demonstrate a query-free wired
-percentage display that can be ported to ZMK.
+them without a percentage inquiry. All three builds accept a held percentage
+display in wired mode and request a coalesced refresh through their existing
+UART owner. QMK/VIA and Vial no longer reject that press. None changes the
+radio estimator or enables continuous wired UART polling.
 
 The missing system key reports target the host computer. QMK `KC_PWR`,
 `KC_SLEP` and `KC_WAKE` map to Generic Desktop HID page `0x01`, usages

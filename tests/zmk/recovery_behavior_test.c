@@ -15,6 +15,9 @@ int                             gmk_recovery_request(enum gmk_recovery_action ac
     requested_action = action;
     return request_result;
 }
+int gmk_recovery_settings_reset(void) {
+    return gmk_recovery_request(GMK_RECOVERY_SETTINGS_RESET);
+}
 
 static struct zmk_behavior_binding_event event(uint32_t position, int64_t timestamp) {
     struct zmk_behavior_binding_event result = {.position = position, .timestamp = timestamp};
@@ -36,6 +39,10 @@ static void test_three_second_hold_and_original_release_ownership(void) {
     assert(requests == 0);
     /* Binding was changed after press; ownership and original action survive. */
     binding.param1 = GMK_RECOVERY_BOOTLOADER;
+    recovery_test_advance(2999);
+    assert(requests == 0);
+    recovery_test_advance(1);
+    assert(requests == 1 && requested_action == GMK_RECOVERY_SETTINGS_RESET);
     assert(registered_api->binding_released(&binding, event(9, 4000)) == 0);
     assert(requests == 1 && requested_action == GMK_RECOVERY_SETTINGS_RESET);
     assert(registered_api->binding_released(&binding, event(9, 5000)) == 0);
@@ -87,11 +94,26 @@ static void test_native_metadata_describes_the_destructive_action(void) {
 #endif
 }
 
+static void test_old_queued_callback_cannot_reset_new_hold_early(void) {
+    struct zmk_behavior_binding_event event  = {.position = 12, .timestamp = 5000};
+    unsigned                          before = requests;
+    assert(!gmk_recovery_hold_press(GMK_RECOVERY_SETTINGS_RESET, event));
+    assert(!gmk_recovery_release_event(event));
+    assert(!gmk_recovery_hold_press(GMK_RECOVERY_SETTINGS_RESET, event));
+    settings_hold.work.handler(&settings_hold.work); /* Stale queued execution. */
+    assert(requests == before);
+    recovery_test_advance(2999);
+    assert(requests == before);
+    recovery_test_advance(1);
+    assert(requests == before + 1);
+    assert(!gmk_recovery_release_event(event));
+}
 int main(void) {
     test_three_second_hold_and_original_release_ownership();
     test_physical_release_handles_remapping_and_split_source();
     test_invalid_parameters_and_failed_request();
     test_native_metadata_describes_the_destructive_action();
+    test_old_queued_callback_cannot_reset_new_hold_early();
     puts("Recovery behavior: deliberate hold, physical release ownership and native metadata passed");
     return 0;
 }

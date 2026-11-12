@@ -4,7 +4,10 @@ ulimit -c 0
 source "$(dirname "$0")/../../scripts/project.sh"
 mkdir -p .work/zmk/tests
 flags=(-std=gnu11 -O1 -g -Wall -Wextra -Werror -pthread -fno-pie -fsanitize=address,undefined -fno-sanitize-recover=all -ffunction-sections -fdata-sections
-    -DCONFIG_SETTINGS=1 -DCONFIG_GMK70_ZMK_STUDIO_SETTINGS=1
+    -DCONFIG_SETTINGS=1 -DCONFIG_GMK70_ZMK_STUDIO_SETTINGS=1 -DCONFIG_GMK70_RECOVERY=1
+    -DCONFIG_ZMK_RGB_UNDERGLOW_HUE_START=0 -DCONFIG_ZMK_RGB_UNDERGLOW_SAT_START=100
+    -DCONFIG_ZMK_RGB_UNDERGLOW_BRT_START=20 -DCONFIG_ZMK_RGB_UNDERGLOW_SPD_START=1
+    -DCONFIG_ZMK_RGB_UNDERGLOW_EFF_START=0 -DCONFIG_ZMK_RGB_UNDERGLOW_ON_START=1
     -Itests/zmk/rgb_native_stubs -Itests/zmk/studio_stubs -Idependencies/zmk/app/include
     -Ifirmware/zmk/update -Ifirmware/qmk-common/keyboards/zuoya/gmk70/update)
 # Only pinned upstream callback parameters are exempt from the native strict warnings.

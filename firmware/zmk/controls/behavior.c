@@ -14,10 +14,10 @@
 #    include <zmk/events/position_state_changed.h>
 
 static int recovery(struct zmk_behavior_binding *binding, struct zmk_behavior_binding_event event, bool pressed) {
-    /* Retain native event-source locality for recovery alone. Other controls
-     * stay on LEFT; a right-side reset still targets RIGHT, never the host. */
+    /* Reboot/bootloader target the key's half. Settings reset stays on LEFT,
+     * which owns the joined keyboard's application settings. */
 #    if IS_ENABLED(CONFIG_ZMK_SPLIT) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-    if (gmk_wired_is_left() && event.source != ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL) return zmk_split_central_invoke_behavior(event.source, binding, event, pressed);
+    if (binding->param1 != GMK70_RECOVERY_SETTINGS_RESET && gmk_wired_is_left() && event.source != ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL) return zmk_split_central_invoke_behavior(event.source, binding, event, pressed);
 #    endif
     return pressed ? gmk_recovery_hold_press((enum gmk_recovery_action)(binding->param1 - GMK70_RECOVERY_RESET + GMK_RECOVERY_RESET), event) : gmk_recovery_release_event(event);
 }

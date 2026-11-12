@@ -14,6 +14,8 @@ enum gmk_recovery_action {
  * which the application must wrap with its owned-bank storage operation. A
  * failed erase returns its error and never reboots. Successful actions reboot. */
 int gmk_recovery_request(enum gmk_recovery_action action);
+/* Physical settings key: central settings owner, any output, no reboot. */
+int gmk_recovery_settings_reset(void);
 
 /* Zero-initialize once at startup. Caller owns this small state; no timer,
  * thread, storage access or reset occurs while sampling physical switches. */

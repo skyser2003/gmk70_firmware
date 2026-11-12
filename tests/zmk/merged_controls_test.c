@@ -62,6 +62,9 @@ int gmk_recovery_request(enum gmk_recovery_action action) {
     requested = action;
     return 0;
 }
+int gmk_recovery_settings_reset(void) {
+    return gmk_recovery_request(GMK_RECOVERY_SETTINGS_RESET);
+}
 const char *__real_zmk_behavior_find_behavior_name_from_local_id(uint16_t id) {
     return id == 12 ? "kp" : id == 77 ? "gmk_controls" : NULL;
 }
@@ -141,9 +144,15 @@ static void recovery_keeps_hold_source_and_release_ownership(void) {
             assert(action(code, source, 8, 3099, false) == 0 && requests == before);
             assert(action(code, source, 8, 1000, true) == 0);
             assert(action(code, source, 9, 4100, false) == 0 && requests == before);
+            if (code == 15) {
+                recovery_test_advance(2999);
+                assert(requests == before);
+                recovery_test_advance(1);
+                assert(requests == before + 1);
+            }
             assert(action(code, source, 8, 4000, false) == 0 && requests == before + 1);
             assert(requested == (enum gmk_recovery_action)(code - 12));
-            assert(source_id ? forwarded == sends : forwarded == sends + 5);
+            assert(source_id || code == 15 ? forwarded == sends : forwarded == sends + 5);
         }
     }
     assert(action(13, 255, 42, 100, true) == 0);

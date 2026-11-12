@@ -23,7 +23,8 @@ five-minute default idle sleep. Board-specific additions and integration fixes i
   Firmware updates still require the slider in USB mode and a USB connection.
 - **Battery indicators with RGB off:** holding Show Battery or Show Charging
   temporarily lights the indicators. Releasing the key restores darkness without
-  changing the saved RGB setting.
+  changing the saved RGB setting. Battery percentage display also works in
+  wired mode, with an on-demand refresh rather than continuous wired polling.
 - **Right-half RGB recovery (VIA/Vial):** LED power follows the synchronized
   lighting setting, including when the right half starts with its LEDs disabled.
 - **Wake fixes (VIA/Vial):** delayed wake initialization preserves held modifiers,
@@ -35,6 +36,10 @@ five-minute default idle sleep. Board-specific additions and integration fixes i
   instead of being used for a low-battery warning or shutdown.
 - **GMK70 controls:** readable names for board actions in Vial, and two extra
   Studio key positions for remapping knob rotation without modifying Studio.
+- **ZMK board parity:** the factory layers follow the QMK shortcuts; existing
+  saved Studio overrides remain. Settings reset acts after holding three seconds
+  from either half, in any output mode, without rebooting. A radio disconnect
+  requests sleep after 30 seconds, subject to USB and storage safety gates.
 - **Split updater:** update both halves through left USB after initial setup.
 - **Optional VIA tools:** updater EEPROM backups, debug diagnostics and
   debug-updater persistent sleep logs. Normal Vial builds exclude these tools.

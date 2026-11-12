@@ -1,4 +1,15 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include <dt-bindings/zmk/gmk70_controls.h>
 #define GMK70_NKRO_BINDING &gmk_controls GMK70_NKRO_TOGGLE
+#define GMK70_BT1_BINDING &gmk_radio 1
+#define GMK70_BT2_BINDING &gmk_radio 2
+#define GMK70_BT3_BINDING &gmk_radio 3
+#define GMK70_DONGLE_BINDING &gmk_radio 6
+#define GMK70_RESET_BINDING &gmk_controls GMK70_RECOVERY_SETTINGS_RESET
+#define GMK70_BATTERY_BINDING &gmk_battery 0
+#define GMK70_CHARGING_BINDING &gmk_battery 1
+#define GMK70_FLIP_BINDING &gmk_controls GMK70_FUNCTION_FLIP
+#define GMK70_GUI_BINDING &gmk_controls GMK70_GUI_TOGGLE
+#define GMK70_WINDOWS_BINDING &gmk_controls GMK70_OS_WINDOWS
+#define GMK70_MAC_BINDING &gmk_controls GMK70_OS_MAC
 #include "gmk70_wired.keymap"

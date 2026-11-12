@@ -375,7 +375,31 @@ static void test_right_role_is_inert(void) {
     assert(!preferences.work.pending && save_count == 0);
     assert(gmk_controls_visual_token(0) == 0);
 }
+static void test_reset_replaces_queued_preferences(void) {
+    reset_fixture();
+    assert(!gmk_controls_gui_lock_set(true));
+    assert(!gmk_controls_usb_sleep_set(true));
+    assert(!gmk_controls_sleep_selector_set(0));
+    radio_test_time = 500;
+    gmk_controls_poll(true);
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+    assert(preferences.work.pending);
+#endif
+    gmk_controls_reset();
+    assert(!gmk_controls_gui_locked() && !gmk_controls_mac_mode() && !gmk_controls_usb_sleep());
+    assert(gmk_controls_sleep_selector() == 7 && gmk_controls_sleep_timeout_ms() == 300000);
+    assert(gmk_controls_bt_slot() == 1);
+#ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+    run_work(&preferences.work);
+    const uint8_t defaults[4] = {1, 0, 1, 7};
+    assert(!memcmp(saved, defaults, sizeof(saved)) && !gmk_controls_dirty());
+#endif
+    physical_host = 2;
+    gmk_controls_radio_state(2, GMK_RADIO_CONNECTED);
+    assert(gmk_controls_bt_slot() == 2); /* No stale load/restore suppression. */
+}
 int main(void) {
+    test_reset_replaces_queued_preferences();
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
     test_preferences_validate_and_restore();
     test_shared_worker_retry_and_concurrent_change();

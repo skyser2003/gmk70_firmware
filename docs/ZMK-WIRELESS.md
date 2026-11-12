@@ -5,7 +5,7 @@ and the proprietary 2.4 GHz receiver. It does not replace the radio firmware or
 use Zephyr's Bluetooth stack. The existing RIGHT peripheral remains compatible
 while the halves are joined; keep RIGHT's switch in its normal joined position.
 
-Assign **GMK70 Bluetooth / Dongle** in Studio. Parameter 0 selects USB, 1–5 select
+Assign **GMK70 Connection** in Studio. Parameter 0 selects USB, 1–5 select
 the corresponding Bluetooth slot, and 6 selects the dongle. A short press selects
 the destination; holding a wireless selector for three seconds requests pairing.
 Releasing or reassigning the held key cancels a pairing request that has not yet
@@ -23,12 +23,22 @@ tests execute the pinned native keymap paths; see the
 [custom behavior checklist](CUSTOM-BEHAVIOR-CHECKLIST.md).
 
 Native USB remains available for Studio and recovery while typing is routed to
-the radio. Firmware/settings writes still require LEFT USB, the physical wired
-position, service readiness and the existing storage gates. Read-only radio
+the radio. Studio/updater writes still require LEFT USB, the physical wired
+position, service readiness and the existing storage gates. The mapped physical
+settings-reset key is explicitly available in all output modes; runtime board
+preferences keep their existing narrow wireless-save allowlist. Read-only radio
 status remains available with USB connected in a wireless switch position.
 Changing output clears keyboard and consumer reports before the new selection.
 
 ## Sleep and reconnect
+
+An accepted radio DISCONNECTED status starts a 30-second sleep deadline, matching
+QMK. Repeated notices and automatic SELECT retries do not extend it. CONNECTED,
+PAIRING, REJECTED, explicit host/profile selection and physical wake retire the
+deadline; unknown state or a SELECT ACK alone never starts one. This timeout
+requests coordinated sleep even with saved Never, but USB, settings flush and
+shared-storage admission still gate actual STOP.
+
 
 A physical wake from retained STOP reselects the current Bluetooth/dongle
 profile before reopening the scanner. A physical wake from USB shallow sleep

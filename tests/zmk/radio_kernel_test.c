@@ -6,8 +6,12 @@
 #include <zmk/events/keycode_state_changed.h>
 #include "../../firmware/zmk/radio/radio.c"
 
-uint32_t                              radio_test_time;
-unsigned                              radio_test_locked;
+uint32_t radio_test_time;
+unsigned radio_test_locked;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+void gmk_service_notify(void) {}
+void gmk_scan_notify(void) {}
+#endif
 static uint8_t                        physical_raw = 3;
 static bool                           left         = true, in_work;
 static unsigned                       clears, events;
@@ -571,7 +575,65 @@ static void unsaved_native_ids_block_binding_mutation(void) {
     assert(__wrap_zmk_keymap_set_layer_binding_at_idx(0, 1, replacement) == binding_result);
 #endif
 }
+static void disconnected_sleep_deadline(void) {
+    start(true);
+    radio_test_time = 100000;
+    assert(!gmk_radio_disconnected_timeout()); /* Unknown/USB is not disconnect. */
+    assert(!gmk_radio_select(2, false));
+    run_work();
+    settle();
+    assert(!gmk_radio_disconnected_timeout()); /* A SELECT ACK is not status. */
+    radio_test_time = UINT32_MAX - 15000U;
+    gmk_radio_notification(0x5b, 0x33);
+    assert(!gmk_radio_disconnected_timeout());
+    radio_test_time += 29999U;
+    gmk_radio_notification(0x5b, 0x33); /* A repeated notice cannot extend it. */
+    assert(!gmk_radio_disconnected_timeout());
+    ++radio_test_time;
+    assert(gmk_radio_disconnected_timeout());
+    core.connection = GMK_RADIO_UNKNOWN; /* An automatic UART retry keeps the known deadline. */
+    assert(gmk_radio_disconnected_timeout());
+    gmk_radio_notification(0x5b, 0x32);
+    assert(!gmk_radio_disconnected_timeout());
+    gmk_radio_notification(0x5b, 0x33);
+    radio_test_time += 30000;
+    assert(gmk_radio_disconnected_timeout());
+    assert(!gmk_radio_select(3, false));
+    assert(!gmk_radio_disconnected_timeout()); /* Explicit new host starts fresh. */
+    run_work();
+    settle();
+    gmk_radio_notification(0x5b, 0x33);
+    radio_test_time += 30000;
+    assert(gmk_radio_disconnected_timeout());
+    gmk_radio_wake(); /* An unrelated wake while not quiesced must not erase it. */
+    assert(gmk_radio_disconnected_timeout());
+    assert(!gmk_radio_select(0, false));
+    assert(!gmk_radio_disconnected_timeout());
+    start(false);
+    radio_test_time = 100000;
+    gmk_radio_notification(0x5b, 0x33);
+    assert(!gmk_radio_disconnected_timeout());
+}
+static void disconnected_deadline_scheduling(void) {
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    start(true);
+    core               = (struct gmk_radio_core){.selected = 2, .active = 2, .connection = GMK_RADIO_DISCONNECTED};
+    disconnected       = true;
+    disconnected_since = radio_test_time = UINT32_MAX - 15000U;
+    assert(gmk_radio_delay() == 30000U);
+    radio_test_time += 29999U;
+    assert(gmk_radio_delay() == 1);
+    quiesced = true;
+    assert(gmk_radio_delay() == UINT32_MAX);
+    quiesced = false;
+    ++radio_test_time;
+    /* An expired timer need not busy-poll while USB/storage blocks sleep. */
+    assert(gmk_radio_delay() == UINT32_MAX && gmk_radio_disconnected_timeout());
+#endif
+}
 int main(void) {
+    disconnected_deadline_scheduling();
+    disconnected_sleep_deadline();
     wake_keeps_native_modifiers_and_is_silent_while_paused();
     slider_transition_retires_an_old_select_lease();
     slider_bypasses_usb_quiet_without_reusing_its_ack();

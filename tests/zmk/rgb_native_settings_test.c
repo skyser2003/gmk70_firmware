@@ -276,6 +276,23 @@ int main(int argc, char **argv) {
     assert(!rgb_test_init());
     assert(!settings_backend_init());
     reload(250, 75);
+    /* A reset replaces a queued old RGB image, including native timer state. */
+    assert(!zmk_rgb_underglow_set_hsb((struct zmk_led_hsb){.h = 180, .s = 80, .b = 90}));
+    rgb_test_time += 60000;
+    system_work();
+    assert(gmk_rgb_settings_dirty());
+    assert(!gmk_rgb_settings_reset());
+    struct zmk_led_hsb reset_color = zmk_rgb_underglow_calc_hue(0);
+    assert(reset_color.h == 0 && reset_color.s == 100 && reset_color.b == 20);
+    atomic_store(&usb_ready, true);
+    rgb_test_time += 1000;
+    poll();
+    system_work();
+    assert(!gmk_rgb_settings_dirty());
+    loaded = false;
+    assert(!backend->cs_itf->csi_load(backend, NULL) && loaded);
+    const uint8_t defaults[10] = {0, 0, 100, 20, 1, 0, 0, 0, 1, 0};
+    assert(!memcmp(saved, defaults, sizeof(defaults)));
     atomic_store(&stop, true);
     pthread_join(thread, NULL);
     assert(!munmap(flash, 16384));

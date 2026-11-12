@@ -88,9 +88,9 @@ NKRO and guarded recovery actions in one native Studio dropdown:
 | NKRO: off (6-key compatibility) | Use the six-key compatibility report path. |
 | Reboot this half: hold 3s/release | Hold for at least three seconds, then release to reboot the half containing that key. |
 | Bootloader this half: hold 3s/release | Use the same gesture to enter that half's factory bootloader. |
-| Clear app settings: left key, hold 3s/release | Use a left-half key and the same gesture to clear the application settings, subject to existing wired/storage gates. RIGHT cannot erase LEFT's settings. |
+| Clear app settings: hold 3s, either half | Hold for three seconds; reset completes while held in USB, Bluetooth or dongle mode. RIGHT key events are routed to LEFT, which atomically clears its application bank and restores factory settings live, without rebooting. |
 
-Battery/charging and Bluetooth/dongle remain separate behaviors. The native
+Battery/charging and connection selection remain separate behaviors. The native
 `Sleep` action is separate too. `GMK70 sleep timeout` selects never,
 1/3/5/10/20/30 minutes, or the five-minute default. These are native behavior
 metadata and settings; no separate configuration application is required.
@@ -105,11 +105,20 @@ rewrite the saved keymap. Layer names/order, other bindings and preference
 records are preserved. New custom DTS keymaps and macros should use
 `&gmk_controls GMK70_*` from `dt-bindings/zmk/gmk70_controls.h`.
 
+The factory map follows the maintained QMK four-layer layout, including its
+board shortcuts and Ctrl+Z/X/C/V column. The unsupported independent logo-effect
+key remains a no-op. Saved Studio bindings keep priority; other positions use
+the new defaults. Reset settings to load the complete factory map.
+
 RGB stays on during ordinary idle, including active USB use. Both halves blank
 their LEDs when the board sleep coordinator quiesces them, using the saved
 sleep timeout (five minutes by default). The saved RGB on/off choice is retained;
 waking restores lighting only when enabled. Native activity still becomes idle
-after 30 seconds, without a separate RGB cutoff.
+after 30 seconds, without a separate RGB cutoff. Separately, an accepted radio
+DISCONNECTED notice starts a 30-second coordinated-sleep deadline, including
+with saved Never. Repeated notices and retry traffic do not extend it; reconnect,
+explicit host selection and physical wake reset it. Active USB and pending
+storage transactions retain their existing sleep gates.
 Sleep waits for pending native settings snapshots and their existing
 60-second debounce.
 Critical entry starts after 60 seconds of qualified 0% readings and also waits
@@ -122,7 +131,8 @@ One additional four-byte versioned preference record stores lock/OS, last
 Bluetooth slot and sleep preferences. Wireless saves remain restricted to
 `rgb/underglow/state`, `gmk_nkro/state`, `gmk_flip/state` and `gmk_controls/state`.
 Studio keymaps, native behavior-ID writes and updater writes retain their wired
-USB boundaries. Studio waits for verified persistent behavior IDs and receives
+USB boundaries. The deliberate physical settings-reset key is a separate narrow
+exception; it does not enable wireless Studio writes or generic erase. Studio waits for verified persistent behavior IDs and receives
 the native lock-state notification when that check completes.
 
 For startup recovery on LEFT, hold the knob button and Escape from startup for

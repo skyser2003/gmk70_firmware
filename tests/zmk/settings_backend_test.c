@@ -258,6 +258,66 @@ static void factory_reset_gates(void) {
     assert(backend->cs_itf->csi_load(backend, NULL) == 0 && loaded == loaded_before);
     assert(backend->cs_itf->csi_save(backend, "keymap/test", "value", 5) == 0);
 }
+static unsigned physical_restores;
+static void    *write_during_reset(void *arg) {
+    int *result = arg;
+    *result     = backend->cs_itf->csi_save(backend, "keymap/test", "old", 3);
+    return NULL;
+}
+static int restore_defaults(void) {
+    ++physical_restores;
+    pthread_t concurrent;
+    int       result = 0;
+    assert(!pthread_create(&concurrent, NULL, write_during_reset, &result));
+    assert(!pthread_join(concurrent, NULL) && result == -EBUSY);
+    assert(gmk_zmk_settings_ready() && !atomic_load(&busy));
+    unsigned before = atomic_load(&writes);
+    /* Reset restores RAM without authorizing a generic native deletion. */
+    assert(backend->cs_itf->csi_save(backend, "keymap/test", NULL, 0) == -EBUSY);
+    assert(atomic_load(&writes) == before);
+    return 0;
+}
+static void physical_reset_gates(void) {
+    unsigned before = atomic_load(&writes);
+    /* Drain any previous wired environment snapshot before changing modes. */
+    atomic_store(&pause_worker, true);
+    wait_for(&worker_paused);
+    atomic_store(&wireless_mode, true);
+    atomic_store(&usb_ready, false);
+    atomic_store(&pause_worker, false);
+    assert(!gmk_zmk_settings_reset_local(restore_defaults));
+    assert(physical_restores == 1 && atomic_load(&writes) == before + 1);
+    /* This exception is scoped to the reset caller, never generic deletion. */
+    before = atomic_load(&writes);
+    assert(backend->cs_itf->csi_save(backend, "keymap/test", NULL, 0) == -ENOTSUP);
+    assert(__wrap_zmk_settings_erase() == -ENOTSUP);
+    atomic_store(&writes_unready, true);
+    assert(gmk_zmk_settings_reset_local(restore_defaults) == -ENOTSUP);
+    atomic_store(&writes_unready, false);
+    atomic_store(&busy, true);
+    assert(gmk_zmk_settings_reset_local(restore_defaults) == -EBUSY);
+    atomic_store(&busy, false);
+    side_left = false;
+    assert(gmk_zmk_settings_reset_local(restore_defaults) == -ENODEV);
+    side_left            = true;
+    settings_test_in_isr = true;
+    assert(gmk_zmk_settings_reset_local(restore_defaults) == -EWOULDBLOCK);
+    settings_test_in_isr = false;
+    assert(gmk_zmk_settings_reset_local(NULL) == -EINVAL);
+    assert(physical_restores == 1 && atomic_load(&writes) == before);
+    atomic_store(&fail_write, true);
+    assert(gmk_zmk_settings_reset_local(restore_defaults) == -EIO);
+    assert(physical_restores == 1 && !gmk_zmk_settings_ready());
+    atomic_store(&fail_write, false);
+    assert(!settings_backend_init());
+    assert(!gmk_zmk_settings_reset_local(restore_defaults));
+    assert(physical_restores == 2);
+    atomic_store(&pause_worker, true);
+    wait_for(&worker_paused);
+    atomic_store(&wireless_mode, false);
+    atomic_store(&usb_ready, true);
+    atomic_store(&pause_worker, false);
+}
 #ifdef CONFIG_ZMK_BEHAVIOR_LOCAL_ID_TYPE_SETTINGS_TABLE
 static void native_ids_wireless_startup(void) {
     settings_test_devices[0] = (struct device){.name = "kp", .ready = true};
@@ -403,6 +463,8 @@ int main(void) {
     assert(backend->cs_itf->csi_save(backend, "keymap/test", "value", 5) == 0);
     wireless_preferences();
     factory_reset_gates();
+    physical_reset_gates();
+    assert(!backend->cs_itf->csi_save(backend, "keymap/test", "value", 5));
     migration_during_load();
     atomic_store(&busy, true);
     unsigned before = atomic_load(&writes);

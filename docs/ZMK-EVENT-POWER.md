@@ -108,22 +108,31 @@ pending.
 
 | Variant | Flash bytes / slot | Reserved RAM / capacity | Unallocated RAM |
 | --- | ---: | ---: | ---: |
-| Studio updater | 106,440 / 106,496 | 28,028 / 28,544 | 516 |
-| Studio standalone | 101,080 / 114,688 | 27,180 / 28,544 | 1,364 |
+| Studio updater | 106,440 / 106,496 | 28,004 / 28,544 | 540 |
+| Studio standalone | 101,160 / 114,688 | 27,156 / 28,544 | 1,388 |
 
 These figures include the unified [Studio controls menu](ZMK-BASIC-PARITY.md#integration-and-operation).
 Its metadata initializes 624 bytes of static RAM from compact name tables,
 trading RAM for flash while retaining the descriptive dropdowns. No heap or new
 thread is involved. Names now occupy one NUL-separated flash table, with the
-same enum values and display strings. The bounded radio-reconnect state adds
-eight bytes of private RAM. The board link enables internal parameter
-specialization (`-fipa-sra`), while native public/linker-wrap definitions remain
-outside LTO. Both images pass the wrap-object audit, image checks and native
-ABI regression with and without specialization. The profile disables unused dynamic settings handlers,
+same enum values and display strings. Reconnect and disconnection deadlines use
+private RAM without changing stored settings. The board link enables internal parameter specialization (`-fipa-sra`),
+defers board inlining until LTO, and avoids repeated caller-save spills. Native
+public/linker-wrap definitions remain outside LTO; native activity and the board
+recovery behavior define no wrapped exports and may share LTO. Both images pass
+the wrap-object audit, image checks and native ABI regression with and without
+specialization. The profile disables unused dynamic settings handlers,
 already-inactive time slicing (the previous slice size was zero), and device
 power-domain support (no enabled device has a `power-domains` dependency).
 Ordinary device suspend/resume and static settings handlers remain enabled;
 image checks reject new dependencies on the disabled facilities.
+
+Canonical USB Studio also omits the unused native battery broadcast timer. The
+stock radio owns host battery reporting; GMK70 indicators and power policy read
+the board cache directly. RIGHT does not initialize the LEFT-owned sensor, and
+this image has no native BLE BAS or battery display widget. The sensor, radio
+queries, held indicators, charger inputs and critical-battery policy remain.
+Image checks require native reporting if a BAS/widget consumer is enabled.
 
 The updater has 56 flash bytes spare. Bounds checks remain strict; a future
 compiler or feature change may require more size work. Unallocated RAM is a
@@ -132,11 +141,12 @@ except that main now owns the scanner's reservation and its separate thread is
 removed. Serial, storage, system/USB work queues and interrupt stacks remain
 independent; no active stacks are overlaid.
 
-The compiler reports a 176-byte retained-sleep frame, 256-byte service-worker
-frame, 488-byte settings-save frame and 296-byte flash replacement frame.
+The earlier event-idle baseline reported a 176-byte retained-sleep frame,
+256-byte service-worker frame, 488-byte settings-save frame and 296-byte flash replacement frame.
 Metadata was generated for the LTO program and 28 non-LTO translation units;
-the instrumented link's load BIN is byte-identical to the candidate. Individual
-frames are not complete call-chain bounds or physical high-water measurements.
+that earlier instrumented link's load BIN was byte-identical to its candidate.
+These historical individual frames are not current call-chain bounds or physical
+high-water measurements. Current stack reservations are unchanged.
 
 Native fixtures cover actual pinned SysTick and timeout code, COUNTFLAG read
 side effects, raw RTC halfword rollover/resynchronization, 20/40 kHz calibration,
@@ -151,8 +161,8 @@ stores and live call paths from both native announcement and retained freeze.
 Both its real driver and weak fallback definitions are outside LTO; otherwise
 IPA can eliminate calls against the weak no-op. They also require native main
 before scanning, guarded settings/flash admission, report routing and the actual
-USB Feature registration. Audits find all 35 updater wrap targets (36 native
-strong/weak definitions), and all 34 standalone targets, outside LTO.
+USB Feature registration. Audits find all 36 updater wrap targets (37 native
+strong/weak definitions), and all 35 standalone targets (36 definitions), outside LTO.
 
 For endpoint, keymap mutation and RGB exports, small non-LTO public ABI thunks
 forward to uniquely renamed implementations in the untouched native sources.

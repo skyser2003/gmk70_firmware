@@ -28,6 +28,8 @@ static bool                      available;
 static bool                      quiesced, processing;
 static uint8_t                   pair_raw;
 static uint32_t                  cancel_epoch;
+static uint32_t                  disconnected_since;
+static bool                      disconnected;
 static struct radio_request {
     uint32_t epoch;
     uint8_t  channel, raw;
@@ -49,6 +51,7 @@ static bool control_busy_locked(void) {
     return gmk_radio_core_control_busy(&core);
 }
 static void request_locked(uint8_t channel, bool pair, uint8_t raw) {
+    disconnected    = false;
     mailbox.channel = channel;
     mailbox.raw     = raw;
     mailbox.pair    = pair;
@@ -219,6 +222,10 @@ uint32_t gmk_radio_delay(void) {
             uint32_t next    = elapsed >= 3000 ? 1 : 3000 - elapsed;
             if (next < delay) delay = next;
         }
+        if (disconnected && core.selected != GMK_HOST_USB) {
+            uint32_t elapsed = now - disconnected_since;
+            if (elapsed < 30000U && 30000U - elapsed < delay) delay = 30000U - elapsed;
+        }
     }
     k_spin_unlock(&lock, key);
     return delay;
@@ -271,11 +278,19 @@ void gmk_radio_release_mouse(void) {
     gmk_service_notify();
 }
 void gmk_radio_notification(uint8_t command, uint8_t value) {
-    k_spinlock_key_t key = k_spin_lock(&lock);
+    k_spinlock_key_t key    = k_spin_lock(&lock);
+    bool             status = available && command == 0x5b && core.accept_status && core.active == core.selected && core.active != GMK_HOST_USB;
 #ifdef CONFIG_GMK70_CONTROLS
     bool leds = available && command == 0x5a && core.accept_status && core.active == core.selected && core.active != GMK_HOST_USB && core.connection == GMK_RADIO_CONNECTED;
 #endif
     if (available) gmk_radio_core_notification(&core, command, value);
+    if (status && (value == 0x31 || value == 0x32 || value == 0x33 || value == 0x36)) {
+        if (core.connection == GMK_RADIO_DISCONNECTED) {
+            if (!disconnected) disconnected_since = k_uptime_get_32();
+            disconnected = true;
+        } else
+            disconnected = false;
+    }
 #ifdef CONFIG_GMK70_CONTROLS
     uint8_t selected = core.selected, connection = core.connection;
 #endif
@@ -284,6 +299,12 @@ void gmk_radio_notification(uint8_t command, uint8_t value) {
     if (available) gmk_controls_radio_state(selected, connection);
     if (leds) gmk_controls_radio_leds(value);
 #endif
+}
+bool gmk_radio_disconnected_timeout(void) {
+    k_spinlock_key_t key     = k_spin_lock(&lock);
+    bool             expired = available && disconnected && core.selected != GMK_HOST_USB && (uint32_t)(k_uptime_get_32() - disconnected_since) >= 30000U;
+    k_spin_unlock(&lock, key);
+    return expired;
 }
 void gmk_radio_ack(void) {
     k_spinlock_key_t key = k_spin_lock(&lock);
@@ -334,7 +355,10 @@ bool gmk_radio_power_quiesce(bool enabled) {
 }
 void gmk_radio_wake(void) {
     k_spinlock_key_t key = k_spin_lock(&lock);
-    if (available && quiesced) gmk_radio_core_wake(&core);
+    if (available && quiesced) {
+        disconnected = false;
+        gmk_radio_core_wake(&core);
+    }
     k_spin_unlock(&lock, key);
 }
 uint8_t gmk_radio_last_bt(void) {
@@ -407,8 +431,8 @@ static int radio_init(void) {
     mailbox      = (struct radio_request){0};
     pair_raw     = 0;
     cancel_epoch = 0;
-    quiesced = processing = false;
-    available             = gmk_wired_is_left();
+    quiesced = processing = disconnected = false;
+    available                            = gmk_wired_is_left();
     k_work_init(&work, work_handler);
     return 0;
 }

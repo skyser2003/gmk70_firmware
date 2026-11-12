@@ -22,6 +22,8 @@ int      gmk_controls_usb_sleep_set(bool enabled);
  * authorization when it dispatches; callers supply the current runtime gate. */
 void gmk_controls_poll(bool writes_allowed);
 bool gmk_controls_dirty(void);
+/* RAM defaults after the settings bank has been cleared by the physical key. */
+void gmk_controls_reset(void);
 
 /* Apply after all native/board modifier contributions in the existing report
  * getter. This never changes native modifier counts or key release ownership. */

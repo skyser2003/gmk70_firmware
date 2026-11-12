@@ -191,4 +191,26 @@ bool gmk_rgb_settings_dirty(void) {
     k_spin_unlock(&save_lock, key);
     return pending;
 }
+#    ifdef CONFIG_GMK70_RECOVERY
+extern const struct settings_handler_static settings_handler_rgb_underglow;
+int                                         gmk_rgb_settings_reset(void) {
+    static const struct {
+        struct zmk_led_hsb color;
+        uint8_t            speed, effect;
+        uint16_t           step;
+        bool               on;
+    } defaults = {
+        .color  = {CONFIG_ZMK_RGB_UNDERGLOW_HUE_START, CONFIG_ZMK_RGB_UNDERGLOW_SAT_START, CONFIG_ZMK_RGB_UNDERGLOW_BRT_START},
+        .speed  = CONFIG_ZMK_RGB_UNDERGLOW_SPD_START,
+        .effect = CONFIG_ZMK_RGB_UNDERGLOW_EFF_START,
+        .on     = IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW_ON_START),
+    };
+    BUILD_ASSERT(sizeof(defaults) == RGB_NATIVE_STATE_BYTES, "Pinned native RGB settings size");
+    int result = gmk_zmk_settings_restore_state(&settings_handler_rgb_underglow, &defaults, sizeof(defaults));
+    if (result) return result;
+    remember_user_state();
+    result = __wrap_settings_save_one("rgb/underglow/state", &defaults, sizeof(defaults));
+    return result;
+}
+#    endif
 #endif

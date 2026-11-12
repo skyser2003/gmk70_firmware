@@ -20,7 +20,7 @@ cc -std=c11 -Wall -Wextra -Werror -O1 -g -fno-pie -no-pie -fsanitize=address,und
     "${sources[@]}" -Wl,--wrap=zmk_pm_suspend_devices -Wl,--wrap=zmk_pm_resume_devices \
     -Wl,--wrap=zmk_pm_soft_off \
     -Wl,--wrap=zmk_usb_get_conn_state -o .work/zmk/tests/power-native
-for scenario in maintenance-stop gates peer-traffic native-stop critical manual new-input usb-shallow right-commit right-rx right-cancel \
+for scenario in disconnected maintenance-stop gates peer-traffic native-stop critical manual new-input usb-shallow right-commit right-rx right-cancel \
     usb-tick usb-pendsv new-critical-input pm-error pm-activity-race usb-blocked-manual \
     fallback-local-wake fallback-rx-wake usb-unplug-configured usb-unplug-suspended usb-connected-hid; do
     .work/zmk/tests/power-native "$scenario"
@@ -51,6 +51,6 @@ cc -std=c11 -Wall -Wextra -Werror -O1 -g -fno-pie -no-pie -fsanitize=address,und
     "${sources[@]}" -Wl,--wrap=zmk_pm_suspend_devices -Wl,--wrap=zmk_pm_resume_devices \
     -Wl,--wrap=zmk_pm_soft_off \
     -Wl,--wrap=zmk_usb_get_conn_state -o .work/zmk/tests/power-retained
-for scenario in retained retained-defer retained-unavailable; do
+for scenario in retained retained-defer retained-unavailable disconnected-reconnect; do
     .work/zmk/tests/power-retained "$scenario"
 done

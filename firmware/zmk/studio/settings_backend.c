@@ -24,12 +24,12 @@
 
 #define SETTINGS_BASE 0x0801c000U
 static gmk_settings_store_t store;
-static atomic_t             ready;
+static atomic_t             ready, resetting;
 enum { STORE_READY = 1, IDS_READY = 2 };
 K_MUTEX_DEFINE(access);
 K_SEM_DEFINE(completed, 0, 1);
 static struct k_spinlock job_lock;
-enum settings_operation { SAVE_NATIVE, SAVE_RUNTIME, FACTORY_RESET };
+enum settings_operation { SAVE_NATIVE, SAVE_RUNTIME, FACTORY_RESET, PHYSICAL_RESET };
 static struct {
     char                    name[GMK_SETTINGS_NAME_MAX + 1];
     uint8_t                 value[GMK_SETTINGS_VALUE_MAX];
@@ -45,11 +45,17 @@ static bool write_page(void *ctx, uint32_t offset, const uint8_t page[256]) {
     return gmk_zmk_settings_flash_page(SETTINGS_BASE + offset, page);
 }
 
+int gmk_zmk_settings_restore_state(const struct settings_handler_static *handler, const void *value, size_t size) {
+    struct gmk_settings_read_context record = {.value = value, .size = size};
+    return handler->h_set("state", size, gmk_settings_read_value, &record);
+}
+
 bool gmk_zmk_settings_ready(void) {
     return (atomic_get(&ready) & STORE_READY) != 0;
 }
 
 bool gmk_zmk_settings_ids_ready(void) {
+    if (atomic_get(&resetting)) return false;
 #ifdef CONFIG_ZMK_BEHAVIOR_LOCAL_ID_TYPE_SETTINGS_TABLE
     return (atomic_get(&ready) & (STORE_READY | IDS_READY)) == (STORE_READY | IDS_READY);
 #else
@@ -108,7 +114,7 @@ static int load(struct settings_store *cs, const struct settings_load_arg *arg) 
 }
 
 static int submit_operation(const char *name, const char *value, size_t size, enum settings_operation operation) {
-    bool   reset  = operation == FACTORY_RESET;
+    bool   reset  = operation == FACTORY_RESET || operation == PHYSICAL_RESET;
     size_t length = 0;
     if (!reset) {
         if (!name || (!value && size)) return -EINVAL;
@@ -121,7 +127,9 @@ static int submit_operation(const char *name, const char *value, size_t size, en
     k_mutex_lock(&access, K_FOREVER);
     /* Confirmation may have completed while this caller waited for access. */
     if (native_id) atomic_and(&ready, ~IDS_READY);
-    int result = -EIO;
+    int result = -EBUSY;
+    if (operation != PHYSICAL_RESET && (atomic_get(&resetting))) goto out;
+    result = -EIO;
     if (reset ? !store.bytes || !store.write : !gmk_zmk_settings_ready()) goto out;
     if (!gmk_zmk_storage_claim()) {
         result = -EBUSY;
@@ -164,6 +172,20 @@ int gmk_zmk_settings_factory_reset(void) {
     return submit_operation(NULL, NULL, 0, FACTORY_RESET);
 }
 
+int gmk_zmk_settings_reset_local(int (*restore)(void)) {
+    if (k_is_in_isr()) return -EWOULDBLOCK;
+    if (!gmk_wired_is_left()) return -ENODEV;
+    if (!restore) return -EINVAL;
+    /* Never hold the backend mutex while entering native settings_load:
+     * Zephyr's settings lock precedes it. Reject new writes across the bank/RAM
+     * interval instead, including callbacks from another thread. */
+    if (atomic_or(&resetting, 1)) return -EBUSY;
+    int result = submit_operation(NULL, NULL, 0, PHYSICAL_RESET);
+    if (!result) result = restore();
+    atomic_clear(&resetting);
+    return result;
+}
+
 int __wrap_zmk_settings_erase(void) {
     return gmk_zmk_settings_factory_reset();
 }
@@ -176,7 +198,7 @@ static bool runtime_name_allowed(const char *name) {
 
 #ifdef CONFIG_ZMK_BEHAVIOR_LOCAL_ID_TYPE_SETTINGS_TABLE
 static void confirm_native_ids(const gmk_zmk_service_env_t *env) {
-    if (gmk_zmk_settings_ids_ready() || !gmk_zmk_settings_ready() || !env->left || !env->wired || !env->usb_configured || !env->writes_ready) return;
+    if ((atomic_get(&resetting)) || gmk_zmk_settings_ids_ready() || !gmk_zmk_settings_ready() || !env->left || !env->wired || !env->usb_configured || !env->writes_ready) return;
     if (k_mutex_lock(&access, K_NO_WAIT)) return;
     bool notify = false;
     if (!gmk_zmk_settings_ready() || !gmk_zmk_storage_claim()) goto out;
@@ -229,12 +251,14 @@ __attribute__((noipa)) void gmk_zmk_settings_poll(const gmk_zmk_service_env_t *e
     }
     int  result  = -ENOTSUP;
     bool allowed = env->left && env->writes_ready && env->wired && (job.operation == SAVE_NATIVE || env->usb_configured);
+    if (job.operation == PHYSICAL_RESET) allowed = env->left && env->writes_ready;
 #ifdef CONFIG_GMK70_POWER
     if (env->left && env->writes_ready && job.operation == SAVE_RUNTIME && runtime_name_allowed(job.name) && gmk_power_runtime_storage_safe()) allowed = true;
 #endif
     if (allowed) {
-        result = job.operation == FACTORY_RESET ? gmk_settings_store_factory_reset(&store) : gmk_settings_store_save(&store, job.name, job.deleting ? NULL : job.value, job.size);
-        if (!result && job.operation == FACTORY_RESET) atomic_set(&ready, STORE_READY);
+        bool reset = job.operation == FACTORY_RESET || job.operation == PHYSICAL_RESET;
+        result     = reset ? gmk_settings_store_factory_reset(&store) : gmk_settings_store_save(&store, job.name, job.deleting ? NULL : job.value, job.size);
+        if (!result && reset) atomic_set(&ready, STORE_READY);
     }
     if (store.fault) atomic_clear(&ready);
     key         = k_spin_lock(&job_lock);

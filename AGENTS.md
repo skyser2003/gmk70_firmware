@@ -25,3 +25,9 @@
   staging-trial launcher. Permanent updater/settings writes use service readiness
   and the existing wired, USB, role and storage gates. Physical power cycling is
   the recovery fallback; it is not a guarantee of rollback from a faulty image.
+
+- User-authorized parity change (2026-11-12): the physical ZMK settings-reset
+  key follows QMK's three-second held action from either half in any output
+  mode, without rebooting. Its internal LEFT settings owner and storage lease
+  remain required. This narrow physical-key operation does not authorize
+  wireless Studio, updater, generic erase or raw-flash writes.

@@ -23,7 +23,8 @@ static struct k_thread         service_thread = {1}, activity_thread = {2};
 k_tid_t                        test_power_thread = &service_thread;
 uint32_t                       test_power_now, test_primask, test_basepri;
 static bool                    left_role = true, cable, receiver_free = true, lease, dirty, radio_idle_state = true, battery_idle_state = true, wired_idle_state = true, wake_pending, paused, critical_prepare, input_during_claim;
-static bool                    peer_traffic;
+static bool                    peer_traffic, disconnected_expired;
+static uint32_t                sleep_timeout = 60000;
 static unsigned                claims, releases, wake_prepares, radio_quiesces, stops, resets, peer_pulses, report_clears, radio_wakes;
 static jmp_buf                 reset_jump;
 static bool                    usb_sleep, radio_paused;
@@ -129,7 +130,7 @@ bool gmk_rgb_settings_dirty(void) {
 }
 #endif
 uint32_t gmk_controls_sleep_timeout_ms(void) {
-    return 60000;
+    return sleep_timeout;
 }
 bool gmk_controls_usb_sleep(void) {
     return usb_sleep;
@@ -147,6 +148,9 @@ bool gmk_lighting_power_quiesce(bool enabled) {
 }
 bool gmk_radio_idle(void) {
     return radio_idle_state;
+}
+bool gmk_radio_disconnected_timeout(void) {
+    return disconnected_expired;
 }
 bool gmk_radio_power_quiesce(bool enabled) {
     radio_paused = enabled;
@@ -619,6 +623,20 @@ int k_work_submit(struct k_work *work) {
     work->handler(work);
     return 1;
 }
+static void test_reconnect_cancels_disconnected_only_sleep(void) {
+    sleep_timeout = 0;
+    gmk_power_poll(true);
+    test_power_now       = 30000;
+    disconnected_expired = true;
+    retained_physical    = false;
+    gmk_power_poll(true);
+    assert(retained_entries == 1 && paused && radio_paused && lease);
+    disconnected_expired = false;
+    gmk_power_poll(true);
+    assert(retained_entries == 1 && !paused && !radio_paused && !lease);
+    assert(!gmk_power_sleep_pending() && !resets && !stops && !radio_wakes);
+    assert(test_pm_suspend_calls == test_pm_resume_calls && !test_native_pm_suspended[0] && !test_native_pm_suspended[1]);
+}
 static void test_returning_native_sleep(bool defer) {
     gmk_power_poll(true);
     test_power_now = 30000;
@@ -644,9 +662,35 @@ static void test_returning_native_sleep(bool defer) {
 }
 #endif
 
+static void test_disconnected_timeout_sleep(void) {
+    sleep_timeout  = 0; /* Saved Never does not disable disconnected sleep. */
+    test_power_now = 30000;
+    gmk_power_poll(true);
+    assert(!gmk_power_sleep_pending() && !claims);
+    disconnected_expired = true;
+    cable                = true;
+    usb_status           = USB_DC_CONFIGURED;
+    gmk_power_poll(true);
+    assert(!gmk_power_sleep_pending() && !claims && !report_clears);
+    cable      = false;
+    usb_status = USB_DC_UNKNOWN;
+    dirty      = true;
+    gmk_power_poll(true);
+    assert(!gmk_power_sleep_pending() && !claims && report_clears == 1); /* Flush settings before STOP. */
+    dirty = false;
+    if (!setjmp(reset_jump)) {
+        gmk_power_poll(true);
+        assert(false);
+    }
+    assert(stops == 1 && resets == 1 && report_clears == 1);
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
 #ifdef CONFIG_GMK70_RETAINED_SLEEP
+    if (!strcmp(argv[1], "disconnected-reconnect")) {
+        test_reconnect_cancels_disconnected_only_sleep();
+        return 0;
+    }
     if (!strcmp(argv[1], "retained") || !strcmp(argv[1], "retained-defer")) {
         test_returning_native_sleep(!strcmp(argv[1], "retained-defer"));
         puts("Native returning sleep: ownership, quiet deferral, reports, settings and activity timestamp passed");
@@ -664,6 +708,10 @@ int main(int argc, char **argv) {
         return 0;
     }
 #endif
+    if (!strcmp(argv[1], "disconnected")) {
+        test_disconnected_timeout_sleep();
+        return 0;
+    }
     if (!strcmp(argv[1], "gates")) {
         test_native_pm_denies_early_or_usb_sleep();
         test_dirty_settings_can_save_without_opening_sleep();

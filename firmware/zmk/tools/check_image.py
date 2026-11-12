@@ -608,6 +608,12 @@ def validate_static_studio_config(config: str, dts: str, symbols: set[str]) -> N
         r"\bpower-domains\s*=", dts
     ):
         raise ValueError("Device power domains are disabled but used by a device")
+    if "CONFIG_ZMK_BATTERY_REPORTING=y" not in config.splitlines():
+        for consumer in ("CONFIG_BT_BAS", "CONFIG_ZMK_WIDGET_BATTERY_STATUS"):
+            if f"{consumer}=y" in config.splitlines():
+                raise ValueError(
+                    f"Native battery consumer requires reporting: {consumer}"
+                )
     for option, api in (
         ("CONFIG_SETTINGS_DYNAMIC_HANDLERS", "settings_register"),
         ("CONFIG_TIMESLICING", "k_sched_time_slice_set"),

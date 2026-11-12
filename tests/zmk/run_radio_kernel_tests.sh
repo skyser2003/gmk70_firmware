@@ -2,8 +2,9 @@
 set -euo pipefail
 source "$(dirname "$0")/../../scripts/project.sh"
 mkdir -p .work/zmk/tests
-for profile in normal qualification nkro nkro-qualification; do
+for profile in normal normal-event qualification nkro nkro-qualification; do
     flags=()
+    if [[ "$profile" == normal-event ]]; then flags+=(-DCONFIG_GMK70_EVENT_IDLE=1); fi
     if [[ "$profile" == *qualification ]]; then flags+=(-DCONFIG_GMK70_RADIO_QUALIFICATION=1); fi
     if [[ "$profile" == nkro* ]]; then flags+=(-DCONFIG_ZMK_HID_REPORT_TYPE_NKRO=1); fi
     cc -std=c11 -Wall -Wextra -Werror -O1 -g -fno-pie -no-pie -fsanitize=address,undefined -ffunction-sections -Wl,--gc-sections \

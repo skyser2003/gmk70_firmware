@@ -37,7 +37,7 @@
         };
         gmk_radio: gmk_radio {
             compatible = "zuoya,gmk70-behavior-radio";
-            display-name = "GMK70 Bluetooth / Dongle";
+            display-name = "GMK70 Connection";
             #binding-cells = <1>;
         };
         gmk_battery: gmk_battery {

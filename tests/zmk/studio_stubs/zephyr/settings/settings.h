@@ -2,6 +2,9 @@
 #include <stddef.h>
 #include <sys/types.h>
 typedef ssize_t (*settings_read_cb)(void *, void *, size_t);
+struct settings_handler_static {
+    int (*h_set)(const char *, size_t, settings_read_cb, void *);
+};
 typedef int (*settings_load_direct_cb)(const char *, size_t, settings_read_cb, void *, void *);
 struct settings_load_arg {
     const char             *subtree;

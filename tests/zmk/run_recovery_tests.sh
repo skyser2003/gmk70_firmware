@@ -28,3 +28,5 @@ for split in 0 1; do
         ".work/zmk/tests/recovery-behavior-$split-$metadata"
     done
 done
+
+bash tests/zmk/run_recovery_settings_tests.sh

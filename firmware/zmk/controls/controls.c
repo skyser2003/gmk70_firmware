@@ -38,7 +38,19 @@ struct controls_state {
     uint8_t                usb_leds, radio_leds, channel, connection;
     bool                   saving, attempted, os_feedback, restoring_bt;
 };
-static struct controls_state preferences;
+static struct controls_state        preferences;
+static const struct controls_record defaults = {.version = 1, .bt_slot = GMK_HOST_BT1, .sleep_selector = 7};
+
+void gmk_controls_reset(void) {
+    k_spinlock_key_t key = k_spin_lock(&preferences.lock);
+    preferences.value = preferences.stored = defaults;
+    preferences.restoring_bt = preferences.os_feedback = false;
+    ++preferences.visual_generation;
+    k_spin_unlock(&preferences.lock, key);
+#ifdef CONFIG_GMK70_RADIO
+    (void)gmk_radio_restore_last_bt(GMK_HOST_BT1);
+#endif
+}
 
 static struct controls_record current(void) {
     k_spinlock_key_t       key   = k_spin_lock(&preferences.lock);
@@ -348,8 +360,7 @@ static int commit_preferences(void) {
 SETTINGS_STATIC_HANDLER_DEFINE(gmk_controls, "gmk_controls", NULL, load_preferences, commit_preferences, NULL);
 #endif
 static int controls_init(void) {
-    struct controls_record defaults = {.version = 1, .bt_slot = GMK_HOST_BT1, .sleep_selector = 7};
-    preferences                     = (struct controls_state){.value = defaults, .stored = defaults};
+    preferences = (struct controls_state){.value = defaults, .stored = defaults};
     k_work_init(&preferences.work, save_preferences);
     return 0;
 }

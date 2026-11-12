@@ -66,6 +66,20 @@ class WiredImageTests(unittest.TestCase):
             with self.subTest(dts=dts, symbols=symbols), self.assertRaises(ValueError):
                 check_image.validate_static_studio_config(config, dts, symbols)
 
+    def test_native_battery_consumers_require_the_broadcaster(self) -> None:
+        config = "CONFIG_GMK70_MERGED_CONTROLS=y\n"
+        for consumer in ("CONFIG_BT_BAS", "CONFIG_ZMK_WIDGET_BATTERY_STATUS"):
+            with self.subTest(consumer=consumer):
+                with self.assertRaisesRegex(ValueError, "battery consumer"):
+                    check_image.validate_static_studio_config(
+                        config + f"{consumer}=y\n", "", set()
+                    )
+                check_image.validate_static_studio_config(
+                    config + f"{consumer}=y\nCONFIG_ZMK_BATTERY_REPORTING=y\n",
+                    "",
+                    set(),
+                )
+
     def test_permanent_builds_reject_watchdog_and_outgoing_handoff_symbols(
         self,
     ) -> None:
@@ -160,20 +174,15 @@ class WiredImageTests(unittest.TestCase):
             )
         ]
         self.assertEqual(mapped, coords + [(10, 0), (10, 1)])
-        bindings = re.findall(
-            r"GMK70_NKRO_BINDING|&(?:kp\s+\w+|(?:mo|to|gmk_nkro)\s+\d+|rgb_ug\s+\w+|none|trans)",
-            "\n".join(
-                line
-                for line in (board / "gmk70_wired.keymap").read_text().splitlines()
-                if not line.lstrip().startswith("#")
-            ),
-        )
+        from keymap_fixture import read_layers
+
+        bindings = [binding for layer in read_layers() for binding in layer]
         self.assertEqual(len(bindings), 4 * (len(coords) + 2))
         self.assertEqual(bindings[coords.index((4, 2))], "&mo 1")
         for layer in (1, 3):
             self.assertEqual(
                 bindings[layer * (len(coords) + 2) + coords.index((3, 5))],
-                "GMK70_NKRO_BINDING",
+                "&gmk_controls GMK70_NKRO_TOGGLE",
             )
 
 

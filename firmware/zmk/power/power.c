@@ -328,6 +328,13 @@ __attribute__((noipa)) void gmk_power_poll(bool service_ready) {
         if (command.operation == GMK_POWER_PREPARE && coordinator.phase == GMK_POWER_PHASE_IDLE) begin_session();
         (void)gmk_power_coordinator_command(&coordinator, &command, now, &ops);
     }
+#ifdef CONFIG_GMK70_RADIO
+    atomic_val_t previous_request;
+    if (!usb_blocks_sleep() && gmk_radio_disconnected_timeout())
+        previous_request = atomic_or(&manual_request, 2);
+    else
+        previous_request = atomic_and(&manual_request, ~2);
+#endif
     bool                    manual = atomic_get(&manual_request) != 0;
     struct gmk_power_inputs inputs = battery_inputs();
     inputs.timeout_ms              = gmk_controls_sleep_timeout_ms();
@@ -345,6 +352,11 @@ __attribute__((noipa)) void gmk_power_poll(bool service_ready) {
     } else if (!forced && !core.critical) {
         reports_cleared = false;
     }
+#ifdef CONFIG_GMK70_RADIO
+    /* Reconnecting retires a pending disconnected-only sleep. It does not
+     * count as input or cancel deliberate/critical/ordinary idle sleep. */
+    if ((previous_request & 2) && !manual && reason == GMK_POWER_NONE) gmk_power_coordinator_cancel(&coordinator, &ops);
+#endif
     bool is_busy = busy(coordinator.claimed) || (!forced && !gmk_wired_power_input_idle());
     bool allowed = ready && !usb_blocks_sleep() && (forced || core.inactive);
     if (coordinator.phase == GMK_POWER_PHASE_IDLE && reason != GMK_POWER_NONE && allowed && !is_busy) {

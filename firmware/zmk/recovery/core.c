@@ -44,6 +44,11 @@ int gmk_recovery_request(enum gmk_recovery_action action) {
             return -EINVAL;
     }
 }
+#ifndef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
+int gmk_recovery_settings_reset(void) {
+    return -ENOTSUP;
+}
+#endif
 
 enum gmk_recovery_action gmk_recovery_startup_sample(struct gmk_recovery_startup *state, bool bootloader_chord, bool settings_chord, uint32_t now_ms) {
     if (!state || state->finished) return GMK_RECOVERY_NONE;

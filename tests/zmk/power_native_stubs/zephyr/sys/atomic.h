@@ -20,3 +20,13 @@ static inline atomic_val_t atomic_clear(atomic_t *value) {
     *value           = 0;
     return old;
 }
+static inline atomic_val_t atomic_or(atomic_t *value, atomic_val_t mask) {
+    atomic_val_t old = *value;
+    *value |= mask;
+    return old;
+}
+static inline atomic_val_t atomic_and(atomic_t *value, atomic_val_t mask) {
+    atomic_val_t old = *value;
+    *value &= mask;
+    return old;
+}

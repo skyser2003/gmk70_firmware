@@ -20,7 +20,7 @@
     X(GMK70_NKRO_OFF, "NKRO: off (6-key compatibility)")                  \
     X(GMK70_RECOVERY_RESET, "Reboot this half: hold 3s/release")          \
     X(GMK70_RECOVERY_BOOTLOADER, "Bootloader this half: hold 3s/release") \
-    X(GMK70_RECOVERY_SETTINGS_RESET, "Clear app settings: left key, hold 3s/release")
+    X(GMK70_RECOVERY_SETTINGS_RESET, "Clear app settings: hold 3s, either half")
 
 #define GMK70_SLEEP_OPTIONS(X) \
     X(0, "Never")              \
