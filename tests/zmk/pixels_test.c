@@ -77,8 +77,14 @@ void barrier_dmem_fence_full(void) {
     if (!active && spi[0x08 / 4] == 0) needs_acquire = false;
 }
 static uint32_t *reg_at(uintptr_t address) {
-    if (address >= HW_SPI && address < HW_SPI + sizeof(spi)) return &spi[(address - HW_SPI) / 4];
-    if (address >= HW_DMA && address < HW_DMA + sizeof(dma)) return &dma[(address - HW_DMA) / 4];
+    if (address >= HW_SPI && address < HW_SPI + sizeof(spi)) {
+        assert(rcc[0x4c / 4] & (1U << 4));
+        return &spi[(address - HW_SPI) / 4];
+    }
+    if (address >= HW_DMA && address < HW_DMA + sizeof(dma)) {
+        assert((rcc[0x40 / 4] & (1U << 7)) && (rcc[0x4c / 4] & 1U));
+        return &dma[(address - HW_DMA) / 4];
+    }
     if (address >= HW_RCC && address < HW_RCC + sizeof(rcc)) return &rcc[(address - HW_RCC) / 4];
     if (address >= HW_A && address < HW_A + sizeof(gpio[0])) return &gpio[0][(address - HW_A) / 4];
     if (address >= HW_B && address < HW_B + sizeof(gpio[1])) return &gpio[1][(address - HW_B) / 4];
@@ -86,13 +92,14 @@ static uint32_t *reg_at(uintptr_t address) {
     return NULL;
 }
 uint32_t sys_read32(uintptr_t address) {
-    assert(!irq_depth || (address >= HW_RCC && address < HW_RCC + sizeof(rcc)));
+    assert(!irq_depth || (address >= HW_RCC && address < HW_RCC + sizeof(rcc)) || address == HW_DMA + 0x3a0);
+    (void)reg_at(address);
     ++reads;
     if (!clock_stopped && reads % 100 == 0) ++now_ms;
     if (active && address == HW_DMA + 0x2c0 && ++progress_reads == 3) {
         if (fault == DMA_ERROR) {
             dma[0x2e0 / 4] = 1;
-            dma[0x3a0 / 4] = 0;
+            dma[0x3a0 / 4] &= ~1U;
         } else if (fault != DMA_TIMEOUT) {
             assert(sched_depth == 1 && !irq_depth);
             assert(spi[0] == 0x107 && spi[0x14 / 4] == 32);
@@ -105,8 +112,8 @@ uint32_t sys_read32(uintptr_t address) {
             assert(captured_size && captured_size <= sizeof(capture.bytes));
             memcpy(capture.bytes, (const void *)(uintptr_t)dma[0], captured_size);
             dma[0x2c0 / 4] = 1;
-            dma[0x3a0 / 4] = 0;
-            active         = false;
+            dma[0x3a0 / 4] &= ~1U;
+            active = false;
         }
     }
     if (address == HW_SPI + 0x28 && !active) {
@@ -117,7 +124,21 @@ uint32_t sys_read32(uintptr_t address) {
     return *reg_at(address);
 }
 void sys_write32(uint32_t value, uintptr_t address) {
+    if (address >= 0x42000000U && address < 0x44000000U) {
+        /* Decode the ARM peripheral bit-band word into its target register. */
+        uintptr_t alias = address - 0x42000000U;
+        uint32_t  bit   = 1U << ((alias / 4U) % 32U);
+        address         = 0x40000000U + (alias / 128U) * 4U;
+        assert(address == HW_RCC + 0x40 || address == HW_RCC + 0x4c);
+        value = (sys_read32(address) & ~bit) | (value ? bit : 0);
+    }
     ++writes;
+    (void)reg_at(address);
+    if (address == HW_RCC + 0x40 && !(value & 0x80U)) assert(!(dma[0x3a0 / 4] & 0xffU));
+    if (address == HW_RCC + 0x4c) {
+        if (!(value & 0x10U)) assert(!spi[0x08 / 4]);
+        if (!(value & 1U)) assert(!(dma[0x3a0 / 4] & 0xffU));
+    }
     if ((address >= HW_A && address < HW_A + sizeof(gpio[0])) || (address >= HW_B && address < HW_B + sizeof(gpio[1]))) {
         unsigned p      = address >= HW_B;
         unsigned offset = (unsigned)(address - (p ? HW_B : HW_A));
@@ -178,13 +199,13 @@ void sys_write32(uint32_t value, uintptr_t address) {
                 assert(now_us - powered_since >= 1000 && now_us - data_low_since >= 280);
             }
             ++transfers;
-            needs_acquire  = true;
-            dma[0x3a0 / 4] = value & 1;
+            needs_acquire = true;
+            dma[0x3a0 / 4] |= 1U;
             active         = true;
             progress_reads = 0;
         } else if (!(stick_on_abort && active) && fault != DMA_STOP_TIMEOUT) {
-            dma[0x3a0 / 4] = 0;
-            active         = false;
+            dma[0x3a0 / 4] &= ~1U;
+            active = false;
         }
         return;
     }
@@ -217,15 +238,17 @@ static void assert_clean(void) {
     assert((gpio[1][0] >> 30) == 1 && !(gpio[1][0x14 / 4] & (1U << 15)));
     assert(!sched_depth && !irq_depth && !needs_acquire);
     assert(barriers >= 2);
+    assert(!(rcc[0x40 / 4] & 0x80U) && !(rcc[0x4c / 4] & 0x11U));
+    assert((rcc[0x40 / 4] & 0x10000000U) && (rcc[0x4c / 4] & 0x10000000U));
     for (unsigned i = 0; i < 32; ++i)
         assert(capture.before[i] == 0xc3 && capture.after[i] == 0xc3);
 }
 static void test_init_clocks_and_pins(void) {
     clear_model();
     assert(gmk_pixels_init() == 0);
-    assert((rcc[0x40 / 4] & 0x10000080) == 0x10000080);
+    assert((rcc[0x40 / 4] & 0x10000080) == 0x10000000);
     assert((rcc[0x48 / 4] & 0x10008060) == 0x10008060);
-    assert((rcc[0x4c / 4] & 0x10000011) == 0x10000011);
+    assert((rcc[0x4c / 4] & 0x10000011) == 0x10000000);
     assert(!(rcc[0x94 / 4] & 0x11));
     assert(((gpio[0][0] >> 10) & 3) == 1 && ((gpio[0][0] >> 16) & 3) == 1);
     assert((gpio[0][0x14 / 4] & 0x120) == 0);
@@ -234,6 +257,21 @@ static void test_init_clocks_and_pins(void) {
     /* A maintained matrix pin on the same port remains untouched. */
     assert(((gpio[1][0] >> 24) & 3) == ((0xa5a5a5a5U >> 24) & 3));
     assert(!sched_depth && !irq_depth);
+}
+static void test_shared_dma_clock_is_preserved(void) {
+    uint8_t rgb[3] = {7, 0, 0};
+    clear_model();
+    assert(gmk_pixels_init() == 0);
+    rcc[0x40 / 4] |= 0x80U;
+    rcc[0x4c / 4] |= 1U;
+    dma[0x3a0 / 4] = 2U; /* Another channel is running. */
+    assert(gmk_pixels_write(rgb, 1) == 0 && dma[0x3a0 / 4] == 2U);
+    assert(!(rcc[0x4c / 4] & (1U << 4)));
+    assert((rcc[0x40 / 4] & 0x80U) && (rcc[0x4c / 4] & 1U));
+    dma[0x3a0 / 4] = 0;
+    memset(rgb, 0, sizeof(rgb));
+    assert(gmk_pixels_write(rgb, 1) == 0);
+    assert(!(rcc[0x40 / 4] & 0x80U) && !(rcc[0x4c / 4] & 0x11U));
 }
 static void test_black_frame_cuts_physical_power_after_latch(void) {
     uint8_t lit[123]   = {0};
@@ -350,6 +388,7 @@ static void test_unrecoverable_active_dma_keeps_its_buffer_alive(void) {
     const uint8_t rgb[3]               = {0xff, 0, 0};
     assert(gmk_pixels_write(rgb, 1) == -EIO);
     assert(active && !ready && dma[0x398 / 4] == 0);
+    assert((rcc[0x40 / 4] & 0x80U) && (rcc[0x4c / 4] & 0x11U) == 0x11U);
     const uint8_t *borrowed     = (const uint8_t *)(uintptr_t)dma[0];
     const uint8_t  expected[12] = {0xee, 0xee, 0xee, 0xee, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88};
     assert(memcmp(borrowed, expected, sizeof(expected)) == 0);
@@ -487,6 +526,7 @@ int main(void) {
     test_black_frame_cuts_physical_power_after_latch();
     test_led_power_preserves_encoder_pin_configuration();
     test_init_clocks_and_pins();
+    test_shared_dma_clock_is_preserved();
     test_failed_black_frame_retries_before_power_off(DMA_ERROR);
     test_failed_black_frame_retries_before_power_off(DMA_TIMEOUT);
     test_failed_black_frame_retries_before_power_off(SPI_BUSY_TIMEOUT);

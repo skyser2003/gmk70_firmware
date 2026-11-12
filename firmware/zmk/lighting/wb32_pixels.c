@@ -23,6 +23,8 @@
 #define SPIM2 0x40009000U
 #define DMAC2 0x4000fc00U
 #define BIT32(n) (1U << (n))
+/* WB32FQ95 RM2905025 section 2.3.1: atomic peripheral bit-band aliases. */
+#define RCC_BIT(offset, bit) (0x42000000U + ((RCC + (offset) - 0x40000000U) * 32U) + (bit) * 4U)
 #define MAX_PIXELS 41U
 #define RESET_US 280U
 #define POWER_ON_US 1000U
@@ -36,6 +38,18 @@ static uint8_t encoded[MAX_PIXELS * 12U];
 static bool    ready;
 static bool    powered;
 K_MUTEX_DEFINE(pixels_lock);
+
+static void clocks(bool enabled) {
+    unsigned key = irq_lock();
+    /* Channel0 is ours. Leave another DMA user's controller clock alone. */
+    if (enabled || !(sys_read32(DMAC2 + 0x3a0) & 0xffU)) {
+        sys_write32(enabled, RCC_BIT(0x40, 7)); /* DMAC2 AHB bridge. */
+        sys_write32(enabled, RCC_BIT(0x4c, 0));
+    }
+    sys_write32(enabled, RCC_BIT(0x4c, 4));
+    (void)sys_read32(RCC + 0x4c); /* Complete clock changes before MMIO. */
+    irq_unlock(key);
+}
 
 static void led_power(bool enabled) {
     uint32_t rails = BIT32(5) | BIT32(8);
@@ -109,19 +123,14 @@ int gmk_pixels_init(void) {
     k_mutex_lock(&pixels_lock, K_FOREVER);
     ready = false;
     k_sched_lock();
+    clocks(true);
     unsigned key = irq_lock();
-    sys_set_bits(RCC + 0x40, BIT32(7)); /* DMAC2 AHB bridge. */
     sys_set_bits(RCC + 0x48, BIT32(15) | BIT32(5) | BIT32(6));
-    sys_set_bits(RCC + 0x4c, BIT32(0) | BIT32(4));
-    (void)sys_read32(RCC + 0x4c);
     irq_unlock(key);
     pulse_reset(BIT32(0) | BIT32(4));
-    sys_write32(0, SPIM2 + 0x08);
-    sys_write32(0, SPIM2 + 0x4c);
-    sys_write32(0, SPIM2 + 0x2c);
-    sys_write32(0x100, DMAC2 + 0x3a0);
-    clear_dma();
+    /* stop_hardware owns the disable/abort sequence after reset too. */
     bool stopped = stop_hardware();
+    clear_dma();
     /* Even a failed DMA stop leaves SPI disabled and PB15 GPIO-low. Keep an
      * unsuccessful initialization physically dark as well as unavailable. */
     k_busy_wait(RESET_US);
@@ -136,6 +145,7 @@ int gmk_pixels_init(void) {
     powered = false; /* Both active-high LED rails remain off until a lit frame. */
     irq_unlock(key);
     ready = stopped;
+    if (stopped) clocks(false);
     k_sched_unlock();
     k_mutex_unlock(&pixels_lock);
     return stopped ? 0 : -EIO;
@@ -171,6 +181,7 @@ int gmk_pixels_write(const uint8_t *rgb, size_t count) {
         }
     }
     k_sched_lock();
+    clocks(true);
     int result = 0;
     if (!stop_hardware()) {
         result = -EIO;
@@ -227,6 +238,8 @@ int gmk_pixels_write(const uint8_t *rgb, size_t count) {
         led_power(false);
     }
 out:
+    /* Only gate after proven DMA stop; a failed abort still owns its buffer. */
+    if (ready) clocks(false);
     k_sched_unlock();
     k_mutex_unlock(&pixels_lock);
     return result;

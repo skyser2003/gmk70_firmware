@@ -1,5 +1,8 @@
 # GMK70 event-driven idle power
 
+For the subsequent between-keypress clock-gating feasibility check and its
+implemented first step, see [runtime idle power](ZMK-RUNTIME-IDLE.md).
+
 The user requested all of the idle power improvements discussed on 2026-11-09,
 with ordinary typing, settings, mode changes and the resident updater preserved.
 Routine split communication must neither refresh inactivity nor keep a sleeping
@@ -108,8 +111,8 @@ pending.
 
 | Variant | Flash bytes / slot | Reserved RAM / capacity | Unallocated RAM |
 | --- | ---: | ---: | ---: |
-| Studio updater | 106,440 / 106,496 | 28,004 / 28,544 | 540 |
-| Studio standalone | 101,160 / 114,688 | 27,156 / 28,544 | 1,388 |
+| Studio updater | 106,496 / 106,496 | 28,004 / 28,544 | 540 |
+| Studio standalone | 101,216 / 114,688 | 27,156 / 28,544 | 1,388 |
 
 These figures include the unified [Studio controls menu](ZMK-BASIC-PARITY.md#integration-and-operation).
 Its metadata initializes 624 bytes of static RAM from compact name tables,
@@ -134,8 +137,9 @@ this image has no native BLE BAS or battery display widget. The sensor, radio
 queries, held indicators, charger inputs and critical-battery policy remain.
 Image checks require native reporting if a BAS/widget consumer is enabled.
 
-The updater has 56 flash bytes spare. Bounds checks remain strict; a future
-compiler or feature change may require more size work. Unallocated RAM is a
+The runtime idle clock-gating step fills the updater's application slot.
+Bounds checks remain strict; a future compiler or feature change may require
+more size work. Unallocated RAM is a
 linker quantity, not a measured runtime peak. Stack reservations are unchanged
 except that main now owns the scanner's reservation and its separate thread is
 removed. Serial, storage, system/USB work queues and interrupt stacks remain

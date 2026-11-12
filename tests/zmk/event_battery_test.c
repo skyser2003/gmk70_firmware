@@ -23,6 +23,37 @@ int k_msgq_put(struct k_msgq *q, const void *in, int timeout) {
 void k_msgq_purge(struct k_msgq *q) {
     q->count = q->head = q->tail = 0;
 }
+
+/* A bounded byte-delivery model, NOT a WB32/radio emulator. A stopped UART
+ * cannot receive a byte whose start precedes clock restoration. Restrict the
+ * negative cases to >=87 us: at least one WHOLE 115200/8N1 byte has already
+ * passed, so even a receiver able to restart during a start bit cannot recover
+ * the header. Feed the result to the actual ISR queue and maintained parser. */
+static void receive_window(unsigned ready_us, unsigned start_us) {
+    reset_model(true);
+    wired = true;
+    k_msgq_purge(&radio_rx);
+    atomic_clear(&radio_rx_fault);
+    const uint8_t frame[] = {0x5c, 73, (uint8_t)(0x5c + 73)};
+    for (unsigned i = 0; i < sizeof(frame); ++i)
+        if ((uint64_t)start_us * 115200U + (uint64_t)i * 10000000U >= (uint64_t)ready_us * 115200U) rx[rx_count++] = frame[i];
+    fake_uart_isr(NULL);
+    gmk_battery_poll();
+}
+static void test_stop_uart_feasibility(void) {
+    const unsigned latencies[] = {87, 100, 150, 200, 250};
+    for (unsigned i = 0; i < sizeof(latencies) / sizeof(*latencies); ++i) {
+        unsigned latency = latencies[i];
+        receive_window(0, 0); /* UART-safe shallow idle control. */
+        assert(snapshot().valid && snapshot().percentage == 73);
+        receive_window(latency, 0);
+        assert(!snapshot().valid && !snapshot().replies);
+        /* A wake-before-data agreement would preserve the same frame. */
+        receive_window(latency, latency + 1);
+        assert(snapshot().valid && snapshot().percentage == 73);
+    }
+    puts("runtime STOP feasibility: 87/100/150/200/250 us clock-off counterexamples lose the header; clocked and pre-wake controls decode it (bounded model only)");
+}
 int main(void) {
     reset_model(true);
     wired = true;
@@ -62,5 +93,6 @@ int main(void) {
     assert(snapshot().errors);
     /* Exercise read-only cache and the legacy fixture helper without hardware. */
     feed(bytes, 0);
+    test_stop_uart_feasibility();
     puts("event radio UART: ISR queue-only RX, service wake, deadline/retry, sleep mask/restore, overflow and cache passed");
 }
