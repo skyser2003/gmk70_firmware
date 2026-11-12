@@ -107,6 +107,7 @@ class ExternalGeneratorTests(unittest.TestCase):
                 ).split()
                 for source in (
                     "hardware.c",
+                    "rgb_idle.c",
                     "matrix_idle.c",
                     "pairing_hold.c",
                     "battery_holds.c",
@@ -118,6 +119,8 @@ class ExternalGeneratorTests(unittest.TestCase):
                 for task in (
                     "housekeeping_task",
                     "rgb_matrix_task",
+                    "ws2812_init",
+                    "ws2812_flush",
                     "host_keyboard_send",
                     "host_nkro_send",
                     "matrix_scan",

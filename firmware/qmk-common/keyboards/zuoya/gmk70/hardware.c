@@ -6,6 +6,7 @@
 #include "stock_power.h"
 #include "wireless.h"
 #include "pairing_hold.h"
+#include "rgb_idle.h"
 
 extern bool bat_full_flag;
 bool        gmk70_stock_cable_flag(void);
@@ -22,6 +23,7 @@ static bool battery_indicator_requested(void) {
 }
 
 void __wrap_housekeeping_task(void) {
+    gmk70_rgb_idle_poll(lpwr_get_state() == LPWR_NORMAL && !rgb_matrix_get_suspend_state());
     __real_housekeeping_task();
     // GUI changes and native split sync bypass the stock RGB toggle RPC.
     // Sleep/wake callbacks retain ownership outside normal operation.

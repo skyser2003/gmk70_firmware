@@ -6,6 +6,8 @@ SRC += battery_holds.c
 SRC += stock_power.c
 SRC += stock_lighting.c
 SRC += hardware.c
+SRC += rgb_idle.c
+LDFLAGS += -Wl,--wrap=ws2812_init -Wl,--wrap=ws2812_flush
 SRC += matrix_idle.c pairing_hold.c
 LDFLAGS += -Wl,--wrap=matrix_scan -Wl,--wrap=matrix_init
 LDFLAGS += -Wl,--wrap=nvm_dynamic_keymap_update_keycode -Wl,--wrap=nvm_dynamic_keymap_update_buffer -Wl,--wrap=nvm_dynamic_keymap_erase

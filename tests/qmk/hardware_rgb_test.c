@@ -14,10 +14,15 @@ static lpwr_state_t state;
 static uint32_t     now;
 static unsigned     power, power_writes, flushes, native_calls;
 static unsigned     housekeeping_calls;
-void                md_request_battery(void) {}
-static uint8_t      frame[77][3], shown[77][3];
-void                __wrap_rgb_matrix_task(void);
-void                __wrap_housekeeping_task(void);
+static unsigned     rgb_idle_calls;
+void                gmk70_rgb_idle_poll(bool allow_flush) {
+    assert(allow_flush == (state == LPWR_NORMAL && !suspended));
+    ++rgb_idle_calls;
+}
+void           md_request_battery(void) {}
+static uint8_t frame[77][3], shown[77][3];
+void           __wrap_rgb_matrix_task(void);
+void           __wrap_housekeeping_task(void);
 
 bool gmk70_stock_cable_flag(void) {
     return cable;
@@ -211,4 +216,5 @@ int main(void) {
     assert(gmk70_stock_battery_percentage() == 255);
     puts("PASS: RGB-off battery/charging frames, both halves, flush limit, release clearing and sleep/suspend ownership");
     puts("PASS: shared split/GUI RGB power recovery and native housekeeping dispatch");
+    assert(rgb_idle_calls == housekeeping_calls);
 }

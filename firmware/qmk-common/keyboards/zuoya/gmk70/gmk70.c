@@ -4,6 +4,7 @@
 #include QMK_KEYBOARD_H
 #include "wls/wls.h"
 #include "stock_lighting.h"
+#include "rgb_idle.h"
 #include "quantum.h"
 #include "process_rgb_matrix.h"
 #include "serial_usart.h"
@@ -458,6 +459,7 @@ void lpwr_power_down_hook(void) {
 void lpwr_clock_enable_user(void) {
     // V15 restores A9/A10 before re-enabling interrupts, even on rejected wakes.
     usart_init();
+    gmk70_rgb_idle_resume();
 }
 
 bool lpwr_host_resume_allowed_hook(void) {

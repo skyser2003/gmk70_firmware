@@ -1,4 +1,4 @@
-# ZMK power between keypresses
+# GMK70 power between keypresses
 
 The target is to retain the keyboard state and reduce power between events,
 without waiting for the ordinary five-minute sleep timeout or interrupting
@@ -37,7 +37,7 @@ Consequently, **unconditional brief STOP is not enabled**. This is an unresolved
 integration requirement, not a claim that the MCU lacks STOP or that a future
 transport design is impossible.
 
-## Implemented first step
+## ZMK implementation
 
 Keep the current UART-safe WFI fallback and gate inactive RGB-engine clocks:
 
@@ -94,10 +94,54 @@ The updater occupies 106,496/106,496 flash bytes; standalone occupies
 The updater retains resident ABI1 and padded resident CRC `0x698B3EC1`.
 No physical device was accessed, flashed or reset.
 
+## VIA and Vial implementation
+
+The same idle RGB clock policy is implemented for both QMK families in
+`firmware/qmk-common/keyboards/zuoya/gmk70/rgb_idle.c`. Their pinned ChibiOS
+WB32 driver feeds SPI through interrupts rather than ZMK's direct DMAC2 path.
+Use its normal `spiStop`/`spiStart` lifecycle to gate SPIM2; do not take ownership
+of other DMA channels, the settings QSPI bus or UART clocks.
+
+Both builds link wrappers around the unchanged upstream WS2812 initialization
+and flush functions. Save the native SPI configuration before `spiStop` clears
+its pointer. Park after initialization, then retire completed frames from the
+existing housekeeping task. Check both READY and the hardware BUSY flag before
+stopping; an active frame keeps its clock and borrowed encoder buffer. A
+contended housekeeping call skips parking rather than blocking the main loop.
+
+The next frame restores the native configuration, pin mux and reset-low guard
+before dispatching the original asynchronous encoder/transmitter. Overlapping
+flushes cannot rewrite an in-flight buffer: a pending flag coalesces the latest
+colors and housekeeping submits them after completion, without requiring a
+future animation tick. Sleep/suspend can park that pending work but cannot
+transmit it until normal operation resumes. The board's full-STOP
+clock-restoration hook leaves an already parked SPI driver off until that next
+frame. LED supply policy, saved
+RGB state, battery/charging overlays and both framework-specific half mappings
+remain with their existing owners.
+
+`tests/qmk/run_rgb_idle_tests.sh` links the actual pinned encoder from each
+framework with the maintained adapter and a bounded HAL model for both 36- and
+41-LED halves. It checks repeated frames, asynchronous completion, shifter BUSY,
+mutex contention, borrowed-buffer preservation, config-pointer clearing,
+restart/reset timing and parked/active full-STOP restoration. The original
+native encoder baseline and board battery/RGB tests remain in `make test`.
+These are software checks; current consumption and physical waveforms still
+require hardware measurement. Brief runtime STOP remains unqualified for all
+three builds because it needs the separate wake/data integration above.
+
+The VIA/Vial extension passed `make test check-tools`, including both native
+encoder fixtures and the shared build-integration checks. All five QMK variants
+(release/debug normal and updater, plus fixed default), all three Vial variants
+(normal/updater/unlocked updater), and both canonical ZMK variants built.
+The final QMK/Vial ELF driver tables reference the wrappers, their linker heap
+pools remain positive, and updater packages retain the pinned resident digest
+and CRC. No release or physical installation is performed by these checks.
+
 Hardware current savings remain unmeasured. Before a brief-STOP implementation,
 establish a reliable radio wake/data path, negotiate split readiness, wake for
 the next kernel deadline using a low-frequency timer, and qualify first-byte,
 held-key and first-key delivery. The full-sleep RTC's coarse hourly alarm is
-not a general runtime deadline scheduler. The updater's full application slot
+not a general runtime deadline scheduler. The ZMK updater's full application slot
 is another constraint; it must not be silently exceeded or solved
 by changing the resident/settings layout.
