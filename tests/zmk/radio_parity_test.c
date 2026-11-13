@@ -223,6 +223,7 @@ static void usb_quiet_interval_uses_last_transmitted_retry_across_wrap(void) {
     struct gmk_radio_core  radio;
     struct gmk_radio_frame frame;
     gmk_radio_core_init(&radio);
+    assert(gmk_radio_core_select(&radio, GMK_HOST_USB, false) == 0);
     uint32_t      started = UINT32_MAX - 100;
     const uint8_t usb[]   = {0xa6, 0x11, 0xb7};
     expect(&radio, started, usb, sizeof(usb));
@@ -240,6 +241,7 @@ static void explicit_bluetooth_selection_bypasses_usb_quiet_interval(void) {
     struct gmk_radio_core  radio;
     struct gmk_radio_frame frame;
     gmk_radio_core_init(&radio);
+    assert(gmk_radio_core_select(&radio, GMK_HOST_USB, false) == 0);
     const uint8_t usb[] = {0xa6, 0x11, 0xb7};
     expect(&radio, 0, usb, sizeof(usb));
     gmk_radio_core_ack(&radio);
@@ -261,6 +263,7 @@ static void failed_usb_selection_does_not_leave_a_quiet_lease(void) {
     struct gmk_radio_core  radio;
     struct gmk_radio_frame frame;
     gmk_radio_core_init(&radio);
+    assert(gmk_radio_core_select(&radio, GMK_HOST_USB, false) == 0);
     const uint8_t usb[] = {0xa6, 0x11, 0xb7};
     expect(&radio, 0, usb, sizeof(usb));
     for (uint32_t retry = 1; retry <= 50; ++retry)

@@ -124,6 +124,60 @@ static void settle(void) {
         gmk_radio_ack();
     }
 }
+static bool startup_frames(uint8_t expected_selection) {
+    struct gmk_radio_frame frame;
+    bool                   selected = false;
+    for (unsigned n = 0; n < 8 && gmk_radio_next(radio_test_time, &frame); ++n) {
+        assert(frame.bytes[0] == 0xa6);
+        if (core.inflight == GMK_RADIO_TX_SELECT) {
+            assert(expected_selection && frame.bytes[1] == expected_selection && !selected);
+            selected = true;
+        } else {
+            /* Charger maintenance and sleep configuration do not select USB
+             * or stop the stock ADC. They need no new startup delay. */
+            assert(frame.bytes[1] == 0x55 || frame.bytes[1] == 0x57 || frame.bytes[1] == 0x65);
+        }
+        gmk_radio_sent(radio_test_time, true);
+        gmk_radio_ack();
+    }
+    return selected;
+}
+static void startup_selects_only_the_first_stable_mode(void) {
+    const uint8_t commands[] = {0, 0x30, 0x31, 0x11};
+    for (uint8_t raw = 1; raw <= 3; ++raw) {
+        for (unsigned restore = 0; restore < 2; ++restore) {
+            start(true);
+            physical_raw = raw;
+            if (restore) assert(gmk_radio_restore_last_bt(GMK_HOST_BT5) == 0);
+            for (radio_test_time = 0; radio_test_time <= 50; ++radio_test_time) {
+                gmk_radio_poll();
+                run_work();
+                gmk_radio_charger_state(false, false);
+                uint8_t expected = radio_test_time == 50 ? (restore && raw == 2 ? 0x35 : commands[raw]) : 0;
+                assert(startup_frames(expected) == (radio_test_time == 50));
+            }
+            assert(core.selections == 1);
+        }
+    }
+    /* A fleeting USB/invalid position must not dispatch USB while the initial
+     * physical selector is still settling. */
+    start(true);
+    for (radio_test_time = 0; radio_test_time <= 130; ++radio_test_time) {
+        physical_raw = radio_test_time < 20 ? 2 : radio_test_time < 40 ? 3 : radio_test_time < 80 ? 0 : 2;
+        gmk_radio_poll();
+        run_work();
+        gmk_radio_charger_state(false, false);
+        assert(startup_frames(radio_test_time == 130 ? 0x31 : 0) == (radio_test_time == 130));
+    }
+    assert(core.selections == 1 && core.selected == GMK_HOST_BT1);
+    start(false);
+    physical_raw = 2;
+    for (radio_test_time = 0; radio_test_time <= 50; ++radio_test_time) {
+        gmk_radio_poll();
+        run_work();
+        assert(!startup_frames(0));
+    }
+}
 static void connect_radio(void) {
     assert(gmk_radio_select(2, false) == 0);
     run_work();
@@ -632,6 +686,7 @@ static void disconnected_deadline_scheduling(void) {
 #endif
 }
 int main(void) {
+    startup_selects_only_the_first_stable_mode();
     disconnected_deadline_scheduling();
     disconnected_sleep_deadline();
     wake_keeps_native_modifiers_and_is_silent_while_paused();

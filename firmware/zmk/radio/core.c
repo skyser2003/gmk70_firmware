@@ -81,7 +81,10 @@ static void abandon(struct gmk_radio_core *radio, uint8_t kind, uint32_t now) {
     ++radio->errors;
 }
 void gmk_radio_core_init(struct gmk_radio_core *radio) {
-    *radio = (struct gmk_radio_core){.last_bt = GMK_HOST_BT1, .pending_select = true};
+    /* Like QMK, let the debounced slider or an explicit request choose the
+     * first host. A speculative USB selection stops the stock ADC sampler
+     * even when Bluetooth is selected as soon as the slider settles. */
+    *radio = (struct gmk_radio_core){.last_bt = GMK_HOST_BT1};
 }
 int gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pair) {
     if (channel > GMK_HOST_DONGLE || (pair && !wireless(channel))) return -EINVAL;

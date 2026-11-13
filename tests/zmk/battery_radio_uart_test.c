@@ -32,6 +32,7 @@ static void ack(void) {
 }
 static void test_charging_updates_the_module_without_restarting(void) {
     reset_radio();
+    assert(gmk_radio_core_select(&radio, GMK_HOST_USB, false) == 0);
     gpio_registers[0][0x10 / 4] = 1U << 7;
     gmk_battery_poll();
     const uint8_t usb[] = {0xa6, 0x11, 0xb7};
@@ -436,6 +437,7 @@ static void test_failed_controls_release_query_scheduler_and_allow_drained_sleep
 }
 static void test_usb_selection_allows_module_sleep_before_telemetry_resumes(void) {
     reset_radio();
+    assert(gmk_radio_core_select(&radio, GMK_HOST_USB, false) == 0);
     gpio_registers[0][0x10 / 4] = 1U << 7;
     gmk_battery_poll();
     const uint8_t usb[] = {0xa6, 0x11, 0xb7};
@@ -475,6 +477,7 @@ static void test_usb_selection_allows_module_sleep_before_telemetry_resumes(void
 }
 static void test_module_acknowledgements_do_not_break_usb_quiet_interval(void) {
     reset_radio();
+    assert(gmk_radio_core_select(&radio, GMK_HOST_USB, false) == 0);
     gmk_battery_poll();
     ack();
     battery_test_time          = 1000;

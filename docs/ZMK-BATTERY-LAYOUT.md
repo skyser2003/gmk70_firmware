@@ -59,6 +59,30 @@ busy. State changes during a partial frame preserve that frame's original bytes.
 
 ### Fresh replies can contain an old measurement
 
+Initial host selection now follows the QMK selector: wait for the existing
+50 ms physical-switch debounce and select that destination directly. An explicit
+host shortcut can also make the first selection. Previously, ZMK queued USB at
+initialization before the switch settled, sending `A6 11 B7` even on a Bluetooth
+startup. That USB command can stop an already-running radio ADC sampler. Sleep
+configuration and charger maintenance still run during switch debounce; actual
+USB selection retains the recovery interval described below.
+
+The native radio-adapter regression fails before this correction and passes
+afterward. It exercises initial USB, Bluetooth and dongle selection, restored
+Bluetooth slots, switch bounce/invalid positions and the RIGHT role. Existing
+UART tests still verify charging updates, query/ACK ownership and actual USB
+sampler-recovery leases; they now request USB explicitly.
+
+A bounded replay of the captured stock instructions confirms that direct
+Bluetooth selection preserves an active ten-second sampler, whereas USB then
+Bluetooth leaves it stopped until a separate wake event in the tested state.
+The replay executes selector `0x10011A68`, power handler `0x100171D8`, sampler
+setup `0x10007094` and inactivity control `0x100121EC`. Timer, UART and BLE APIs
+are stubbed; asynchronous physical wake is supplied explicitly, not simulated
+automatically. This establishes a possible stale-sampler path, not proof that
+it caused a particular hardware incident or that the radio's percentage filter
+has been corrected. No radio firmware is changed.
+
 The stock radio image
 (`100e2ecdad6d253ea6d177d91579c2e22ea8d5968d3f09d691ed599f7fe7512c`)
 has a sampler-recovery requirement. USB selection (`A6 11`) posts its deep-power
