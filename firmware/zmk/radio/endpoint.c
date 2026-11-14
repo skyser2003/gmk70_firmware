@@ -41,7 +41,7 @@ void __wrap_zmk_hid_mouse_clear(void) {
 }
 #endif
 
-int __wrap_zmk_endpoint_send_report(uint16_t usage_page) {
+__attribute__((noipa)) int __wrap_zmk_endpoint_send_report(uint16_t usage_page) {
     if (!gmk_radio_selected()) return __real_zmk_endpoint_send_report(usage_page);
     switch (usage_page) {
         case HID_USAGE_KEY: {
@@ -113,5 +113,15 @@ void gmk_radio_clear_hid(void) {
     __wrap_zmk_hid_consumer_clear();
 #if defined(CONFIG_ZMK_POINTING) && CONFIG_ZMK_POINTING
     __wrap_zmk_hid_mouse_clear();
+#endif
+}
+void gmk_radio_resume_hid(void) {
+    /* A key can cancel pre-STOP after the radio received USB selection.
+     * Requeue native held state without clearing it or replaying mouse deltas. */
+    (void)__wrap_zmk_endpoint_send_report(HID_USAGE_KEY);
+    (void)__wrap_zmk_endpoint_send_report(HID_USAGE_CONSUMER);
+#if defined(CONFIG_ZMK_POINTING) && CONFIG_ZMK_POINTING
+    const uint8_t buttons[5] = {zmk_hid_get_mouse_report()->body.buttons};
+    (void)gmk_radio_submit_mouse(buttons);
 #endif
 }

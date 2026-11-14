@@ -35,14 +35,14 @@ void gmk_radio_release_mouse(void) {
 }
 static void drain(void) {
     struct gmk_radio_frame frame;
-    for (unsigned n = 0; n < 10 && gmk_radio_core_next(&radio, 0, &frame); ++n) {
+    for (unsigned n = 0; n < 10 && gmk_radio_core_next(&radio, 0, &frame, false); ++n) {
         gmk_radio_core_sent(&radio, 0, true);
         gmk_radio_core_ack(&radio);
     }
 }
 static void expect(const uint8_t *bytes, uint8_t length) {
     struct gmk_radio_frame frame;
-    assert(gmk_radio_core_next(&radio, 0, &frame));
+    assert(gmk_radio_core_next(&radio, 0, &frame, false));
     assert(frame.length == length && !memcmp(frame.bytes, bytes, length));
     gmk_radio_core_sent(&radio, 0, true);
 }
@@ -83,6 +83,16 @@ int main(void) {
     expect((const uint8_t[]){0xa3, 0, 0, 0xa3}, 4);
     expect(zero, sizeof(zero));
     assert(!radio.count && !radio.release && radio_mouse_native_calls == 1);
+    zmk_hid_get_keyboard_report()->body.modifiers = 4;
+    zmk_hid_get_keyboard_report()->body.keys[0]   = 4;
+    zmk_hid_get_consumer_report()->body.keys[0]   = 0xcd;
+    assert(!zmk_hid_mouse_button_press(0));
+    zmk_hid_mouse_movement_set(10, -10);
+    gmk_radio_resume_hid();
+    expect((const uint8_t[]){0xa1, 4, 0, 4, 0, 0, 0, 0, 0, 0xa9}, 10);
+    expect((const uint8_t[]){0xa3, 0xcd, 0, 0x70}, 4);
+    expect((const uint8_t[]){0xa8, 1, 0, 0, 0, 0, 0xa9}, 7);
+    assert(zmk_hid_get_keyboard_report()->body.modifiers == 4);
     gmk_radio_core_notification(&radio, 0x5b, 0x33);
     assert(zmk_endpoint_send_mouse_report() == -ENOTCONN);
     assert(!function_flip_native_errors);

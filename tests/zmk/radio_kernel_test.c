@@ -21,6 +21,16 @@ static unsigned                       fail_marker_edge;
 static struct zmk_hid_keyboard_report keyboard;
 static struct zmk_hid_consumer_report consumer;
 static uint8_t                        explicit_mods;
+#ifdef CONFIG_GMK70_POWER
+static unsigned host_suspends, host_resumes;
+void            gmk_power_radio_host(bool resume) {
+    assert(!radio_test_locked);
+    if (resume)
+        ++host_resumes;
+    else
+        ++host_suspends;
+}
+#endif
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 static bool ids_confirmed = true;
 bool        gmk_zmk_settings_ids_ready(void) {
@@ -72,6 +82,11 @@ void gmk_radio_clear_hid(void) {
         assert(gmk_radio_select(5, false) == 0);
     }
 }
+void gmk_radio_resume_hid(void) {
+    assert(!radio_test_locked);
+    const uint8_t report[8] = {keyboard.body.modifiers};
+    assert(!gmk_radio_submit_keyboard(report));
+}
 #ifndef CONFIG_GMK70_NATIVE_KEYMAP_TEST
 int __real_zmk_keymap_set_layer_binding_at_idx(zmk_keymap_layer_id_t layer, uint16_t index, const struct zmk_behavior_binding binding) {
     (void)layer;
@@ -107,19 +122,28 @@ static void run_work(void) {
     assert(!work.pending);
 }
 static void start(bool is_left) {
-    left            = is_left;
-    physical_raw    = 3;
-    radio_test_time = 0;
+    /* Simulate the CRT BSS initialization preceding each cold boot. */
+    core         = (struct gmk_radio_core){0};
+    selector     = (struct gmk_radio_selector){0};
+    mailbox      = (struct radio_request){0};
+    pair_raw     = 0;
+    cancel_epoch = 0;
+    quiesced = processing = disconnected = false;
+    work.pending                         = false;
+    left                                 = is_left;
+    physical_raw                         = 3;
+    radio_test_time                      = 0;
     clears = events = explicit_mods = 0;
     fail_marker_edge                = 0;
     inject = inject_release = false;
     keyboard                = (struct zmk_hid_keyboard_report){0};
     consumer                = (struct zmk_hid_consumer_report){0};
     assert(registered_init() == 0);
+    startup_pending = false; /* Other fixtures start after post-init; its real deadline is tested separately. */
 }
 static void settle(void) {
     struct gmk_radio_frame frame;
-    for (unsigned n = 0; n < 20 && gmk_radio_next(radio_test_time, &frame); ++n) {
+    for (unsigned n = 0; n < 20 && gmk_radio_next(radio_test_time, &frame, false); ++n) {
         gmk_radio_sent(radio_test_time, true);
         gmk_radio_ack();
     }
@@ -127,7 +151,7 @@ static void settle(void) {
 static bool startup_frames(uint8_t expected_selection) {
     struct gmk_radio_frame frame;
     bool                   selected = false;
-    for (unsigned n = 0; n < 8 && gmk_radio_next(radio_test_time, &frame); ++n) {
+    for (unsigned n = 0; n < 8 && gmk_radio_next(radio_test_time, &frame, false); ++n) {
         assert(frame.bytes[0] == 0xa6);
         if (core.inflight == GMK_RADIO_TX_SELECT) {
             assert(expected_selection && frame.bytes[1] == expected_selection && !selected);
@@ -252,9 +276,9 @@ static void notifications_and_fifo_use_existing_core(void) {
     assert(gmk_radio_submit_keyboard(released) == 0);
     assert(!gmk_radio_control_busy());
     struct gmk_radio_frame frame;
-    assert(gmk_radio_next(0, &frame) && frame.bytes[0] == 0xa1 && frame.bytes[3] == 4);
+    assert(gmk_radio_next(0, &frame, false) && frame.bytes[0] == 0xa1 && frame.bytes[3] == 4);
     gmk_radio_sent(0, true);
-    assert(gmk_radio_next(0, &frame) && frame.bytes[3] == 0);
+    assert(gmk_radio_next(0, &frame, false) && frame.bytes[3] == 0);
     gmk_radio_sent(0, true);
     const unsigned previous = clears;
     gmk_radio_notification(0x5b, 0x33);
@@ -276,9 +300,9 @@ static void nkro_submission_preserves_both_reports_and_role_gates(void) {
     memset(keyboard, 0, sizeof(keyboard));
     memset(overflow, 0, sizeof(overflow));
     struct gmk_radio_frame frame;
-    assert(gmk_radio_next(0, &frame) && frame.length == 10 && frame.bytes[0] == 0xa1 && frame.bytes[1] == 2 && frame.bytes[3] == 4);
+    assert(gmk_radio_next(0, &frame, false) && frame.length == 10 && frame.bytes[0] == 0xa1 && frame.bytes[1] == 2 && frame.bytes[3] == 4);
     gmk_radio_sent(0, true);
-    assert(gmk_radio_next(0, &frame) && frame.length == 16 && frame.bytes[0] == 0xa2 && frame.bytes[2] == 4 && frame.bytes[15] == 0xa6);
+    assert(gmk_radio_next(0, &frame, false) && frame.length == 16 && frame.bytes[0] == 0xa2 && frame.bytes[2] == 4 && frame.bytes[15] == 0xa6);
     gmk_radio_sent(0, true);
     physical_raw = 0;
     assert(gmk_radio_submit_nkro(keyboard, overflow) == -EPERM);
@@ -370,16 +394,17 @@ static void status_waits_while_control_retry_is_being_transmitted(void) {
     assert(gmk_radio_select(2, false) == 0);
     run_work();
     struct gmk_radio_frame frame;
-    assert(gmk_radio_next(0, &frame) && frame.bytes[0] == 0xa6);
+    assert(gmk_radio_next(0, &frame, false) && frame.bytes[0] == 0xa6);
     gmk_radio_sent(0, true);
-    assert(gmk_radio_next(10, &frame) && frame.bytes[0] == 0xa6);
+    assert(gmk_radio_next(10, &frame, false) && frame.bytes[0] == 0xa6);
     struct gmk_radio_status status;
     gmk_radio_get(&status);
     assert(status.waiting && gmk_radio_control_busy());
 }
 static void power_quiesce_requires_drained_reports_and_blocks_new_work(void) {
     start(true);
-    assert(!gmk_radio_idle() && !gmk_radio_power_quiesce(true));
+    assert(gmk_radio_idle() && gmk_radio_power_quiesce(true));
+    assert(gmk_radio_power_quiesce(false));
     connect_radio();
     const uint8_t keyboard_report[8] = {0, 0, 4};
     assert(gmk_radio_submit_keyboard(keyboard_report) == 0);
@@ -401,7 +426,7 @@ static void wake_keeps_native_modifiers_and_is_silent_while_paused(void) {
     assert(gmk_radio_idle() && gmk_radio_power_quiesce(true));
     gmk_radio_wake();
     struct gmk_radio_frame frame;
-    assert(!gmk_radio_next(radio_test_time + 100000, &frame));
+    assert(!gmk_radio_next(radio_test_time + 100000, &frame, false));
     assert(gmk_radio_submit_keyboard((const uint8_t[8]){0}) == -EBUSY);
     assert(gmk_radio_power_quiesce(false));
     keyboard.body.modifiers = 4;
@@ -438,7 +463,7 @@ static void slider_stable(uint8_t raw) {
 static void slider_send_select(uint8_t command) {
     struct gmk_radio_frame frame;
     for (unsigned count = 0; count < 6; ++count) {
-        assert(gmk_radio_next(radio_test_time, &frame));
+        assert(gmk_radio_next(radio_test_time, &frame, false));
         gmk_radio_sent(radio_test_time, true);
         if (frame.bytes[0] == 0xa6) {
             assert(frame.bytes[1] == command);
@@ -463,23 +488,23 @@ static void slider_transition_retires_an_old_select_lease(void) {
         slider_stable(cases[i].next_raw);
         struct gmk_radio_frame frame;
         assert(core.selected == cases[i].selected && !core.pending_pair);
-        assert(!gmk_radio_next(radio_test_time, &frame));
+        assert(!gmk_radio_next(radio_test_time, &frame, false));
         gmk_radio_ack();
         radio_test_time += 19;
-        assert(!gmk_radio_next(radio_test_time, &frame));
+        assert(!gmk_radio_next(radio_test_time, &frame, false));
         ++radio_test_time;
         slider_send_select(cases[i].next_command);
         assert(core.selected == cases[i].selected && core.active == cases[i].selected && core.waiting && !core.faulted);
     }
 }
-static void slider_bypasses_usb_quiet_without_reusing_its_ack(void) {
+static void slider_leaves_usb_without_reusing_its_ack(void) {
     start(true);
     slider_stable(3);
     slider_send_select(0x11);
     gmk_radio_ack();
     struct gmk_radio_frame frame;
     ++radio_test_time;
-    assert(!gmk_radio_next(radio_test_time, &frame) && gmk_radio_control_busy());
+    assert(!gmk_radio_next(radio_test_time, &frame, false) && !gmk_radio_control_busy());
     slider_stable(2);
     assert(radio_test_time < 5500);
     slider_send_select(0x31);
@@ -537,9 +562,9 @@ static void qualification_marker_is_only_fixed_f24_and_respects_held_input(void)
     run_work();
     assert(events == 2);
     struct gmk_radio_frame frame;
-    assert(gmk_radio_next(0, &frame) && frame.bytes[3] == 0x73);
+    assert(gmk_radio_next(0, &frame, false) && frame.bytes[3] == 0x73);
     gmk_radio_sent(0, true);
-    assert(gmk_radio_next(0, &frame) && frame.bytes[3] == 0);
+    assert(gmk_radio_next(0, &frame, false) && frame.bytes[3] == 0);
     gmk_radio_sent(0, true);
     assert(gmk_radio_test_marker() == 0);
     keyboard.body.keys[0] = 4;
@@ -597,10 +622,10 @@ static void native_shortcut_taps_switch_profiles_during_an_old_select(void) {
         run_work();
         assert(core.selected == next && !core.pending_pair && !selector.holding);
         struct gmk_radio_frame frame;
-        assert(!gmk_radio_next(radio_test_time, &frame));
+        assert(!gmk_radio_next(radio_test_time, &frame, false));
         gmk_radio_ack(); /* Old profile's delayed ACK must not complete the next one. */
         radio_test_time += 19;
-        assert(!gmk_radio_next(radio_test_time, &frame));
+        assert(!gmk_radio_next(radio_test_time, &frame, false));
         ++radio_test_time;
         slider_send_select(reverse ? 0x31 : 0x32);
         assert(core.waiting && core.active == next && !core.pending_pair);
@@ -685,13 +710,68 @@ static void disconnected_deadline_scheduling(void) {
     assert(gmk_radio_delay() == UINT32_MAX && gmk_radio_disconnected_timeout());
 #endif
 }
+static void delayed_startup_matches_qmk_command_order(void) {
+    start(true);
+    startup_pending = true;
+    slider_stable(2);
+    settle();
+    radio_test_time = 1999;
+    gmk_radio_poll();
+    run_work();
+    assert(!core.sleep_pending);
+    radio_test_time = 2000;
+    gmk_radio_poll();
+    run_work();
+    const uint8_t          commands[] = {0x55, 0x57, 0x70, 0x31};
+    struct gmk_radio_frame frame;
+    for (unsigned i = 0; i < sizeof(commands); ++i) {
+        assert(gmk_radio_next(radio_test_time, &frame, false));
+        assert(frame.length == 3 && frame.bytes[0] == 0xa6 && frame.bytes[1] == commands[i]);
+        assert(frame.bytes[2] == (uint8_t)(0xa6 + commands[i]));
+        gmk_radio_sent(radio_test_time, true);
+        gmk_radio_ack();
+    }
+    assert(!core.sleep_pending && core.selected == GMK_HOST_BT1);
+    gmk_radio_poll();
+    run_work();
+    settle();
+    radio_test_time = 4000;
+    gmk_radio_poll();
+    run_work();
+    assert(!core.sleep_pending);
+}
+static void cancelling_radio_stop_preserves_held_modifiers(void) {
+    start(true);
+    connect_radio();
+    keyboard.body.modifiers = 4;
+    unsigned before         = clears;
+    assert(gmk_radio_prepare_stop(true, false));
+    struct gmk_radio_frame frame;
+    assert(gmk_radio_next(radio_test_time, &frame, false) && frame.bytes[1] == 0x11);
+    gmk_radio_sent(radio_test_time, true);
+    gmk_radio_ack();
+    assert(core.stopping && gmk_radio_idle());
+    assert(gmk_radio_power_quiesce(true));
+    assert(gmk_radio_power_quiesce(false));
+    assert(!core.stopping && core.resuming && core.count == 1);
+    assert(clears == before && keyboard.body.modifiers == 4);
+}
 int main(void) {
+    delayed_startup_matches_qmk_command_order();
+    cancelling_radio_stop_preserves_held_modifiers();
+#ifdef CONFIG_GMK70_POWER
+    start(true);
+    host_suspends = host_resumes = 0;
+    gmk_radio_notification(0x60, 0);
+    gmk_radio_notification(0x60, 1);
+    assert(host_suspends == 1 && host_resumes == 1);
+#endif
     startup_selects_only_the_first_stable_mode();
     disconnected_deadline_scheduling();
     disconnected_sleep_deadline();
     wake_keeps_native_modifiers_and_is_silent_while_paused();
     slider_transition_retires_an_old_select_lease();
-    slider_bypasses_usb_quiet_without_reusing_its_ack();
+    slider_leaves_usb_without_reusing_its_ack();
     unsaved_native_ids_block_binding_mutation();
 #ifdef CONFIG_GMK70_NATIVE_KEYMAP_TEST
     native_keymap_remapping_tests();

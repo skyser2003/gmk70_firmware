@@ -7,10 +7,10 @@
 
 static void expect_frame(struct gmk_radio_core *radio, uint32_t now, const uint8_t *expected, unsigned length) {
     struct gmk_radio_frame frame;
-    assert(gmk_radio_core_next(radio, now, &frame));
+    assert(gmk_radio_core_next(radio, now, &frame, false));
     if (frame.length != length || memcmp(frame.bytes, expected, length)) fprintf(stderr, "Radio core frame at %u: got %02x/%02x (%u), expected %02x/%02x (%u)\n", now, frame.bytes[0], frame.bytes[1], (unsigned)frame.length, expected[0], expected[1], length);
     assert(frame.length == length && memcmp(frame.bytes, expected, length) == 0);
-    assert(!gmk_radio_core_next(radio, now, &frame)); /* Claimed frame is immutable until completed. */
+    assert(!gmk_radio_core_next(radio, now, &frame, false)); /* Claimed frame is immutable until completed. */
     gmk_radio_core_sent(radio, now, true);
 }
 static void expect_zero_overflow(struct gmk_radio_core *radio, uint32_t now) {
@@ -94,23 +94,23 @@ static void early_ack_partial_tx_and_bounded_retries(void) {
     struct gmk_radio_frame frame;
     gmk_radio_core_init(&radio);
     assert(gmk_radio_core_select(&radio, 6, false) == 0);
-    assert(gmk_radio_core_next(&radio, UINT32_MAX - 5, &frame));
+    assert(gmk_radio_core_next(&radio, UINT32_MAX - 5, &frame, false));
     gmk_radio_core_ack(&radio); /* An ACK before the frame has finished cannot complete it. */
     gmk_radio_core_sent(&radio, UINT32_MAX - 5, true);
     assert(radio.waiting);
-    assert(!gmk_radio_core_next(&radio, 3, &frame));
+    assert(!gmk_radio_core_next(&radio, 3, &frame, false));
     for (unsigned retry = 0; retry < 50; ++retry) {
         uint32_t      now      = 4 + retry * 10;
         const uint8_t select[] = {0xa6, 0x30, 0xd6};
         expect_frame(&radio, now, select, sizeof(select));
     }
-    assert(!gmk_radio_core_next(&radio, 504, &frame));
+    assert(!gmk_radio_core_next(&radio, 504, &frame, false));
     assert(!radio.waiting && radio.errors == 1 && radio.connection == GMK_RADIO_UNKNOWN);
     gmk_radio_core_ack(&radio); /* Unsolicited/duplicate ACK cannot revive the channel. */
     assert(!radio.waiting);
     assert(gmk_radio_core_select(&radio, 1, false) == 0);
-    assert(!gmk_radio_core_next(&radio, 505, &frame));
-    assert(gmk_radio_core_next(&radio, 524, &frame));
+    assert(!gmk_radio_core_next(&radio, 505, &frame, false));
+    assert(gmk_radio_core_next(&radio, 524, &frame, false));
     gmk_radio_core_sent(&radio, 534, false);
     assert(radio.errors == 2 && radio.connection == GMK_RADIO_UNKNOWN);
 }
@@ -138,16 +138,16 @@ static void failed_partial_frame_requires_explicit_reselection(void) {
     struct gmk_radio_frame frame;
     gmk_radio_core_init(&radio);
     assert(gmk_radio_core_select(&radio, 1, false) == 0);
-    assert(gmk_radio_core_next(&radio, 0, &frame));
+    assert(gmk_radio_core_next(&radio, 0, &frame, false));
     gmk_radio_core_sent(&radio, 10, false);
     const uint8_t release[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1}, consumer[] = {0xa3, 0, 0, 0xa3};
     expect_frame(&radio, 11, release, sizeof(release));
     expect_zero_overflow(&radio, 11);
     expect_frame(&radio, 11, consumer, sizeof(consumer));
     for (uint32_t now = 11; now < 100; ++now)
-        assert(!gmk_radio_core_next(&radio, now, &frame));
+        assert(!gmk_radio_core_next(&radio, now, &frame, false));
     assert(gmk_radio_core_select(&radio, 1, false) == 0);
-    assert(gmk_radio_core_next(&radio, 100, &frame));
+    assert(gmk_radio_core_next(&radio, 100, &frame, false));
 }
 static void nkro_snapshots_are_coherent_and_preserve_fast_taps(void) {
     struct gmk_radio_core radio;
@@ -175,7 +175,7 @@ static void interrupted_nkro_releases_both_formats_before_host_controls(void) {
         const uint8_t keyboard[8]  = {0, 0, 4};
         const uint8_t overflow[14] = {0, 4};
         assert(gmk_radio_core_nkro(&radio, keyboard, overflow) == 0);
-        assert(gmk_radio_core_next(&radio, 2, &frame) && frame.bytes[0] == 0xa1);
+        assert(gmk_radio_core_next(&radio, 2, &frame, false) && frame.bytes[0] == 0xa1);
         if (action == 0)
             gmk_radio_core_release(&radio, false);
         else if (action == 1)
@@ -198,9 +198,9 @@ static void interrupted_nkro_releases_both_formats_before_host_controls(void) {
             const uint8_t control[] = {0xa6, action == 1 ? 0x32 : 0x51, action == 1 ? 0xd8 : 0xf7};
             expect_frame(&radio, 3, control, sizeof(control));
         } else if (action == 0)
-            assert(!gmk_radio_core_next(&radio, 3, &frame));
+            assert(!gmk_radio_core_next(&radio, 3, &frame, false));
         else {
-            assert(gmk_radio_core_next(&radio, 3, &frame) && frame.bytes[0] == 0xa1 && frame.bytes[3] == 4);
+            assert(gmk_radio_core_next(&radio, 3, &frame, false) && frame.bytes[0] == 0xa1 && frame.bytes[3] == 4);
             gmk_radio_core_sent(&radio, 3, true);
             const uint8_t extra[] = {0xa2, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa6};
             expect_frame(&radio, 3, extra, sizeof(extra));
@@ -214,9 +214,9 @@ static void failed_overflow_requires_clears_before_reselection(void) {
     const uint8_t keyboard[8]  = {0, 0, 4};
     const uint8_t overflow[14] = {0, 4};
     assert(gmk_radio_core_nkro(&radio, keyboard, overflow) == 0);
-    assert(gmk_radio_core_next(&radio, 2, &frame) && frame.bytes[0] == 0xa1);
+    assert(gmk_radio_core_next(&radio, 2, &frame, false) && frame.bytes[0] == 0xa1);
     gmk_radio_core_sent(&radio, 2, true);
-    assert(gmk_radio_core_next(&radio, 2, &frame) && frame.bytes[0] == 0xa2);
+    assert(gmk_radio_core_next(&radio, 2, &frame, false) && frame.bytes[0] == 0xa2);
     gmk_radio_core_sent(&radio, 2, false);
     assert(radio.faulted && radio.clear_requested);
     assert(gmk_radio_core_select(&radio, 2, false) == 0);
@@ -248,9 +248,9 @@ static void newest_profile_survives_an_old_select_lease(void) {
     gmk_radio_core_ack(&radio); /* A completed old lease still needs retirement. */
     assert(!gmk_radio_core_select(&radio, GMK_HOST_BT2, false));
     assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
-    assert(!gmk_radio_core_next(&radio, 3, &frame));
+    assert(!gmk_radio_core_next(&radio, 3, &frame, false));
     gmk_radio_core_ack(&radio); /* Late old ACK remains in the retirement window. */
-    assert(!gmk_radio_core_next(&radio, 22, &frame));
+    assert(!gmk_radio_core_next(&radio, 22, &frame, false));
     assert(gmk_radio_core_control_busy(&radio));
     expect_releases(&radio, 23);
     expect_frame(&radio, 23, first, sizeof(first));
@@ -267,18 +267,18 @@ static void newer_selection_survives_a_claimed_frame_success_or_failure(void) {
         struct gmk_radio_frame frame, next;
         gmk_radio_core_init(&radio);
         assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
-        assert(gmk_radio_core_next(&radio, 0, &frame));
+        assert(gmk_radio_core_next(&radio, 0, &frame, false));
         const struct gmk_radio_frame original = frame;
         assert(!gmk_radio_core_select(&radio, GMK_HOST_BT2, false));
         assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
-        assert(!gmk_radio_core_next(&radio, 1, &next) && !memcmp(&frame, &original, sizeof(frame)));
+        assert(!gmk_radio_core_next(&radio, 1, &next, false) && !memcmp(&frame, &original, sizeof(frame)));
         gmk_radio_core_ack(&radio);
         assert(!radio.waiting && radio.inflight == GMK_RADIO_TX_SELECT);
         gmk_radio_core_sent(&radio, 2, failed == 0);
         assert(!radio.faulted && radio.pending_select);
-        assert(!gmk_radio_core_next(&radio, 3, &next));
+        assert(!gmk_radio_core_next(&radio, 3, &next, false));
         gmk_radio_core_ack(&radio);
-        assert(!gmk_radio_core_next(&radio, 21, &next));
+        assert(!gmk_radio_core_next(&radio, 21, &next, false));
         const uint8_t first[] = {0xa6, 0x31, 0xd7};
         expect_frame(&radio, 23, first, sizeof(first));
         assert(radio.waiting && radio.active == GMK_HOST_BT1);
@@ -294,9 +294,9 @@ static void explicit_selection_cancels_old_pair_retries_even_on_the_same_profile
         const uint8_t pair[] = {0xa6, 0x51, 0xf7};
         expect_frame(&radio, 2, pair, sizeof(pair));
         assert(!gmk_radio_core_select(&radio, channel, false));
-        assert(!gmk_radio_core_next(&radio, 3, &frame));
+        assert(!gmk_radio_core_next(&radio, 3, &frame, false));
         gmk_radio_core_ack(&radio);
-        assert(!gmk_radio_core_next(&radio, 22, &frame));
+        assert(!gmk_radio_core_next(&radio, 22, &frame, false));
         expect_releases(&radio, 23);
         const uint8_t select[] = {0xa6, channel == GMK_HOST_BT1 ? 0x31 : 0x32, channel == GMK_HOST_BT1 ? 0xd7 : 0xd8};
         expect_frame(&radio, 23, select, sizeof(select));
@@ -311,15 +311,15 @@ static void attributed_connected_status_retires_a_missing_select_ack(void) {
     const uint8_t first[] = {0xa6, 0x31, 0xd7};
     expect_frame(&radio, 0, first, sizeof(first));
     gmk_radio_core_notification(&radio, 0x5b, 0x32);
-    assert(!gmk_radio_core_next(&radio, 1, &frame));
+    assert(!gmk_radio_core_next(&radio, 1, &frame, false));
     gmk_radio_core_ack(&radio);
-    assert(!gmk_radio_core_next(&radio, 20, &frame) && gmk_radio_core_control_busy(&radio));
+    assert(!gmk_radio_core_next(&radio, 20, &frame, false) && gmk_radio_core_control_busy(&radio));
     expect_releases(&radio, 21);
     const uint8_t key[8] = {0, 0, 4}, down[] = {0xa1, 0, 0, 4, 0, 0, 0, 0, 0, 0xa5};
     assert(!gmk_radio_core_report(&radio, false, key));
     expect_frame(&radio, 22, down, sizeof(down));
     assert(!radio.faulted && radio.connection == GMK_RADIO_CONNECTED && radio.errors == 1);
-    assert(!gmk_radio_core_next(&radio, 600, &frame));
+    assert(!gmk_radio_core_next(&radio, 600, &frame, false));
     assert(!gmk_radio_core_report(&radio, false, key));
 }
 static void late_connected_status_recovers_only_a_fully_sent_select(void) {
@@ -331,17 +331,17 @@ static void late_connected_status_recovers_only_a_fully_sent_select(void) {
     expect_frame(&radio, 0, first, sizeof(first));
     for (uint32_t now = 10; now <= 500; now += 10)
         expect_frame(&radio, now, first, sizeof(first));
-    assert(!gmk_radio_core_next(&radio, 510, &frame));
+    assert(!gmk_radio_core_next(&radio, 510, &frame, false));
     assert(radio.faulted && gmk_radio_core_report(&radio, false, key) == -ENOTCONN);
     gmk_radio_core_notification(&radio, 0x5b, 0x32);
     gmk_radio_core_ack(&radio);
-    assert(!gmk_radio_core_next(&radio, 529, &frame));
+    assert(!gmk_radio_core_next(&radio, 529, &frame, false));
     expect_releases(&radio, 530);
     assert(!radio.faulted && !gmk_radio_core_report(&radio, false, key));
 
     gmk_radio_core_init(&radio);
     assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
-    assert(gmk_radio_core_next(&radio, 0, &frame));
+    assert(gmk_radio_core_next(&radio, 0, &frame, false));
     gmk_radio_core_sent(&radio, 1, false);
     gmk_radio_core_notification(&radio, 0x5b, 0x32);
     assert(radio.faulted && gmk_radio_core_report(&radio, false, key) == -ENOTCONN);
@@ -355,9 +355,9 @@ static void same_profile_reselection_recovers_after_ack_timeout(void) {
     expect_frame(&radio, 0, first, sizeof(first));
     for (uint32_t now = 10; now <= 500; now += 10)
         expect_frame(&radio, now, first, sizeof(first));
-    assert(!gmk_radio_core_next(&radio, 510, &frame) && radio.faulted);
+    assert(!gmk_radio_core_next(&radio, 510, &frame, false) && radio.faulted);
     assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
-    assert(!gmk_radio_core_next(&radio, 511, &frame));
+    assert(!gmk_radio_core_next(&radio, 511, &frame, false));
     expect_releases(&radio, 530);
     expect_frame(&radio, 530, first, sizeof(first));
     gmk_radio_core_ack(&radio);
@@ -372,9 +372,9 @@ static void ack_retirement_window_spans_uptime_rollover(void) {
     const uint8_t first[] = {0xa6, 0x31, 0xd7};
     expect_frame(&radio, UINT32_MAX - 5, first, sizeof(first));
     gmk_radio_core_notification(&radio, 0x5b, 0x32);
-    assert(!gmk_radio_core_next(&radio, UINT32_MAX - 4, &frame));
+    assert(!gmk_radio_core_next(&radio, UINT32_MAX - 4, &frame, false));
     gmk_radio_core_ack(&radio);
-    assert(!gmk_radio_core_next(&radio, 14, &frame));
+    assert(!gmk_radio_core_next(&radio, 14, &frame, false));
     expect_releases(&radio, 15);
     const uint8_t key[8] = {0, 0, 4};
     assert(!gmk_radio_core_report(&radio, false, key));
@@ -409,12 +409,12 @@ static void wake_reselects_same_host_and_preserves_alt_tab_snapshots(void) {
             expect_releases(&radio, 1000);
             for (unsigned i = 0; i < 3; ++i) {
                 struct gmk_radio_frame frame;
-                assert(gmk_radio_core_next(&radio, 1001 + i, &frame));
+                assert(gmk_radio_core_next(&radio, 1001 + i, &frame, false));
                 assert(frame.bytes[0] == 0xa1 && frame.bytes[1] == (i < 2 ? 4 : 0));
                 assert(frame.bytes[3] == (i ? 0 : 0x2b));
                 gmk_radio_core_sent(&radio, 1001 + i, true);
                 if (nkro) {
-                    assert(gmk_radio_core_next(&radio, 1001 + i, &frame));
+                    assert(gmk_radio_core_next(&radio, 1001 + i, &frame, false));
                     assert(frame.bytes[0] == 0xa2);
                     assert(!memcmp(frame.bytes + 1, i ? overflow_up : overflow_down, 14));
                     gmk_radio_core_sent(&radio, 1001 + i, true);
@@ -439,7 +439,7 @@ static void lost_connected_status_retries_stop_and_never_pair(void) {
         for (uint32_t elapsed = 0; elapsed < 100000; elapsed += 100) {
             struct gmk_radio_frame frame;
             uint32_t               now = first + elapsed;
-            for (unsigned n = 0; n < 8 && gmk_radio_core_next(&radio, now, &frame); ++n) {
+            for (unsigned n = 0; n < 8 && gmk_radio_core_next(&radio, now, &frame, false); ++n) {
                 if (radio.inflight == GMK_RADIO_TX_SELECT) ++selects;
                 assert(radio.inflight != GMK_RADIO_TX_PAIR);
                 gmk_radio_core_sent(&radio, now, true);

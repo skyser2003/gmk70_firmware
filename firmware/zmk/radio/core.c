@@ -21,31 +21,27 @@ enum {
 static bool wireless(uint8_t channel) {
     return channel > GMK_HOST_USB && channel <= GMK_HOST_DONGLE;
 }
-static bool usb_quiet(const struct gmk_radio_core *radio) {
-    return radio->last_control == GMK_RADIO_TX_SELECT && radio->selected == GMK_HOST_USB && radio->active == GMK_HOST_USB && radio->accept_status && !radio->faulted;
-}
 static uint32_t connect_delay(const struct gmk_radio_core *radio, uint32_t now) {
     if ((!radio->connect_attempts && !radio->resuming) || (radio->connection != GMK_RADIO_UNKNOWN && radio->connection != GMK_RADIO_DISCONNECTED)) return UINT32_MAX;
     uint32_t elapsed = now - radio->connect_at;
     return elapsed >= CONNECT_WAIT_MS ? 0 : CONNECT_WAIT_MS - elapsed;
 }
 static bool acknowledged_control(uint8_t kind) {
-    return (kind >= GMK_RADIO_TX_SELECT && kind <= GMK_RADIO_TX_PAIR) || (kind >= GMK_RADIO_TX_SLEEP_BT && kind <= GMK_RADIO_TX_CHARGER);
+    return kind >= GMK_RADIO_TX_SELECT && kind <= GMK_RADIO_TX_STOP;
 }
 static void discard(struct gmk_radio_core *radio) {
     radio->head = radio->count = 0;
     radio->overflow_pending    = false;
 }
 static void retire(struct gmk_radio_core *radio, uint8_t kind) {
-    /* One flash lookup keeps the six retirement cases inside the board's
-     * application budget without reserving mutable state. Other kinds have
-     * no one-shot bit to consume. */
-    static const uint8_t masks[GMK_RADIO_TX_SLEEP_DONGLE - GMK_RADIO_TX_RELEASE_KEYBOARD + 1] = {
-        [GMK_RADIO_TX_RELEASE_KEYBOARD - GMK_RADIO_TX_RELEASE_KEYBOARD] = 1, [GMK_RADIO_TX_RELEASE_CONSUMER - GMK_RADIO_TX_RELEASE_KEYBOARD] = 2, [GMK_RADIO_TX_RELEASE_NKRO - GMK_RADIO_TX_RELEASE_KEYBOARD] = 4, [GMK_RADIO_TX_RELEASE_MOUSE - GMK_RADIO_TX_RELEASE_KEYBOARD] = 8, [GMK_RADIO_TX_SLEEP_BT - GMK_RADIO_TX_RELEASE_KEYBOARD] = 1, [GMK_RADIO_TX_SLEEP_DONGLE - GMK_RADIO_TX_RELEASE_KEYBOARD] = 2,
+    /* One flash lookup shares release/maintenance retirement. Private tags
+     * never enter a wire packet or the saved keymap/settings representation. */
+    static const uint8_t masks[GMK_RADIO_TX_RELEASE_MOUSE + 1] = {
+        [GMK_RADIO_TX_RELEASE_KEYBOARD] = 1, [GMK_RADIO_TX_RELEASE_CONSUMER] = 2, [GMK_RADIO_TX_RELEASE_NKRO] = 4, [GMK_RADIO_TX_RELEASE_MOUSE] = 8, [GMK_RADIO_TX_SLEEP_BT] = 1, [GMK_RADIO_TX_SLEEP_DONGLE] = 2, [GMK_RADIO_TX_VERSION] = 4, [GMK_RADIO_TX_STOP] = 16,
     };
-    if (kind < GMK_RADIO_TX_RELEASE_KEYBOARD || kind > GMK_RADIO_TX_SLEEP_DONGLE) return;
-    uint8_t *pending = kind < GMK_RADIO_TX_SLEEP_BT ? &radio->release : &radio->sleep_pending;
-    *pending &= (uint8_t)~masks[kind - GMK_RADIO_TX_RELEASE_KEYBOARD];
+    if (kind > GMK_RADIO_TX_RELEASE_MOUSE) return;
+    uint8_t *pending = kind >= GMK_RADIO_TX_RELEASE_KEYBOARD ? &radio->release : &radio->sleep_pending;
+    *pending &= (uint8_t)~masks[kind];
 }
 static void drain(struct gmk_radio_core *radio, uint8_t kind, uint32_t now) {
     /* ACKs carry no command ID. Retire the old owner before another control
@@ -88,6 +84,8 @@ void gmk_radio_core_init(struct gmk_radio_core *radio) {
 }
 int gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pair) {
     if (channel > GMK_HOST_DONGLE || (pair && !wireless(channel))) return -EINVAL;
+    radio->stopping = false;
+    radio->sleep_pending &= (uint8_t)~16U;
     bool outstanding = radio->waiting || radio->inflight;
     bool select      = channel != radio->active || !radio->accept_status || radio->faulted || radio->waiting || acknowledged_control(radio->inflight) || (wireless(channel) && radio->connection != GMK_RADIO_CONNECTED);
     if (!pair && channel == radio->selected && !radio->pending_select && !radio->pending_pair && !outstanding && !select) return 0;
@@ -109,6 +107,9 @@ int gmk_radio_core_select(struct gmk_radio_core *radio, uint8_t channel, bool pa
     return 0;
 }
 void gmk_radio_core_wake(struct gmk_radio_core *radio) {
+    if (radio->stopping) radio->clear_requested = false;
+    radio->stopping = false;
+    radio->sleep_pending &= (uint8_t)~16U;
     if (!wireless(radio->selected)) return;
     radio->connection = GMK_RADIO_UNKNOWN;
     (void)gmk_radio_core_select(radio, radio->selected, false);
@@ -152,14 +153,21 @@ void gmk_radio_core_release_mouse(struct gmk_radio_core *radio) {
 void gmk_radio_core_enable_sleep(struct gmk_radio_core *radio) {
     radio->sleep_pending |= 3;
 }
+void gmk_radio_core_startup(struct gmk_radio_core *radio) {
+    /* QMK's two-second post-init sequence: 55, 57, 70, current host. */
+    radio->sleep_pending |= 15;
+}
+bool gmk_radio_core_prepare_stop(struct gmk_radio_core *radio, bool special, bool cable) {
+    if ((radio->selected == GMK_HOST_USB && cable) || (!special && radio->connection == GMK_RADIO_CONNECTED)) return false;
+    radio->stopping = true;
+    radio->sleep_pending |= 16;
+    return true;
+}
 void gmk_radio_core_charger(struct gmk_radio_core *radio, bool cable, bool full) {
     radio->charge_mode = cable ? (full ? 0x66 : 0x64) : 0x65;
 }
-bool gmk_radio_core_control_busy(const struct gmk_radio_core *radio) {
-    return radio->waiting || radio->obsolete || radio->draining || radio->pending_select || radio->pending_pair || radio->sleep_pending || radio->charge_mode != radio->charge_sent || usb_quiet(radio) || acknowledged_control(radio->inflight);
-}
-bool gmk_radio_core_battery_ready(const struct gmk_radio_core *radio, uint32_t now) {
-    return !gmk_radio_core_control_busy(radio) && !radio->inflight && !radio->release && !radio->overflow_pending && connect_delay(radio, now) != 0;
+__attribute__((noinline)) bool gmk_radio_core_control_busy(const struct gmk_radio_core *radio) {
+    return radio->waiting || radio->obsolete || radio->draining || radio->pending_select || radio->pending_pair || radio->sleep_pending || (!radio->stopping && radio->charge_mode != radio->charge_sent) || acknowledged_control(radio->inflight);
 }
 bool gmk_radio_core_idle(const struct gmk_radio_core *radio) {
     /* A passive diagnostic fault owns no UART/control lease. The battery
@@ -174,8 +182,6 @@ uint32_t gmk_radio_core_delay(const struct gmk_radio_core *radio, uint32_t now) 
         interval = 20;
     else if (radio->waiting)
         interval = 10;
-    else if (usb_quiet(radio))
-        interval = 5500;
     else if (radio->release || radio->pending_select || radio->pending_pair || radio->sleep_pending || radio->charge_mode != radio->charge_sent || (radio->count && radio->connection == GMK_RADIO_CONNECTED && radio->active == radio->selected))
         return 1;
     else if (radio->charge_mode) {
@@ -191,7 +197,7 @@ int gmk_radio_core_nkro(struct gmk_radio_core *radio, const uint8_t keyboard[8],
     return enqueue(radio, GMK_RADIO_TX_NKRO, keyboard, overflow);
 }
 void gmk_radio_core_notification(struct gmk_radio_core *radio, uint8_t command, uint8_t value) {
-    if (command != 0x5b || !radio->accept_status || !wireless(radio->active) || radio->active != radio->selected) return;
+    if (radio->stopping || command != 0x5b || !radio->accept_status || !wireless(radio->active) || radio->active != radio->selected) return;
     uint8_t connection;
     switch (value) {
         case 0x31:
@@ -239,12 +245,13 @@ static bool claim(struct gmk_radio_core *radio, struct gmk_radio_frame *frame, e
     return true;
 }
 static bool control(struct gmk_radio_core *radio, struct gmk_radio_frame *frame, enum gmk_radio_tx_kind kind, uint8_t channel) {
-    radio->tx_channel = channel;
-    frame->bytes[0]   = 0xa6;
-    frame->bytes[1]   = kind == GMK_RADIO_TX_CHARGER ? channel : kind == GMK_RADIO_TX_PAIR ? 0x51 : kind == GMK_RADIO_TX_SLEEP_BT ? 0x55 : kind == GMK_RADIO_TX_SLEEP_DONGLE ? 0x57 : channel == GMK_HOST_USB ? 0x11 : channel == GMK_HOST_DONGLE ? 0x30 : (uint8_t)(0x30 + channel);
+    static const uint8_t maintenance[] = {0x55, 0x57, 0, 0x70, 0x11};
+    radio->tx_channel                  = channel;
+    frame->bytes[0]                    = 0xa6;
+    frame->bytes[1]                    = kind >= GMK_RADIO_TX_SLEEP_BT ? (kind == GMK_RADIO_TX_CHARGER ? channel : maintenance[kind - GMK_RADIO_TX_SLEEP_BT]) : kind == GMK_RADIO_TX_PAIR ? 0x51 : channel == GMK_HOST_USB ? 0x11 : channel == GMK_HOST_DONGLE ? 0x30 : (uint8_t)(0x30 + channel);
     return claim(radio, frame, kind, 3);
 }
-bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_radio_frame *frame) {
+__attribute__((noipa)) enum gmk_radio_turn gmk_radio_core_next(struct gmk_radio_core *restrict radio, uint32_t now, struct gmk_radio_frame *restrict frame, bool battery_due) {
     if (radio->inflight) return false;
     if (radio->obsolete || (radio->waiting && radio->last_control == GMK_RADIO_TX_SELECT && radio->accept_status && radio->connection == GMK_RADIO_CONNECTED)) {
         if (!radio->obsolete) ++radio->errors;
@@ -258,10 +265,11 @@ bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_
     memset(frame, 0, sizeof(*frame));
     if (radio->waiting) {
         if ((uint32_t)(now - radio->sent_at) < 10) return false;
-        if (radio->retries == (radio->last_control == GMK_RADIO_TX_CHARGER ? 1 : 50)) {
-            if (radio->last_control == GMK_RADIO_TX_CHARGER) {
-                /* Repeat the idempotent state on its next heartbeat. A lost
-                 * charger ACK must not disconnect typing or postpone sleep. */
+        if (radio->retries == 50) {
+            if (radio->last_control >= GMK_RADIO_TX_SLEEP_BT) {
+                /* QMK drops an exhausted maintenance command after 50
+                 * retries without disconnecting the selected host. */
+                retire(radio, radio->last_control);
                 radio->waiting = false;
                 ++radio->errors;
                 return false;
@@ -282,16 +290,9 @@ bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_
         radio->retransmit = true;
         return control(radio, frame, (enum gmk_radio_tx_kind)radio->last_control, radio->last_control == GMK_RADIO_TX_CHARGER ? radio->tx_channel : radio->active);
     }
-    if (usb_quiet(radio)) {
-        /* USB selection stops the stock module's ADC. Let its four-second
-         * UART idle timer sleep once; the next command wakes its ten-second
-         * ADC sampler. Resume the ordinary cadence after this one interval.
-         * ACKs remain with the battery UART owner and do not reset that timer. */
-        if ((uint32_t)(now - radio->sent_at) < 5500U) return false;
-        radio->last_control = GMK_RADIO_TX_NONE;
-    }
+    if (radio->stopping && !(radio->sleep_pending & 16)) return false;
     radio->retransmit = false;
-    if (!connect_delay(radio, now)) {
+    if (!radio->stopping && !connect_delay(radio, now)) {
         if (radio->connect_attempts)
             radio->pending_select = true;
         else {
@@ -318,6 +319,7 @@ bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_
         frame->bytes[0] = 0xa8;
         return claim(radio, frame, GMK_RADIO_TX_RELEASE_MOUSE, 7);
     }
+    if (radio->sleep_pending & 16) return control(radio, frame, GMK_RADIO_TX_STOP, GMK_HOST_USB);
     if (radio->pending_select || (!radio->faulted && radio->selected != radio->active)) {
         radio->connect_at = now;
         if (radio->connect_attempts) --radio->connect_attempts;
@@ -326,7 +328,18 @@ bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_
     if (radio->pending_pair) return control(radio, frame, GMK_RADIO_TX_PAIR, radio->selected);
     if (radio->sleep_pending & 1) return control(radio, frame, GMK_RADIO_TX_SLEEP_BT, radio->active);
     if (radio->sleep_pending & 2) return control(radio, frame, GMK_RADIO_TX_SLEEP_DONGLE, radio->active);
+    if (radio->sleep_pending & 4) return control(radio, frame, GMK_RADIO_TX_VERSION, radio->active);
+    if (radio->sleep_pending & 8) {
+        radio->sleep_pending &= (uint8_t)~8U;
+        radio->connection      = GMK_RADIO_UNKNOWN;
+        radio->clear_requested = true;
+        discard(radio);
+        return control(radio, frame, GMK_RADIO_TX_SELECT, radio->selected);
+    }
     if (radio->charge_mode && (radio->charge_mode != radio->charge_sent || (uint32_t)(now - radio->charge_at) >= 1000U)) return control(radio, frame, GMK_RADIO_TX_CHARGER, radio->charge_mode);
+    /* One arbiter gives due telemetry a turn before ordinary HID while
+     * retaining controls, zero releases and complete A1/A2 pair ownership. */
+    if (battery_due && !radio->overflow_pending) return GMK_RADIO_TURN_BATTERY;
     if (!radio->count || radio->connection != GMK_RADIO_CONNECTED || radio->active != radio->selected) return false;
     const struct gmk_radio_report *report = &radio->queue[radio->head];
     if (radio->overflow_pending) {

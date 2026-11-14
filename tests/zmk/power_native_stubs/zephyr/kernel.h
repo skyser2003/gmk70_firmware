@@ -25,6 +25,8 @@ static inline bool k_is_in_isr(void) {
     return false;
 }
 void k_busy_wait(uint32_t usec);
+#define K_MSEC(ms) (ms)
+void k_sleep(uint32_t milliseconds);
 struct k_work {
     void (*handler)(struct k_work *);
 };

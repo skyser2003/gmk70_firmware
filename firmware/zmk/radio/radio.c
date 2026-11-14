@@ -4,6 +4,9 @@
 #include "selection.h"
 #include "../wired/wired.h"
 #include "../runtime/idle.h"
+#ifdef CONFIG_GMK70_POWER
+#    include "../power/power.h"
+#endif
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
 #    include "../studio/settings_backend.h"
 #endif
@@ -23,13 +26,16 @@
 static struct gmk_radio_core     core;
 static struct gmk_radio_selector selector;
 static struct k_spinlock         lock;
-static struct k_work             work;
-static bool                      available;
-static bool                      quiesced, processing;
-static uint8_t                   pair_raw;
-static uint32_t                  cancel_epoch;
-static uint32_t                  disconnected_since;
-static bool                      disconnected;
+static void                      work_handler(struct k_work *item);
+static K_WORK_DEFINE(work, work_handler);
+static bool     available;
+static bool     quiesced, processing;
+static bool     startup_pending;
+static uint32_t startup_at;
+static uint8_t  pair_raw;
+static uint32_t cancel_epoch;
+static uint32_t disconnected_since;
+static bool     disconnected;
 static struct radio_request {
     uint32_t epoch;
     uint8_t  channel, raw;
@@ -180,6 +186,10 @@ __attribute__((noipa)) void gmk_radio_poll(void) {
     uint32_t         now = k_uptime_get_32();
     k_spinlock_key_t key = k_spin_lock(&lock);
     if (available && !quiesced) {
+        if (startup_pending && (uint32_t)(now - startup_at) >= 2000U) {
+            startup_pending = false;
+            gmk_radio_core_startup(&core);
+        }
         if (!valid_mode(raw) || (selector.have_candidate && selector.candidate_raw != raw)) cancel_pair_locked();
         if (core.pending_pair && (raw != pair_raw || !valid_mode(raw))) core.pending_pair = false;
         if (gmk_radio_selector_switch(&selector, raw, now, core.last_bt, &channel)) {
@@ -226,6 +236,11 @@ uint32_t gmk_radio_delay(void) {
             uint32_t elapsed = now - disconnected_since;
             if (elapsed < 30000U && 30000U - elapsed < delay) delay = 30000U - elapsed;
         }
+    }
+    if (available && !quiesced && startup_pending) {
+        uint32_t elapsed = now - startup_at;
+        uint32_t next    = elapsed >= 2000U ? 1 : 2000U - elapsed;
+        if (next < delay) delay = next;
     }
     k_spin_unlock(&lock, key);
     return delay;
@@ -278,6 +293,12 @@ void gmk_radio_release_mouse(void) {
     gmk_service_notify();
 }
 void gmk_radio_notification(uint8_t command, uint8_t value) {
+#ifdef CONFIG_GMK70_POWER
+    if (available && command == 0x60) {
+        gmk_power_radio_host(value == 1);
+        return;
+    }
+#endif
     k_spinlock_key_t key    = k_spin_lock(&lock);
     bool             status = available && command == 0x5b && core.accept_status && core.active == core.selected && core.active != GMK_HOST_USB;
 #ifdef CONFIG_GMK70_CONTROLS
@@ -316,9 +337,9 @@ void gmk_radio_charger_state(bool cable, bool full) {
     if (available && !quiesced) gmk_radio_core_charger(&core, cable, full);
     k_spin_unlock(&lock, key);
 }
-bool gmk_radio_next(uint32_t now, struct gmk_radio_frame *frame) {
-    k_spinlock_key_t key    = k_spin_lock(&lock);
-    bool             result = available && !quiesced && gmk_radio_core_next(&core, now, frame);
+enum gmk_radio_turn gmk_radio_next(uint32_t now, struct gmk_radio_frame *frame, bool battery_due) {
+    k_spinlock_key_t    key    = k_spin_lock(&lock);
+    enum gmk_radio_turn result = available && !quiesced ? gmk_radio_core_next(&core, now, frame, battery_due) : GMK_RADIO_TURN_NONE;
     k_spin_unlock(&lock, key);
     return result;
 }
@@ -332,12 +353,6 @@ bool gmk_radio_control_busy(void) {
     bool             busy = available && control_busy_locked();
     k_spin_unlock(&lock, key);
     return busy;
-}
-bool gmk_radio_battery_ready(uint32_t now) {
-    k_spinlock_key_t key   = k_spin_lock(&lock);
-    bool             ready = available && !quiesced && gmk_radio_core_battery_ready(&core, now);
-    k_spin_unlock(&lock, key);
-    return ready;
 }
 static bool idle_locked(void) {
     return !available || (gmk_radio_core_idle(&core) && !mailbox.pending && !mailbox.clear && !processing && !selector.holding
@@ -353,11 +368,21 @@ bool gmk_radio_idle(void) {
     return idle;
 }
 bool gmk_radio_power_quiesce(bool enabled) {
-    k_spinlock_key_t key   = k_spin_lock(&lock);
-    bool             ready = !enabled || idle_locked();
+    k_spinlock_key_t key     = k_spin_lock(&lock);
+    bool             ready   = !enabled || idle_locked();
+    bool             restore = !enabled && core.stopping;
+    if (restore) gmk_radio_core_wake(&core);
     if (ready) quiesced = enabled;
+    bool replay = restore && available && core.selected != GMK_HOST_USB;
     k_spin_unlock(&lock, key);
+    if (replay) gmk_radio_resume_hid();
     return ready;
+}
+bool gmk_radio_prepare_stop(bool special, bool cable) {
+    k_spinlock_key_t key     = k_spin_lock(&lock);
+    bool             prepare = available && gmk_radio_core_prepare_stop(&core, special, cable);
+    k_spin_unlock(&lock, key);
+    return prepare;
 }
 void gmk_radio_wake(void) {
     k_spinlock_key_t key = k_spin_lock(&lock);
@@ -431,15 +456,12 @@ int __wrap_zmk_keymap_restore_layer(zmk_keymap_layer_id_t id, zmk_keymap_layer_i
     return __real_zmk_keymap_restore_layer(id, at_index);
 }
 static int radio_init(void) {
-    gmk_radio_core_init(&core);
-    gmk_radio_core_enable_sleep(&core);
-    selector     = (struct gmk_radio_selector){0};
-    mailbox      = (struct radio_request){0};
-    pair_raw     = 0;
-    cancel_epoch = 0;
-    quiesced = processing = disconnected = false;
-    available                            = gmk_wired_is_left();
-    k_work_init(&work, work_handler);
+    /* SYS_INIT runs once after CRT has cleared BSS, including the queue and
+     * selector/mailbox state. Retained wake uses gmk_radio_wake, not this hook. */
+    core.last_bt    = GMK_HOST_BT1;
+    startup_pending = true;
+    startup_at      = k_uptime_get_32();
+    available       = gmk_wired_is_left();
     return 0;
 }
 SYS_INIT(radio_init, POST_KERNEL, 87);

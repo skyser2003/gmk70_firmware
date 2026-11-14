@@ -39,3 +39,33 @@ class NativeUpdateImageTests(unittest.TestCase):
             check_image.validate_native_update_linking(
                 self.native, "wired-studio-native-bridge"
             )
+
+    def test_shared_crc_requires_real_parser_transmitter_and_wrapper_calls(
+        self,
+    ) -> None:
+        shared = (self.native - {"crc32_ieee"}) | {"__wrap_crc32_ieee", "gmk_crc32"}
+        assembly = """08002300 <__wrap_crc32_ieee>:
+ 8002300: f000 b800 b.w 8002400 <gmk_crc32>
+08002500 <zmk_split_wired_get_item>:
+ 8002500: f000 f800 bl 8002300 <__wrap_crc32_ieee>
+08002600 <write_frame.constprop.0>:
+ 8002600: f000 f800 bl 8002300 <__wrap_crc32_ieee>
+"""
+        check_image.validate_native_update_linking(
+            shared, "wired-studio-updater", assembly
+        )
+        for missing in shared:
+            with self.subTest(missing=missing), self.assertRaises(ValueError):
+                check_image.validate_native_update_linking(
+                    shared - {missing}, "wired-studio-updater", assembly
+                )
+        for broken in (
+            "",
+            assembly.replace("b.w 8002400", "ldr 8002400"),
+            assembly.replace("bl 8002300", "ldr 8002300", 1),
+            assembly.replace("<write_frame.constprop.0>", "<unrelated>"),
+        ):
+            with self.subTest(broken=broken), self.assertRaises(ValueError):
+                check_image.validate_native_update_linking(
+                    shared, "wired-studio-updater", broken
+                )

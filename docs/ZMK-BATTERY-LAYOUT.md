@@ -15,15 +15,15 @@ ten-second freshness limit requires another press to refresh.
 
 Selecting USB cancels queued periodic queries. A frame already being transmitted
 finishes without losing ACK ownership, but does not trigger a periodic retry.
-The charger notifications and USB sampler-recovery interval remain unchanged.
-The radio estimator is unchanged.
+The stock charger notifications remain active; there is no additional
+USB-selection quiet interval. The radio estimator is unchanged.
 
 A due inquiry now takes its turn before ordinary queued HID reports; a busy
 typing stream previously could postpone it indefinitely. Module acknowledgments,
 host/charging-state controls, reconnect deadlines, zero-report release barriers
 and an already-started A1/A2 keyboard pair retain priority. An unanswered query
-still gets only one ten-millisecond retry, so telemetry cannot indefinitely block
-typing or sleep. A periodic repeat of unchanged charging state follows the query.
+still gets only one ten-millisecond retry. Queued charging maintenance precedes
+telemetry, matching QMK; ordinary HID cannot indefinitely starve a due query.
 
 Regression tests exercise the real UART owner and radio core with polling and
 interrupt RX, both slider positions, USB/BT1/BT5/dongle selections, held Alt and
@@ -71,9 +71,10 @@ battery reporting; no percentage is synthesized from elapsed charging time.
 The earlier port only queried the module and sampled charger GPIO locally. It
 omitted these charging notifications, consistent with the reported level staying
 at 3% through charging until a restart. The correction uses the existing radio
-frame queue and ACK owner. A missing charger ACK gets one bounded retry and then
-returns to the periodic refresh without disconnecting typing or keeping sleep
-busy. State changes during a partial frame preserve that frame's original bytes.
+frame queue and ACK owner. A missing charger ACK gets QMK's 50 retries before retiring the command without
+disconnecting typing. The ordinary one-second heartbeat subsequently refreshes
+the charging state. State changes during a partial frame preserve that frame's
+original bytes.
 
 ### Fresh replies can contain an old measurement
 
@@ -81,15 +82,15 @@ Initial host selection now follows the QMK selector: wait for the existing
 50 ms physical-switch debounce and select that destination directly. An explicit
 host shortcut can also make the first selection. Previously, ZMK queued USB at
 initialization before the switch settled, sending `A6 11 B7` even on a Bluetooth
-startup. That USB command can stop an already-running radio ADC sampler. Sleep
-configuration and charger maintenance still run during switch debounce; actual
-USB selection retains the recovery interval described below.
+startup. That USB command can stop an already-running radio ADC sampler. Charger
+maintenance can run during switch debounce; sleep configuration follows the
+two-second QMK post-init sequence below.
 
 The native radio-adapter regression fails before this correction and passes
 afterward. It exercises initial USB, Bluetooth and dongle selection, restored
 Bluetooth slots, switch bounce/invalid positions and the RIGHT role. Existing
-UART tests still verify charging updates, query/ACK ownership and actual USB
-sampler-recovery leases; they now request USB explicitly.
+UART tests still verify charging updates, query/ACK ownership and immediate
+maintenance after explicit USB selection.
 
 A bounded replay of the captured stock instructions confirms that direct
 Bluetooth selection preserves an active ten-second sampler, whereas USB then
@@ -110,14 +111,53 @@ Physical UART wake restarts sampling, with the first conversion ten seconds
 later. Continuous one-second/three-second traffic can therefore keep answering
 from the cache while preventing the sleep/wake transition needed to restart it.
 
-The follow-up correction gives an acknowledged USB selection one 5.5-second
-quiet interval before resuming ordinary radio maintenance. Battery queries wait
-behind that control lease; complete-frame acknowledgments remain permitted.
-An explicit wireless selection bypasses the interval. Native USB typing uses a
-separate transport and continues normally. The existing heartbeat/query cadence
-then keeps the radio awake long enough for its ten-second sampler to run.
-No radio flash, invented percentage, pairing operation or hardware watchdog is
-involved.
+QMK parity removes the earlier ZMK-only 5.5-second USB quiet interval. Once the
+selection's ACK is consumed, ordinary maintenance resumes immediately. The
+captured-instruction result above remains evidence of a possible sampler state,
+not a demonstrated requirement to delay maintenance on real hardware. No radio
+firmware or estimator code is patched.
+
+### QMK radio and power sequencing
+
+The first selection still follows the debounced slider or an explicit shortcut.
+Two seconds after radio initialization, LEFT queues the same post-init sequence
+as QMK: `A6 55`, `A6 57`, `A6 70` (version inquiry), then the selected host. RIGHT
+never issues this sequence. Each maintenance command has QMK's 50-retry budget;
+retiring an unanswered maintenance command does not invalidate the host. Battery
+inquiries retain their separate one-retry limit.
+
+Before STOP, USB selection is left alone when USB is selected and cable power
+is present. Otherwise a critical sleep or an ordinary non-connected sleep sends
+and drains `A6 11`; ordinary non-connected sleep also waits 300 ms. UART work
+stays with its existing owner. New input cancels preparation, restores the
+selected host and requeues native held keyboard/consumer/button state without
+clearing modifiers or replaying mouse movement. A damaged or undrained UART
+cancels preparation after one second rather than bypassing physical idle gates.
+
+Checksummed radio host notification `0x60` now reaches the power policy: suspend
+requests sleep, and resume cancels ordinary PRE/STOP while retaining critical
+sleep. Resume restores native activity/RGB and its inactivity timestamp without
+a synthetic key event. Ordinary host-suspend preparation waits for held keys,
+preserving Alt and other modifiers until release or cancellation; qualified
+critical sleep retains its existing held-key override. Dispatch never enters
+STOP in the parser or an interrupt. Normal status, heartbeat and battery traffic
+do not become synthetic key activity.
+
+The critical-battery timer follows QMK's policy: 0% begins the interval, 1..15%
+retains it, and a fresh 0% after more than 60 seconds can request critical sleep.
+Cable power, a value above 15%, or unavailable data clears qualification.
+Existing storage admission, USB power checks, settings banks and resident ABI1
+remain unchanged. These policies are regression-tested offline; Bluetooth
+hardware confirmation of the reported stale percentage remains pending.
+
+Both canonical images retain the fixed application/settings boundaries and all
+existing features. To fit the additional policy, the build shares the existing
+resident/settings IEEE CRC32 implementation with native split framing rather
+than linking a second CRC table. The wrapper and pinned native entry remain
+outside LTO; 66,048 offline vectors compare their results. Split-frame checksums
+remain identical; behavior-ID generation, saved maps, settings checksums and
+resident ABI are unchanged. Private once-only startup hooks rely on normal CRT BSS initialization; retained wake does not run
+these hooks again.
 
 The stock estimator also uses different charging and discharging curves and
 directional hysteresis. Executing its actual mapper with an initial 3,792 mV

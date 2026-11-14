@@ -31,6 +31,7 @@ struct k_work {
     void (*handler)(struct k_work *);
     bool pending;
 };
+#define K_WORK_DEFINE(name, fn) struct k_work name = {.handler = fn}
 static inline void k_work_init(struct k_work *work, void (*handler)(struct k_work *)) {
     work->handler = handler;
     work->pending = false;

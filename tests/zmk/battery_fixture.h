@@ -88,6 +88,9 @@ void sys_write32(uint32_t value, uintptr_t address) {
     *register_at(address) = value;
 }
 static void reset_model(bool is_left) {
+    /* Model the cold boot preceding the private SYS_INIT, not a runtime reset. */
+    memset(&state, 0, sizeof(state));
+    memset(&cache, 0, sizeof(cache));
     memset(uart_registers, 0, sizeof(uart_registers));
     memset(rcc_registers, 0xa5, sizeof(rcc_registers));
     memset(gpio_registers, 0xa5, sizeof(gpio_registers));

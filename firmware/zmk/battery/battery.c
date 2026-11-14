@@ -72,7 +72,8 @@ static struct {
 } cache;
 static struct k_spinlock cache_lock;
 
-static void pin_configure(uintptr_t port, unsigned pin, uint32_t mode, uint32_t pull) {
+/* Four startup calls share one register-programming body in the fixed slot. */
+__attribute__((noipa)) static void pin_configure(uintptr_t port, unsigned pin, uint32_t mode, uint32_t pull) {
     unsigned key = irq_lock();
     sys_write32((uint16_t)~(1U << pin), port + 0x30);
     sys_write32(0, port + 4);
@@ -91,7 +92,7 @@ static void publish(void) {
     cache.sample_ms      = state.sample_ms;
     k_spin_unlock(&cache_lock, key);
 }
-void gmk_battery_get(struct gmk_battery_status *out) {
+__attribute__((noipa)) void gmk_battery_get(struct gmk_battery_status *out) {
     k_spinlock_key_t key = k_spin_lock(&cache_lock);
     *out                 = cache.status;
     uint32_t sample_ms   = cache.sample_ms;
@@ -215,7 +216,7 @@ static bool quarantine_raw_frame(void) {
     }
     return true;
 }
-static void drain_rx(uint32_t now) {
+__attribute__((noinline)) static void drain_rx(uint32_t now) {
     if (state.parser.count && !state.parser.discard && (uint32_t)(now - state.parser.last_byte_ms) >= BATTERY_TIMEOUT_MS) {
         /* A raw tail may arrive after an empty timeout poll. Retain its byte
          * budget across idle polls rather than treating delayed payload as new
@@ -291,7 +292,7 @@ static void schedule_query(uint32_t now) {
         state.query_pending = true;
     }
 }
-static void transmit(uint32_t now) {
+__attribute__((noinline)) static void transmit(uint32_t now) {
     if (state.transmitting != BATTERY_TX_NONE && (uint32_t)(now - state.tx_ms) >= BATTERY_TIMEOUT_MS) {
 #ifdef CONFIG_GMK70_RADIO
         if (state.transmitting == BATTERY_TX_RADIO) gmk_radio_sent(now, false);
@@ -307,25 +308,27 @@ static void transmit(uint32_t now) {
         } else if (state.waiting_ack) {
             return;
 #ifdef CONFIG_GMK70_RADIO
-        } else if (state.query_pending && gmk_radio_battery_ready(now)) {
-            /* A stream of HID reports must not starve the three-second query.
-             * Controls, release barriers and an A1/A2 pair still finish first. */
-            state.query_pending = false;
-            state.transmitting  = BATTERY_TX_QUERY;
-        } else if (gmk_radio_next(now, &state.radio_frame)) {
-            if (!state.radio_frame.length || state.radio_frame.length > sizeof(state.radio_frame.bytes)) {
-                gmk_radio_sent(now, false);
-                ++state.status.errors;
-                return;
+        } else {
+            enum gmk_radio_turn turn = gmk_radio_next(now, &state.radio_frame, state.query_pending);
+            if (turn == GMK_RADIO_TURN_NONE) return;
+            state.transmitting = BATTERY_TX_QUERY;
+            if (turn == GMK_RADIO_TURN_BATTERY) {
+                state.query_pending = false;
+            } else {
+                if (!state.radio_frame.length || state.radio_frame.length > sizeof(state.radio_frame.bytes)) {
+                    gmk_radio_sent(now, false);
+                    ++state.status.errors;
+                    return;
+                }
+                state.transmitting = BATTERY_TX_RADIO;
             }
-            state.transmitting = BATTERY_TX_RADIO;
 #else
         } else if (state.query_pending) {
             state.query_pending = false;
             state.transmitting  = BATTERY_TX_QUERY;
-#endif
         } else {
             return;
+#endif
         }
         state.tx_ms     = now;
         state.tx_offset = 0;
@@ -401,9 +404,8 @@ uint32_t gmk_battery_delay(void) {
 }
 #endif
 static int battery_init(void) {
-    memset(&state, 0, sizeof(state));
-    cache.requested = false;
-    publish();
+    /* One cold-boot SYS_INIT: CRT already zeroed worker/cache BSS. Retained
+     * wake preserves it and resumes through gmk_battery_power_quiesce. */
     if (!gmk_wired_is_left()) return 0;
     sys_set_bits(WB32_RCC_BASE + 0x48, (1U << 15) | (1U << 5) | (1U << 7));
     pin_configure(WB32_GPIOA_BASE, 7, 0, 0);

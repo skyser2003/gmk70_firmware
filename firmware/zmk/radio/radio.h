@@ -17,23 +17,25 @@ int  gmk_radio_submit_mouse(const uint8_t report[5]);
 void gmk_radio_release(bool consumer);
 void gmk_radio_release_mouse(void);
 void gmk_radio_clear_hid(void);
+void gmk_radio_resume_hid(void);
 void gmk_radio_poll(void);
 #ifdef CONFIG_GMK70_EVENT_IDLE
 uint32_t gmk_radio_delay(void);
 #endif
-void gmk_radio_get(struct gmk_radio_status *out);
-void gmk_radio_notification(uint8_t command, uint8_t value);
-void gmk_radio_ack(void);
-void gmk_radio_charger_state(bool cable, bool full);
-bool gmk_radio_next(uint32_t now, struct gmk_radio_frame *frame);
-void gmk_radio_sent(uint32_t now, bool success);
-bool gmk_radio_control_busy(void);
-bool gmk_radio_battery_ready(uint32_t now);
-bool gmk_radio_idle(void);
+void                gmk_radio_get(struct gmk_radio_status *out);
+void                gmk_radio_notification(uint8_t command, uint8_t value);
+void                gmk_radio_ack(void);
+void                gmk_radio_charger_state(bool cable, bool full);
+enum gmk_radio_turn gmk_radio_next(uint32_t now, struct gmk_radio_frame *frame, bool battery_due);
+void                gmk_radio_sent(uint32_t now, bool success);
+bool                gmk_radio_control_busy(void);
+bool                gmk_radio_idle(void);
 /* Accepted DISCONNECTED status only; SELECT ACK/UNKNOWN is not a disconnect. */
 bool gmk_radio_disconnected_timeout(void);
 /* Called by the service owner after UART idle; admission rejects new input. */
 bool gmk_radio_power_quiesce(bool enabled);
+/* Service owner only: queue QMK's pre-STOP USB command when required. */
+bool gmk_radio_prepare_stop(bool special, bool cable);
 /* Service-owner physical wake, while input and UART remain paused. */
 void    gmk_radio_wake(void);
 uint8_t gmk_radio_last_bt(void);

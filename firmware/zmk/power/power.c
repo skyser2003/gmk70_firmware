@@ -15,11 +15,11 @@
 #ifdef CONFIG_GMK70_RETAINED_SLEEP
 #    include "retained.h"
 static uint32_t retained_delay = UINT32_MAX;
-#    ifdef CONFIG_ZMK_POINTING
+#endif
+#ifdef CONFIG_ZMK_POINTING
 /* The pinned native activity work records its own last-activity timestamp.
  * A real wake may be a mode/encoder edge, not a synthetic key event. */
 extern struct k_work note_activity_work;
-#    endif
 #endif
 #include <errno.h>
 #include <string.h>
@@ -138,7 +138,7 @@ bool gmk_power_runtime_storage_safe(void) {
      * gate. Qualified critical power may flush those preferences despite held
      * keys; no updater, raw flash or arbitrary settings admission changes. */
     const struct gmk_power_inputs inputs = battery_inputs();
-    return gmk_power_core_critical_ready(&core, &inputs);
+    return !inputs.usb_powered && gmk_power_core_critical_ready(&core, &inputs);
 }
 
 static bool claim(struct gmk_power_platform *context) {
@@ -149,7 +149,8 @@ static bool claim(struct gmk_power_platform *context) {
     return false; /* No atomic upload/settings exclusion on this configuration. */
 #endif
 }
-static void release(struct gmk_power_platform *context) {
+__attribute__((noinline)) static bool wake_pending(struct gmk_power_platform *context);
+static void                           release(struct gmk_power_platform *context) {
     ARG_UNUSED(context);
 #ifdef CONFIG_GMK70_ZMK_STUDIO_SETTINGS
     gmk_zmk_storage_release();
@@ -159,6 +160,19 @@ static bool quiesce(struct gmk_power_platform *context, bool enabled) {
     ARG_UNUSED(context);
     bool ok = true;
 #ifdef CONFIG_GMK70_RADIO
+    if (enabled && gmk_radio_prepare_stop(coordinator.critical, gmk_power_usb_powered())) {
+        /* QMK drains A6 11 before STOP and waits 300 ms for an ordinary
+         * disconnected sleep. Keep the sole UART owner running here; input
+         * callbacks can still cancel preparation, never enter STOP in RX. */
+        uint32_t started = k_uptime_get_32();
+        do {
+            gmk_battery_poll();
+            if (wake_pending(NULL) || (uint32_t)(k_uptime_get_32() - started) >= 1000U) return false;
+            if (gmk_radio_idle() && gmk_battery_idle()) break;
+            k_sleep(K_MSEC(1));
+        } while (true);
+        if (!coordinator.critical) k_sleep(K_MSEC(300));
+    }
     ok = gmk_radio_power_quiesce(enabled);
 #endif
     bool battery  = gmk_battery_power_quiesce(enabled);
@@ -183,6 +197,22 @@ static bool peer_exchange(struct gmk_power_platform *context, const struct gmk_p
     return gmk_power_protocol_request_encode(request, command) && gmk_wired_split_command(request, response) && gmk_power_protocol_reply_decode(request, response, reply);
 }
 static const struct gmk_power_ops ops = {.claim_storage = claim, .release_storage = release, .quiesce = quiesce, .prepare_wake = prepare_wake, .cancel_wake = cancel_wake, .wake_pending = wake_pending, .peer_exchange = peer_exchange};
+void                              gmk_power_radio_host(bool resume) {
+    if (!resume) {
+        atomic_or(&manual_request, 4);
+    } else if ((coordinator.phase != GMK_POWER_PHASE_IDLE || (atomic_get(&manual_request) & 8)) && !active_critical()) {
+        /* QMK host resume wakes ordinary PRE/STOP, retaining critical sleep.
+         * This is a host power event, not an artificial matrix keypress. */
+        atomic_clear(&manual_request);
+        gmk_power_note_activity();
+#ifdef CONFIG_ZMK_POINTING
+        k_work_submit(&note_activity_work);
+#else
+        (void)set_state(ZMK_ACTIVITY_ACTIVE);
+#endif
+    }
+    gmk_service_notify();
+}
 
 static int activity_changed(const zmk_event_t *event) {
     if (as_zmk_position_state_changed(event)) {
@@ -318,8 +348,9 @@ __attribute__((noipa)) void gmk_power_poll(bool service_ready) {
     ready = service_ready;
     if (!initialized) {
         service_owner = k_current_get();
-        (void)gmk_power_coordinator_init(&coordinator, gmk_wired_is_left() ? GMK_POWER_ROLE_LEFT : GMK_POWER_ROLE_RIGHT);
-        initialized = true;
+        /* Only this owner mutates the coordinator; its initial state is BSS. */
+        coordinator.role = gmk_wired_is_left() ? GMK_POWER_ROLE_LEFT : GMK_POWER_ROLE_RIGHT;
+        initialized      = true;
     }
     uint32_t now     = k_uptime_get_32();
     uint32_t pending = (uint32_t)atomic_clear(&mailbox);
@@ -335,6 +366,14 @@ __attribute__((noipa)) void gmk_power_poll(bool service_ready) {
     else
         previous_request = atomic_and(&manual_request, ~2);
 #endif
+    if (atomic_get(&manual_request) & 4) {
+        /* QMK accepts host suspend into ordinary PRE, then waits for held
+         * keys. A resume before acceptance does not cancel a NORMAL request. */
+        if (usb_blocks_sleep())
+            atomic_and(&manual_request, ~12);
+        else
+            atomic_or(&manual_request, 8);
+    }
     bool                    manual = atomic_get(&manual_request) != 0;
     struct gmk_power_inputs inputs = battery_inputs();
     inputs.timeout_ms              = gmk_controls_sleep_timeout_ms();
@@ -343,9 +382,11 @@ __attribute__((noipa)) void gmk_power_poll(bool service_ready) {
     unsigned               key     = irq_lock();
     enum gmk_power_request reason  = gmk_power_core_decide(&core, &inputs);
     irq_unlock(key);
-    if (manual && !usb_blocks_sleep()) reason = GMK_POWER_INACTIVITY;
-    bool forced = manual || reason == GMK_POWER_CRITICAL || active_critical();
-    if (forced && !reports_cleared) {
+    bool critical = reason == GMK_POWER_CRITICAL || active_critical();
+    if (manual && !critical && !usb_blocks_sleep()) reason = GMK_POWER_INACTIVITY;
+    bool forced       = manual || critical;
+    bool host_waiting = (atomic_get(&manual_request) & 8) && inputs.keys_held && !critical;
+    if (forced && !host_waiting && !reports_cleared) {
         reports_cleared = true;
         zmk_endpoint_clear_reports();
         (void)set_state(ZMK_ACTIVITY_SLEEP);
@@ -357,7 +398,7 @@ __attribute__((noipa)) void gmk_power_poll(bool service_ready) {
      * count as input or cancel deliberate/critical/ordinary idle sleep. */
     if ((previous_request & 2) && !manual && reason == GMK_POWER_NONE) gmk_power_coordinator_cancel(&coordinator, &ops);
 #endif
-    bool is_busy = busy(coordinator.claimed) || (!forced && !gmk_wired_power_input_idle());
+    bool is_busy = busy(coordinator.claimed) || host_waiting || (!forced && !gmk_wired_power_input_idle());
     bool allowed = ready && !usb_blocks_sleep() && (forced || core.inactive);
     if (coordinator.phase == GMK_POWER_PHASE_IDLE && reason != GMK_POWER_NONE && allowed && !is_busy) {
         struct gmk_wired_stats stats;

@@ -15,6 +15,8 @@ bool gmk_power_usb_powered(void);
 bool gmk_power_runtime_storage_safe(void);
 /* Native position/pointing callbacks only invalidate the current session. */
 void gmk_power_note_activity(void);
+/* Checksummed stock 0x60 notification, dispatched by the UART worker. */
+void gmk_power_radio_host(bool resume);
 #ifdef CONFIG_GMK70_EVENT_IDLE
 uint32_t gmk_power_delay(void);
 #endif

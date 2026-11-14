@@ -19,6 +19,13 @@
 #    include <zmk/rgb_underglow.h>
 #endif
 
+#ifndef TEST_NATIVE_RGB
+int k_work_submit(struct k_work *work) {
+    work->handler(work);
+    return 1;
+}
+#endif
+
 static struct k_thread         service_thread = {1}, activity_thread = {2};
 k_tid_t                        test_power_thread = &service_thread;
 uint32_t                       test_power_now, test_primask, test_basepri;
@@ -26,6 +33,8 @@ static bool                    left_role = true, cable, receiver_free = true, le
 static bool                    peer_traffic, disconnected_expired;
 static uint32_t                sleep_timeout = 60000;
 static unsigned                claims, releases, wake_prepares, radio_quiesces, stops, resets, peer_pulses, report_clears, radio_wakes;
+static bool                    stop_needed, stop_special, stop_cable;
+static unsigned                stop_prepares, stop_polls;
 static jmp_buf                 reset_jump;
 static bool                    usb_sleep, radio_paused;
 static enum usb_dc_status_code usb_status       = USB_DC_UNKNOWN;
@@ -147,7 +156,21 @@ bool gmk_lighting_power_quiesce(bool enabled) {
     return true;
 }
 bool gmk_radio_idle(void) {
-    return radio_idle_state;
+    return radio_idle_state && (!stop_prepares || stop_polls >= 3);
+}
+bool gmk_radio_prepare_stop(bool special, bool connected_cable) {
+    if (!stop_needed) return false;
+    ++stop_prepares;
+    stop_special = special;
+    stop_cable   = connected_cable;
+    return true;
+}
+void k_sleep(uint32_t milliseconds) {
+    test_power_now += milliseconds;
+}
+void gmk_battery_poll(void) {
+    assert(!radio_paused);
+    ++stop_polls;
 }
 bool gmk_radio_disconnected_timeout(void) {
     return disconnected_expired;
@@ -338,6 +361,7 @@ static void test_maintenance_does_not_move_sleep_deadline(void) {
 #endif
 
 static void test_critical_reports_clear_once_and_held_key_bypass(void) {
+    test_power_now     = 1;
     battery.percentage = 0;
     wired_idle_state   = false;
     gmk_power_poll(true);
@@ -476,10 +500,11 @@ static void test_cancelled_critical_session_does_not_suppress_activity(void) {
     assert(reply.phase == GMK_POWER_PHASE_IDLE && (reply.flags & GMK_POWER_FLAG_ACTIVE));
 }
 static void test_new_input_cancels_critical_held_baseline(void) {
+    test_power_now     = 1;
     battery.percentage = 0;
     wired_idle_state   = false;
     gmk_power_poll(true);
-    test_power_now     = 60000;
+    test_power_now     = 60002;
     input_during_claim = true;
     gmk_power_poll(true);
     assert(stops == 0 && resets == 0 && releases == 1 && !lease);
@@ -544,6 +569,7 @@ int gmk_zmk_settings_save_runtime(const char *name, const void *value, size_t si
     return 0;
 }
 static void test_critical_save_flushes_actual_rgb_dirt_while_keys_are_held(void) {
+    test_power_now     = 1;
     battery.percentage = 0;
     wired_idle_state   = false;
     gmk_power_poll(true);
@@ -552,7 +578,7 @@ static void test_critical_save_flushes_actual_rgb_dirt_while_keys_are_held(void)
     lease = true;
     assert(!gmk_power_runtime_storage_safe());
     lease          = false;
-    test_power_now = 60000;
+    test_power_now = 60002;
     assert(!zmk_rgb_underglow_set_hsb((struct zmk_led_hsb){.h = 0, .s = 100, .b = 20}));
     gmk_power_poll(true); /* Critical sleep must wait for the user's RGB snapshot. */
     assert(gmk_rgb_settings_dirty() && report_clears == 1 && claims == 0);
@@ -619,10 +645,6 @@ bool gmk_retained_sleep(void) {
 void gmk_battery_request(void) {
     ++refreshes;
 }
-int k_work_submit(struct k_work *work) {
-    work->handler(work);
-    return 1;
-}
 static void test_reconnect_cancels_disconnected_only_sleep(void) {
     sleep_timeout = 0;
     gmk_power_poll(true);
@@ -686,6 +708,86 @@ static void test_disconnected_timeout_sleep(void) {
 }
 int main(int argc, char **argv) {
     assert(argc == 2);
+    if (!strcmp(argv[1], "radio-host-critical-start")) {
+        test_power_now     = 1;
+        battery.percentage = 0;
+        wired_idle_state   = false;
+        gmk_power_poll(true);
+        test_power_now = 60002;
+        gmk_power_radio_host(false);
+        if (!setjmp(reset_jump)) {
+            gmk_power_poll(true);
+            assert(false);
+        }
+        assert(stops == 1 && critical_prepare && report_clears == 1);
+        return 0;
+    }
+    if (!strcmp(argv[1], "radio-host-dirty")) {
+        gmk_power_poll(true);
+        dirty = true;
+        gmk_power_radio_host(false);
+        gmk_power_poll(true);
+        /* Pending host PRE must not close the runtime-save gate before the
+         * dirty preferences can drain; only a claimed sleep phase does. */
+        assert(!gmk_power_sleep_pending() && report_clears == 1 && !claims);
+        assert(gmk_power_runtime_storage_safe());
+        dirty = false;
+        if (!setjmp(reset_jump)) {
+            gmk_power_poll(true);
+            assert(false);
+        }
+        assert(stops == 1 && !critical_prepare);
+        return 0;
+    }
+    if (!strcmp(argv[1], "radio-host-held")) {
+        gmk_power_poll(true);
+        wired_idle_state = false;
+        gmk_power_radio_host(false);
+        gmk_power_poll(true);
+        assert(!gmk_power_sleep_pending() && !report_clears && !lease);
+        gmk_power_radio_host(true);
+        wired_idle_state = true;
+        gmk_power_poll(true);
+        assert(!gmk_power_sleep_pending() && !report_clears && !lease);
+        return 0;
+    }
+    if (!strcmp(argv[1], "radio-stop")) {
+        stop_needed          = true;
+        disconnected_expired = true;
+        test_power_now       = 30000;
+        if (!setjmp(reset_jump)) {
+            gmk_power_poll(true);
+            assert(false);
+        }
+        assert(stop_prepares == 1 && stop_polls == 3 && !stop_special && !stop_cable);
+        assert(test_power_now == 30302 && radio_paused && stops == 1);
+        return 0;
+    }
+    if (!strcmp(argv[1], "radio-host-suspend")) {
+        gmk_power_poll(true);
+        gmk_power_radio_host(false);
+        if (!setjmp(reset_jump)) {
+            gmk_power_poll(true);
+            assert(false);
+        }
+        assert(stops == 1 && report_clears == 1);
+        return 0;
+    }
+    if (!strcmp(argv[1], "radio-host-resume") || !strcmp(argv[1], "radio-host-critical")) {
+        bool critical = !strcmp(argv[1], "radio-host-critical");
+        prepare_right(critical);
+        if (!critical) test_power_now = 90000;
+        gmk_power_radio_host(true);
+        gmk_power_poll(true);
+        assert(gmk_power_sleep_pending() == critical && lease == critical);
+        assert(zmk_activity_get_state() == (critical ? ZMK_ACTIVITY_SLEEP : ZMK_ACTIVITY_ACTIVE));
+        if (!critical) {
+            test_power_now += 1000;
+            activity_work_handler(NULL);
+            assert(zmk_activity_get_state() == ZMK_ACTIVITY_ACTIVE);
+        }
+        return 0;
+    }
 #ifdef CONFIG_GMK70_RETAINED_SLEEP
     if (!strcmp(argv[1], "disconnected-reconnect")) {
         test_reconnect_cancels_disconnected_only_sleep();

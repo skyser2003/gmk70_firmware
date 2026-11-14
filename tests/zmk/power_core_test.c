@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 static struct gmk_power_inputs inputs(void) {
-    return (struct gmk_power_inputs){.timeout_ms = 60000, .battery_valid = true, .battery_percentage = 50};
+    return (struct gmk_power_inputs){.now_ms = 1, .timeout_ms = 60000, .battery_valid = true, .battery_percentage = 50};
 }
 static void native_activity_owns_inactivity_and_repeated_sleep_preserves_its_start(void) {
     struct gmk_power_core   core = {0};
@@ -49,13 +49,14 @@ static void critical_requires_fresh_zero_for_sixty_seconds_and_bypasses_held_key
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
     in.now_ms = 59999;
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
-    in.now_ms = 60000;
+    in.now_ms = 60001;
     in.busy   = true;
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
-    in.busy = false;
+    in.busy   = false;
+    in.now_ms = 60002;
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_CRITICAL);
 }
-static void unknown_stale_nonzero_and_external_power_reset_critical_qualification(void) {
+static void unknown_stale_nonlow_and_cable_reset_critical_qualification(void) {
     for (unsigned reset = 0; reset < 6; ++reset) {
         struct gmk_power_core   core = {0};
         struct gmk_power_inputs in   = inputs();
@@ -64,9 +65,12 @@ static void unknown_stale_nonzero_and_external_power_reset_critical_qualificatio
         in.now_ms = 59999;
         if (reset == 0) in.battery_valid = false;
         if (reset == 1) in.battery_age_ms = 10001;
-        if (reset == 2) in.battery_percentage = 1;
+        if (reset == 2) in.battery_percentage = 16;
         if (reset == 3) in.cable = true;
-        if (reset == 4) in.usb_powered = true;
+        if (reset == 4) {
+            in.usb_powered = true;
+            in.cable       = true;
+        }
         if (reset == 5) in.battery_percentage = 101;
         assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
         in                    = inputs();
@@ -75,7 +79,7 @@ static void unknown_stale_nonzero_and_external_power_reset_critical_qualificatio
         assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
         in.now_ms = 119999;
         assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
-        in.now_ms = 120000;
+        in.now_ms = 120001;
         assert(gmk_power_core_decide(&core, &in) == GMK_POWER_CRITICAL);
     }
 }
@@ -89,7 +93,7 @@ static void stale_readings_cannot_shutdown_and_boundary_age_remains_fresh(void) 
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
     in.battery_age_ms = 10000;
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
-    in.now_ms = 1060000;
+    in.now_ms = 1060001;
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_CRITICAL);
 }
 static void uptime_wrap_preserves_native_and_critical_deadlines(void) {
@@ -106,14 +110,30 @@ static void uptime_wrap_preserves_native_and_critical_deadlines(void) {
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
     in.now_ms = 58998;
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
-    in.now_ms = 58999;
+    in.now_ms = 59000;
+    assert(gmk_power_core_decide(&core, &in) == GMK_POWER_CRITICAL);
+}
+static void low_nonzero_retains_the_qmk_critical_timer(void) {
+    struct gmk_power_core   core = {0};
+    struct gmk_power_inputs in   = inputs();
+    in.now_ms                    = 1;
+    in.battery_percentage        = 0;
+    assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
+    in.now_ms             = 30001;
+    in.battery_percentage = 15;
+    assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
+    in.now_ms             = 60001;
+    in.battery_percentage = 0;
+    assert(gmk_power_core_decide(&core, &in) == GMK_POWER_NONE);
+    in.now_ms = 60002;
     assert(gmk_power_core_decide(&core, &in) == GMK_POWER_CRITICAL);
 }
 int main(void) {
+    low_nonzero_retains_the_qmk_critical_timer();
     native_activity_owns_inactivity_and_repeated_sleep_preserves_its_start();
     disabled_sleep_held_keys_busy_work_and_usb_power_gate_inactivity();
     critical_requires_fresh_zero_for_sixty_seconds_and_bypasses_held_keys();
-    unknown_stale_nonzero_and_external_power_reset_critical_qualification();
+    unknown_stale_nonlow_and_cable_reset_critical_qualification();
     stale_readings_cannot_shutdown_and_boundary_age_remains_fresh();
     uptime_wrap_preserves_native_and_critical_deadlines();
     puts("Power policy: native activity timestamps, sleep gates, fresh critical qualification and wrap passed");

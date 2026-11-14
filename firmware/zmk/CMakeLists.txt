@@ -18,6 +18,10 @@ if(CONFIG_BOARD_GMK70_WIRED)
   zephyr_library_include_directories(wired)
   zephyr_library_include_directories(${ZEPHYR_BASE}/kernel/include ${ZEPHYR_BASE}/arch/arm/include)
   zephyr_library_sources(wired/wired_protocol.c wired/wired_wb32.c wired/encoder.c wired/encoder_native.c)
+  if(CONFIG_GMK70_ZMK_STUDIO_SETTINGS)
+    zephyr_library_sources(runtime/crc.c)
+    zephyr_ld_options(-Wl,--wrap=crc32_ieee)
+  endif()
   zephyr_library_sources_ifdef(CONFIG_GMK70_EVENT_IDLE wired/event_link.c runtime/idle.c runtime/main.c)
   if(CONFIG_GMK70_EVENT_IDLE)
     zephyr_ld_options(-Wl,--wrap=main)
@@ -26,7 +30,7 @@ if(CONFIG_BOARD_GMK70_WIRED)
     # Defer board inlining until the full program is visible, and prefer
     # callee-save registers over repeated call-site spills in this small image.
     zephyr_library_compile_options(-fno-early-inlining)
-    zephyr_compile_options(-fipa-pta -fno-caller-saves)
+    zephyr_compile_options(-fipa-pta -fno-caller-saves -fno-early-inlining)
     # Retain native/public --wrap boundaries outside LTO below. Within the
     # remaining closed units, GCC may specialize internal parameters; this
     # keeps bounded radio reconnect inside the unchanged updater slot.
@@ -111,6 +115,10 @@ if(CONFIG_BOARD_GMK70_WIRED)
       endforeach()
       set_property(SOURCE "${ZEPHYR_BASE}/lib/os/reboot.c" "${ZEPHYR_BASE}/subsys/settings/src/settings_store.c"
         TARGET_DIRECTORY zephyr APPEND PROPERTY COMPILE_OPTIONS -fno-lto)
+      if(CONFIG_GMK70_ZMK_STUDIO_SETTINGS)
+        set_property(SOURCE "${ZEPHYR_BASE}/lib/crc/crc32_sw.c"
+          TARGET_DIRECTORY zephyr APPEND PROPERTY COMPILE_OPTIONS -fno-lto)
+      endif()
       set_property(SOURCE "${ZEPHYR_BASE}/drivers/timer/cortex_m_systick.c" "${ZEPHYR_BASE}/drivers/timer/sys_clock_init.c"
         TARGET_DIRECTORY drivers__timer APPEND PROPERTY COMPILE_OPTIONS -fno-lto)
       set_property(SOURCE "${ZEPHYR_BASE}/kernel/main_weak.c"

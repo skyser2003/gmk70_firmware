@@ -38,7 +38,9 @@ def validate_ram_symbols(symbols: dict[str, int]) -> dict[str, int]:
     }
 
 
-def validate_native_update_linking(symbols: set[str], variant: str) -> None:
+def validate_native_update_linking(
+    symbols: set[str], variant: str, disassembly: str = ""
+) -> None:
     if variant == "wired-studio-standalone":
         validate_standalone_linking(symbols)
         return
@@ -46,8 +48,23 @@ def validate_native_update_linking(symbols: set[str], variant: str) -> None:
         "gmk_native_update_exchange",
         "gmk_native_update_serve",
         "zmk_split_wired_get_item",
-        "crc32_ieee",
     }
+    if "__wrap_crc32_ieee" in symbols or "crc32_ieee" not in symbols:
+        required |= {"__wrap_crc32_ieee", "gmk_crc32"}
+        if required <= symbols:
+            bodies = _function_bodies(disassembly)
+            if "gmk_crc32" not in _branch_targets(bodies.get("__wrap_crc32_ieee", "")):
+                raise ValueError("Shared native CRC wrapper bypasses resident CRC")
+            if not _calls(
+                bodies.get("zmk_split_wired_get_item", ""), "__wrap_crc32_ieee"
+            ):
+                raise ValueError("Native split parser bypasses shared CRC")
+            if not any(
+                name == "write_frame" or name.startswith("write_frame.")
+                for name, body in bodies.items()
+                if _calls(body, "__wrap_crc32_ieee")
+            ):
+                raise ValueError("Native split transmitter bypasses shared CRC")
     if missing := required - symbols:
         raise ValueError(f"Missing native updater transport: {sorted(missing)}")
     legacy = {"gmk_protocol_update", "gmk_native_update_bridge_exchange"}
@@ -786,7 +803,7 @@ def check_wired(
             ["arm-none-eabi-objdump", "-d", str(elf)], text=True
         )
     validate_radio_linking(set(symbols), disassembly, variant)
-    validate_native_update_linking(set(symbols), variant)
+    validate_native_update_linking(set(symbols), variant, disassembly)
     validate_flip_linking(set(symbols), disassembly)
     retained_sleep = validate_retained_sleep_linking(set(symbols))
     if retained_sleep:

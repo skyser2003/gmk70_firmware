@@ -8,7 +8,7 @@ for profile in normal normal-event qualification nkro nkro-qualification; do
     if [[ "$profile" == *qualification ]]; then flags+=(-DCONFIG_GMK70_RADIO_QUALIFICATION=1); fi
     if [[ "$profile" == nkro* ]]; then flags+=(-DCONFIG_ZMK_HID_REPORT_TYPE_NKRO=1); fi
     cc -std=c11 -Wall -Wextra -Werror -O1 -g -fno-pie -no-pie -fsanitize=address,undefined -ffunction-sections -Wl,--gc-sections \
-        "${flags[@]}" -DCONFIG_GMK70_ZMK_STUDIO_SETTINGS=1 \
+        "${flags[@]}" -DCONFIG_GMK70_ZMK_STUDIO_SETTINGS=1 -DCONFIG_GMK70_POWER=1 \
         -Ifirmware/zmk/update -Ifirmware/qmk-common/keyboards/zuoya/gmk70/update \
         -Itests/zmk/radio_kernel_stubs -Itests/zmk/radio_behavior_stubs \
         -Itests/zmk/radio_endpoint_stubs \
