@@ -28,6 +28,7 @@ void gmk_radio_charger_state(bool cable, bool full);
 bool gmk_radio_next(uint32_t now, struct gmk_radio_frame *frame);
 void gmk_radio_sent(uint32_t now, bool success);
 bool gmk_radio_control_busy(void);
+bool gmk_radio_battery_ready(uint32_t now);
 bool gmk_radio_idle(void);
 /* Accepted DISCONNECTED status only; SELECT ACK/UNKNOWN is not a disconnect. */
 bool gmk_radio_disconnected_timeout(void);

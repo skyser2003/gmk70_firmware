@@ -254,8 +254,17 @@ static void drain_rx(uint32_t now) {
 #endif
     }
 }
+static bool automatic_queries(void) {
+#ifdef CONFIG_GMK70_RADIO
+    /* Shortcuts can select wireless with the slider in USB, and vice versa.
+     * Keep physical wired-mode checks reserved for updater/storage admission. */
+    return gmk_radio_selected();
+#else
+    return !gmk_wired_mode();
+#endif
+}
 static void schedule_query(uint32_t now) {
-    bool automatic = !gmk_wired_mode();
+    bool automatic = automatic_queries();
     bool allowed   = automatic || state.demand;
     /* Cancel queued periodic work on wired entry, without interrupting a
      * partially transmitted frame or stealing its outstanding ACK. */
@@ -295,20 +304,26 @@ static void transmit(uint32_t now) {
         if (state.acknowledgements) {
             --state.acknowledgements;
             state.transmitting = BATTERY_TX_ACK;
+        } else if (state.waiting_ack) {
+            return;
 #ifdef CONFIG_GMK70_RADIO
-        } else if (!state.waiting_ack && gmk_radio_next(now, &state.radio_frame)) {
+        } else if (state.query_pending && gmk_radio_battery_ready(now)) {
+            /* A stream of HID reports must not starve the three-second query.
+             * Controls, release barriers and an A1/A2 pair still finish first. */
+            state.query_pending = false;
+            state.transmitting  = BATTERY_TX_QUERY;
+        } else if (gmk_radio_next(now, &state.radio_frame)) {
             if (!state.radio_frame.length || state.radio_frame.length > sizeof(state.radio_frame.bytes)) {
                 gmk_radio_sent(now, false);
                 ++state.status.errors;
                 return;
             }
             state.transmitting = BATTERY_TX_RADIO;
-        } else if (!state.waiting_ack && state.query_pending && !gmk_radio_control_busy()) {
 #else
         } else if (state.query_pending) {
-#endif
             state.query_pending = false;
             state.transmitting  = BATTERY_TX_QUERY;
+#endif
         } else {
             return;
         }
@@ -372,7 +387,7 @@ uint32_t gmk_battery_delay(void) {
         uint32_t next    = elapsed >= BATTERY_TIMEOUT_MS ? 1 : BATTERY_TIMEOUT_MS - elapsed;
         if (next < delay) delay = next;
     }
-    if (!gmk_wired_mode()) {
+    if (automatic_queries()) {
         uint32_t elapsed = now - state.cycle_ms;
         uint32_t next    = !state.have_cycle || elapsed >= BATTERY_QUERY_MS ? 1 : BATTERY_QUERY_MS - elapsed;
         if (next < delay) delay = next;

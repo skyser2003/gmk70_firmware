@@ -37,7 +37,9 @@ void     gmk_radio_core_charger(struct gmk_radio_core *radio, bool cable, bool f
 bool     gmk_radio_core_idle(const struct gmk_radio_core *radio);
 uint32_t gmk_radio_core_delay(const struct gmk_radio_core *radio, uint32_t now);
 bool     gmk_radio_core_control_busy(const struct gmk_radio_core *radio);
-void     gmk_radio_core_notification(struct gmk_radio_core *radio, uint8_t command, uint8_t value);
-void     gmk_radio_core_ack(struct gmk_radio_core *radio);
-bool     gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_radio_frame *frame);
-void     gmk_radio_core_sent(struct gmk_radio_core *radio, uint32_t now, bool success);
+/* Allow a due query ahead of queued HID, never inside controls/releases/NKRO. */
+bool gmk_radio_core_battery_ready(const struct gmk_radio_core *radio, uint32_t now);
+void gmk_radio_core_notification(struct gmk_radio_core *radio, uint8_t command, uint8_t value);
+void gmk_radio_core_ack(struct gmk_radio_core *radio);
+bool gmk_radio_core_next(struct gmk_radio_core *radio, uint32_t now, struct gmk_radio_frame *frame);
+void gmk_radio_core_sent(struct gmk_radio_core *radio, uint32_t now, bool success);

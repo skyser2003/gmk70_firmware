@@ -105,12 +105,19 @@ static void reset_model(bool is_left) {
     initializing                             = true;
     assert(battery_init() == 0);
     initializing = false;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    k_msgq_purge(&radio_rx);
+    atomic_clear(&radio_rx_fault);
+#endif
 }
 static void feed(const uint8_t *bytes, size_t count) {
     assert(count <= sizeof(rx));
     memcpy(rx, bytes, count);
     rx_count  = count;
     rx_cursor = 0;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    fake_uart_isr(NULL);
+#endif
     gmk_battery_poll();
 }
 static struct gmk_battery_status snapshot(void) {

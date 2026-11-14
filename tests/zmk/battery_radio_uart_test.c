@@ -1,9 +1,15 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "radio.h"
 #include "battery_fixture.h"
+#ifdef CONFIG_GMK70_EVENT_IDLE
+#    include "battery_irq_fixture.h"
+#endif
 
 static struct gmk_radio_core radio;
-void                         gmk_radio_charger_state(bool cable, bool full) {
+bool                         gmk_radio_selected(void) {
+    return radio.selected != GMK_HOST_USB;
+}
+void gmk_radio_charger_state(bool cable, bool full) {
     gmk_radio_core_charger(&radio, cable, full);
 }
 
@@ -22,6 +28,9 @@ void gmk_radio_sent(uint32_t now, bool success) {
 bool gmk_radio_control_busy(void) {
     return gmk_radio_core_control_busy(&radio);
 }
+bool gmk_radio_battery_ready(uint32_t now) {
+    return gmk_radio_core_battery_ready(&radio, now);
+}
 static void reset_radio(void) {
     reset_model(true);
     gmk_radio_core_init(&radio);
@@ -33,6 +42,7 @@ static void ack(void) {
 static void test_charging_updates_the_module_without_restarting(void) {
     reset_radio();
     assert(gmk_radio_core_select(&radio, GMK_HOST_USB, false) == 0);
+    gmk_battery_request(); /* Wired level display remains explicitly refreshable. */
     gpio_registers[0][0x10 / 4] = 1U << 7;
     gmk_battery_poll();
     const uint8_t usb[] = {0xa6, 0x11, 0xb7};
@@ -46,7 +56,7 @@ static void test_charging_updates_the_module_without_restarting(void) {
     const uint8_t query[] = {0xa6, 0x53, 0xf9};
     assert(tx_count == 9 && !memcmp(tx + 6, query, sizeof(query)));
     ack();
-    ack(); /* Drain the query cycle that became overdue during USB quiet time. */
+    ack(); /* A duplicate ACK cannot start another wired query. */
     const uint8_t low[] = {0x5c, 3, 0x5f};
     feed(low, sizeof(low));
     assert(snapshot().valid && snapshot().percentage == 3);
@@ -296,6 +306,9 @@ static void test_notifications_obey_checksum_raw_quarantine_and_errors(void) {
     assert(radio.connection == GMK_RADIO_DISCONNECTED);
     feed(header, sizeof(header));
     line_error = 0x82;
+#ifdef CONFIG_GMK70_EVENT_IDLE
+    fake_uart_isr(NULL);
+#endif
     gmk_battery_poll();
     line_error = 0;
     feed(fake_connected + 3, sizeof(fake_connected) - 3);
@@ -360,9 +373,10 @@ static void test_power_quiesce_drains_uart_then_suppresses_periodic_queries(void
     const uint8_t selection[] = {0xa6, 0x31, 0xd7};
     expect_bytes(before, selection, sizeof(selection)); /* Missing CONNECTED also requires a status refresh. */
     ack();                                              /* The reconnect SELECT owns this ACK, not the overdue query. */
-    assert(snapshot().queries == 1);
-    ack(); /* Refresh charger state before the overdue query resumes. */
-    assert(snapshot().queries == 2);
+    assert(snapshot().queries == 2 && state.waiting_ack && !radio.waiting);
+    ack(); /* The overdue query yields back to the unchanged charger heartbeat. */
+    assert(snapshot().queries == 2 && !state.waiting_ack && radio.waiting);
+    ack();
     reset_radio();
     assert(!gmk_radio_core_select(&radio, GMK_HOST_BT1, false));
     gmk_battery_poll();
@@ -531,7 +545,99 @@ static void test_connected_select_drains_late_ack_before_charger_and_query(void)
     const uint8_t down[] = {0xa1, 0, 0, 4, 0, 0, 0, 0, 0, 0xa5};
     expect_bytes(before, down, sizeof(down));
 }
+static void test_automatic_queries_follow_selected_output(void) {
+    const uint8_t channels[] = {GMK_HOST_USB, GMK_HOST_BT1, GMK_HOST_BT5, GMK_HOST_DONGLE};
+    for (unsigned slider = 0; slider < 2; ++slider) {
+        for (unsigned channel = 0; channel < sizeof(channels); ++channel) {
+            reset_radio();
+            wired = slider != 0;
+            assert(!gmk_radio_core_select(&radio, channels[channel], false));
+            for (battery_test_time = 0; battery_test_time <= 13000; battery_test_time += 100) {
+                gmk_battery_poll();
+                for (unsigned pass = 0; pass < 6; ++pass) {
+                    if (radio.waiting || state.waiting_ack)
+                        ack();
+                    else
+                        gmk_battery_poll();
+                }
+            }
+            assert(!state.waiting_ack && !radio.waiting);
+            assert(snapshot().queries == (channels[channel] == GMK_HOST_USB ? 0U : 5U));
+            assert(gmk_wired_mode() == wired); /* Physical write-admission gates are unchanged. */
+#ifdef CONFIG_GMK70_EVENT_IDLE
+            battery_test_time = channels[channel] == GMK_HOST_USB ? 13999 : state.cycle_ms + 2999;
+            assert(gmk_battery_delay() == (channels[channel] == GMK_HOST_USB ? 1000U : 1U));
+#endif
+            if (channels[channel] == GMK_HOST_USB) {
+                gmk_battery_request();
+                gmk_battery_poll();
+                assert(snapshot().queries == 1 && state.waiting_ack);
+                ack();
+            }
+        }
+    }
+}
+static void test_due_queries_are_not_starved_by_keyboard_reports(void) {
+    connected();
+    const uint8_t report[8]     = {4, 0, 4}; /* Alt stays physically held. */
+    battery_test_time           = 3000;
+    gpio_registers[0][0x10 / 4] = 1U << 7;
+    assert(!gmk_radio_core_report(&radio, false, report));
+    gmk_battery_poll(); /* A charger state change retains control priority. */
+    assert(radio.waiting);
+    ack();
+    for (unsigned pass = 0; pass < 50 && !state.waiting_ack; ++pass) {
+        assert(!gmk_radio_core_report(&radio, false, report));
+        gmk_battery_poll();
+    }
+    assert(snapshot().queries == 2 && state.waiting_ack);
+    assert(radio.count == 1); /* The due query wins admission before new HID work. */
+    const uint8_t query[] = {0xa6, 0x53, 0xf9};
+    expect_bytes(3, query, sizeof(query));
+    ack();
+    const uint8_t held[] = {0xa1, 4, 0, 4, 0, 0, 0, 0, 0, 0xa9};
+    expect_bytes(6, held, sizeof(held));
+    assert(!radio.count && !radio.waiting && !state.waiting_ack);
+    const uint8_t release[8] = {0};
+    assert(!gmk_radio_core_report(&radio, false, release));
+    gmk_battery_poll();
+    const uint8_t up[] = {0xa1, 0, 0, 0, 0, 0, 0, 0, 0, 0xa1};
+    expect_bytes(16, up, sizeof(up));
+}
+static void test_due_query_cannot_split_nkro_or_release_barriers(void) {
+    connected();
+    const uint8_t keyboard[8] = {4, 0, 4}, overflow[14] = {0, 4};
+    assert(!gmk_radio_core_nkro(&radio, keyboard, overflow));
+    gmk_battery_poll();
+    assert(tx_count == 10 && radio.overflow_pending);
+    gmk_battery_request();
+    gmk_battery_poll();
+    const uint8_t upper[] = {0xa2, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xa6};
+    expect_bytes(10, upper, sizeof(upper));
+    assert(!radio.overflow_pending && snapshot().queries == 1);
+    gmk_radio_core_release(&radio, false);
+    gmk_radio_core_release(&radio, true);
+    for (unsigned pass = 0; pass < 3; ++pass) {
+        gmk_battery_poll();
+        assert(snapshot().queries == 1 && !state.waiting_ack);
+    }
+    assert(!radio.release && tx_count == 56);
+    gmk_battery_poll();
+    const uint8_t query[] = {0xa6, 0x53, 0xf9};
+    expect_bytes(56, query, sizeof(query));
+    assert(snapshot().queries == 2);
+    battery_test_time = 10;
+    gmk_battery_poll();
+    assert(snapshot().queries == 3); /* One bounded retry if that ACK is lost. */
+    battery_test_time = 20;
+    gmk_battery_poll();
+    assert(!state.waiting_ack && snapshot().queries == 3 && snapshot().errors == 1);
+    assert(gmk_battery_idle() && !gmk_radio_core_control_busy(&radio));
+}
 int main(void) {
+    test_due_query_cannot_split_nkro_or_release_barriers();
+    test_due_queries_are_not_starved_by_keyboard_reports();
+    test_automatic_queries_follow_selected_output();
     test_connected_select_drains_late_ack_before_charger_and_query();
     test_usb_selection_allows_module_sleep_before_telemetry_resumes();
     test_module_acknowledgements_do_not_break_usb_quiet_interval();

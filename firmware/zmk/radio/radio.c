@@ -333,6 +333,12 @@ bool gmk_radio_control_busy(void) {
     k_spin_unlock(&lock, key);
     return busy;
 }
+bool gmk_radio_battery_ready(uint32_t now) {
+    k_spinlock_key_t key   = k_spin_lock(&lock);
+    bool             ready = available && !quiesced && gmk_radio_core_battery_ready(&core, now);
+    k_spin_unlock(&lock, key);
+    return ready;
+}
 static bool idle_locked(void) {
     return !available || (gmk_radio_core_idle(&core) && !mailbox.pending && !mailbox.clear && !processing && !selector.holding
 #ifdef CONFIG_GMK70_RADIO_QUALIFICATION

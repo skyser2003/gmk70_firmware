@@ -2,7 +2,10 @@
 
 ## Refresh policy
 
-Automatic three-second percentage inquiries now run only in wireless mode.
+Automatic three-second percentage inquiries run only when the selected output
+is Bluetooth or dongle. A host-selection shortcut can override the physical
+slider, so polling and its next deadline follow the logical output. The physical
+USB-position requirement for updater and storage writes is unchanged.
 Pressing the held battery-level action queues one coalesced refresh through the
 existing UART worker, with one bounded retry. This preserves wired level display
 without background wired queries. Charging-status presses and releases do not
@@ -10,10 +13,25 @@ request percentages. Native ZMK sensor reads remain cache-only; unknown or
 expired data stays purple until a valid reply arrives. A hold longer than the
 ten-second freshness limit requires another press to refresh.
 
-Wired entry cancels queued periodic queries. A frame already being transmitted
+Selecting USB cancels queued periodic queries. A frame already being transmitted
 finishes without losing ACK ownership, but does not trigger a periodic retry.
 The charger notifications and USB sampler-recovery interval remain unchanged.
 The radio estimator is unchanged.
+
+A due inquiry now takes its turn before ordinary queued HID reports; a busy
+typing stream previously could postpone it indefinitely. Module acknowledgments,
+host/charging-state controls, reconnect deadlines, zero-report release barriers
+and an already-started A1/A2 keyboard pair retain priority. An unanswered query
+still gets only one ten-millisecond retry, so telemetry cannot indefinitely block
+typing or sleep. A periodic repeat of unchanged charging state follows the query.
+
+Regression tests exercise the real UART owner and radio core with polling and
+interrupt RX, both slider positions, USB/BT1/BT5/dongle selections, held Alt and
+release reports, NKRO pairing, charging changes, failed ACKs and sleep admission.
+They reproduce the scheduling defects, not the user's live Bluetooth failure.
+These corrections cannot force a new ADC conversion or change the radio's
+retained percentage filter described below; confirmation of the reported
+60%-to-0% behavior still requires Bluetooth hardware testing.
 
 The Studio central implements two held actions under **GMK70 Battery /
 Charging**: parameter 0 displays battery level; parameter 1 displays charging

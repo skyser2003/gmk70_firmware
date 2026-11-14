@@ -158,6 +158,9 @@ void gmk_radio_core_charger(struct gmk_radio_core *radio, bool cable, bool full)
 bool gmk_radio_core_control_busy(const struct gmk_radio_core *radio) {
     return radio->waiting || radio->obsolete || radio->draining || radio->pending_select || radio->pending_pair || radio->sleep_pending || radio->charge_mode != radio->charge_sent || usb_quiet(radio) || acknowledged_control(radio->inflight);
 }
+bool gmk_radio_core_battery_ready(const struct gmk_radio_core *radio, uint32_t now) {
+    return !gmk_radio_core_control_busy(radio) && !radio->inflight && !radio->release && !radio->overflow_pending && connect_delay(radio, now) != 0;
+}
 bool gmk_radio_core_idle(const struct gmk_radio_core *radio) {
     /* A passive diagnostic fault owns no UART/control lease. The battery
      * owner separately verifies physical TX/RX and parser quiescence. */
